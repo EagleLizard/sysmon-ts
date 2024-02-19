@@ -3,6 +3,8 @@ import { SYSMON_COMMAND_ENUM, parseSysmonArgs } from './cmd/sysmon-args';
 import { isString } from './util/validate-primitives';
 import { Timer } from './util/timer';
 import { getIntuitiveTimeString } from './util/format-util';
+import { Dirent, opendirSync, readdirSync } from 'fs';
+import path from 'path';
 
 export async function sysmonMain() {
   const cmd = parseSysmonArgs();
@@ -41,8 +43,60 @@ function scanDir(dirPath: string): ScanDirResult {
   let allDirs: string[];
   let allFiles: string[];
 
-  allDirs = [];
-  allFiles = [];
+  let dirDirents: Dirent[];
+  let fileDirents: Dirent[];
+
+  let currDirents: Dirent[];
+  let dirQueue: Dirent[];
+  let currDirPath: string;
+
+  currDirPath = dirPath;
+  currDirents = readdirSync(dirPath, {
+    withFileTypes: true
+  });
+
+  dirQueue = [
+    ...currDirents
+  ];
+
+  dirDirents = [];
+  fileDirents = [];
+
+  while(dirQueue.length > 0) {
+    let rootDirent: Dirent;
+    rootDirent = dirQueue.shift()!;
+    currDirPath = [
+      rootDirent.path,
+      rootDirent.name
+    ].join(path.sep);
+    if(rootDirent.isDirectory()) {
+      currDirents = readdirSync(currDirPath, {
+        withFileTypes: true,
+      });
+      dirDirents.push(rootDirent);
+      currDirents.forEach(currDirent => {
+        dirQueue.push(currDirent);
+      });
+    } else {
+      fileDirents.push(rootDirent);
+    }
+  }
+
+  allDirs = dirDirents.map(dirDirent => {
+    return [
+      dirDirent.path,
+      dirDirent.name
+    ].join(path.sep);
+  });
+  allFiles = fileDirents.map(fileDirent => {
+    return [
+      fileDirent.path,
+      fileDirent.name
+    ].join(path.sep);
+  });
+
+  // allDirs = [];
+  // allFiles = [];
   return {
     dirs: allDirs,
     files: allFiles,
