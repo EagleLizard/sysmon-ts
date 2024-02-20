@@ -1,5 +1,5 @@
 
-import { Stats, statSync } from 'fs';
+import { Stats, mkdirSync, statSync } from 'fs';
 import path from 'path';
 import { isObject } from './validate-primitives';
 
@@ -27,4 +27,12 @@ export function checkDir(dirPath: string): boolean {
     }
   }
   return stats.isDirectory();
+}
+
+export function mkdirIfNotExist(dirPath: string) {
+  let dirExists: boolean;
+  dirExists = checkDir(dirPath);
+  if(!dirExists) {
+    mkdirSync(dirPath);
+  }
 }

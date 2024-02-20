@@ -3,8 +3,10 @@ import { SYSMON_COMMAND_ENUM, parseSysmonArgs } from './cmd/sysmon-args';
 import { isString } from './util/validate-primitives';
 import { Timer } from './util/timer';
 import { getIntuitiveTimeString } from './util/format-util';
-import { Dirent, opendirSync, readdirSync } from 'fs';
+import { Dirent, Stats, lstatSync, opendirSync, readdirSync, writeFileSync } from 'fs';
 import path from 'path';
+import { mkdirIfNotExist } from './util/files';
+import { DATA_DIR_PATH } from '../constants';
 
 export async function sysmonMain() {
   const cmd = parseSysmonArgs();
@@ -32,6 +34,12 @@ function scanDirMain(dirPath: string) {
   console.log(`files: ${scanDirResult.files.length}`);
   console.log(`dirs: ${scanDirResult.dirs.length}`);
   console.log(`Scan took: ${getIntuitiveTimeString(scanMs)}`);
+  mkdirIfNotExist(DATA_DIR_PATH);
+  const dirsDataFilePath = [
+    DATA_DIR_PATH,
+    'dirs.txt',
+  ].join(path.sep);
+  writeFileSync(dirsDataFilePath, scanDirResult.dirs.join('\n'));
 }
 
 type ScanDirResult = {
@@ -43,60 +51,37 @@ function scanDir(dirPath: string): ScanDirResult {
   let allDirs: string[];
   let allFiles: string[];
 
-  let dirDirents: Dirent[];
-  let fileDirents: Dirent[];
-
   let currDirents: Dirent[];
-  let dirQueue: Dirent[];
+  let dirQueue: string[];
   let currDirPath: string;
 
-  currDirPath = dirPath;
-  currDirents = readdirSync(dirPath, {
-    withFileTypes: true
-  });
-
   dirQueue = [
-    ...currDirents
+    dirPath,
   ];
 
-  dirDirents = [];
-  fileDirents = [];
+  allDirs = [];
+  allFiles = [];
 
   while(dirQueue.length > 0) {
-    let rootDirent: Dirent;
-    rootDirent = dirQueue.shift()!;
-    currDirPath = [
-      rootDirent.path,
-      rootDirent.name
-    ].join(path.sep);
+    let rootDirent: Stats;
+    currDirPath = dirQueue.shift()!;
+    rootDirent = lstatSync(currDirPath);
     if(rootDirent.isDirectory()) {
       currDirents = readdirSync(currDirPath, {
         withFileTypes: true,
       });
-      dirDirents.push(rootDirent);
+      allDirs.push(currDirPath);
       currDirents.forEach(currDirent => {
-        dirQueue.push(currDirent);
+        dirQueue.push([
+          currDirent.path,
+          currDirent.name,
+        ].join(path.sep));
       });
     } else {
-      fileDirents.push(rootDirent);
+      allFiles.push(currDirPath);
     }
   }
 
-  allDirs = dirDirents.map(dirDirent => {
-    return [
-      dirDirent.path,
-      dirDirent.name
-    ].join(path.sep);
-  });
-  allFiles = fileDirents.map(fileDirent => {
-    return [
-      fileDirent.path,
-      fileDirent.name
-    ].join(path.sep);
-  });
-
-  // allDirs = [];
-  // allFiles = [];
   return {
     dirs: allDirs,
     files: allFiles,
