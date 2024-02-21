@@ -3,7 +3,7 @@ import { SYSMON_COMMAND_ENUM, parseSysmonArgs } from './cmd/sysmon-args';
 import { isString } from './util/validate-primitives';
 import { Timer } from './util/timer';
 import { getIntuitiveTimeString } from './util/format-util';
-import { Dirent, Stats, lstatSync, opendirSync, readdirSync, writeFileSync } from 'fs';
+import { Dirent, Stats, lstatSync, readdirSync, writeFileSync } from 'fs';
 import path from 'path';
 import { mkdirIfNotExist } from './util/files';
 import { DATA_DIR_PATH } from '../constants';
@@ -34,12 +34,49 @@ function scanDirMain(dirPath: string) {
   console.log(`files: ${scanDirResult.files.length}`);
   console.log(`dirs: ${scanDirResult.dirs.length}`);
   console.log(`Scan took: ${getIntuitiveTimeString(scanMs)}`);
+
+  const duplicateFiles = findDuplicateFiles(scanDirResult.files);
+
   mkdirIfNotExist(DATA_DIR_PATH);
   const dirsDataFilePath = [
     DATA_DIR_PATH,
     'dirs.txt',
   ].join(path.sep);
+  const filesDataFilePath = [
+    DATA_DIR_PATH,
+    'files.txt',
+  ].join(path.sep);
   writeFileSync(dirsDataFilePath, scanDirResult.dirs.join('\n'));
+  writeFileSync(filesDataFilePath, scanDirResult.files.join('\n'));
+}
+
+function findDuplicateFiles(filePaths: string[]) {
+  let pathMap: Map<number, string[]>;
+  pathMap = new Map;
+  filePaths.forEach((filePath) => {
+    let stat: Stats;
+    let size: number;
+    let sizePaths: string[];
+    stat = lstatSync(filePath);
+    size = stat.size;
+    if(!pathMap.has(size)) {
+      pathMap.set(size, []);
+    }
+    sizePaths = pathMap.get(size)!;
+    sizePaths.push(filePath);
+  });
+
+  [ ...pathMap.entries() ].forEach(pathSizeTuple => {
+    const [
+      size,
+      sizePaths,
+    ] = pathSizeTuple;
+    if(sizePaths.length > 1) {
+      console.log(size);
+      console.log(sizePaths);
+    }
+  });
+
 }
 
 type ScanDirResult = {
@@ -55,12 +92,16 @@ function scanDir(dirPath: string): ScanDirResult {
   let dirQueue: string[];
   let currDirPath: string;
 
+  let pathCount: number;
+
   dirQueue = [
     dirPath,
   ];
 
   allDirs = [];
   allFiles = [];
+
+  pathCount = 0;
 
   while(dirQueue.length > 0) {
     let rootDirent: Stats;
@@ -72,15 +113,25 @@ function scanDir(dirPath: string): ScanDirResult {
       });
       allDirs.push(currDirPath);
       currDirents.forEach(currDirent => {
-        dirQueue.push([
+        // dirQueue.push([
+        //   currDirent.path,
+        //   currDirent.name,
+        // ].join(path.sep));
+        dirQueue.unshift([
           currDirent.path,
           currDirent.name,
         ].join(path.sep));
       });
+      pathCount++;
     } else {
       allFiles.push(currDirPath);
+      pathCount++;
+    }
+    if((pathCount % 1e4) === 0) {
+      process.stdout.write('.');
     }
   }
+  process.stdout.write('\n');
 
   return {
     dirs: allDirs,
