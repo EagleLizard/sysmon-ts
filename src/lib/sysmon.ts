@@ -1,12 +1,13 @@
 
 import { SYSMON_COMMAND_ENUM, parseSysmonArgs } from './cmd/sysmon-args';
-import { isString } from './util/validate-primitives';
+import { isObject, isString } from './util/validate-primitives';
 import { Timer } from './util/timer';
 import { getIntuitiveTimeString } from './util/format-util';
-import { Dirent, Stats, lstatSync, readdirSync, writeFileSync } from 'fs';
+import { Dirent, ReadStream, Stats, createReadStream, lstatSync, readFileSync, readdirSync, writeFileSync } from 'fs';
 import path from 'path';
 import { mkdirIfNotExist } from './util/files';
 import { DATA_DIR_PATH } from '../constants';
+import { Hasher, getHasher, hashSync } from './util/hasher';
 
 export async function sysmonMain() {
   const cmd = parseSysmonArgs();
@@ -16,17 +17,18 @@ export async function sysmonMain() {
       if(!isString(cmd.arg)) {
         throw new Error(`Unexpected ${cmd.command} dir arg type: expected 'string', found ${typeof cmd.arg}`);
       }
-      scanDirMain(cmd.arg);
+      await scanDirMain(cmd.arg);
       break;
     default:
       throw new Error(`unhandled command kind: ${cmd.kind}`);
   }
 }
 
-function scanDirMain(dirPath: string) {
+async function scanDirMain(dirPath: string) {
   let scanDirResult: ScanDirResult;
   let timer: Timer;
   let scanMs: number;
+  let findDuplicatesMs: number;
   console.log(`Scanning: ${dirPath}`);
   timer = Timer.start();
   scanDirResult = scanDir(dirPath);
@@ -35,7 +37,10 @@ function scanDirMain(dirPath: string) {
   console.log(`dirs: ${scanDirResult.dirs.length}`);
   console.log(`Scan took: ${getIntuitiveTimeString(scanMs)}`);
 
-  const duplicateFiles = findDuplicateFiles(scanDirResult.files);
+  timer = Timer.start();
+  const duplicateFiles = await findDuplicateFiles(scanDirResult.files);
+  findDuplicatesMs = timer.stop();
+  console.log(`findDuplicates took: ${getIntuitiveTimeString(findDuplicatesMs)}`);
 
   mkdirIfNotExist(DATA_DIR_PATH);
   const dirsDataFilePath = [
@@ -50,8 +55,13 @@ function scanDirMain(dirPath: string) {
   writeFileSync(filesDataFilePath, scanDirResult.files.join('\n'));
 }
 
-function findDuplicateFiles(filePaths: string[]) {
+async function findDuplicateFiles(filePaths: string[]) {
   let pathMap: Map<number, string[]>;
+  let hashMap: Map<string, string[]>;
+  /*
+    First, find potential duplicates - a file can be a duplicate if it
+      has the same size as another file.
+  */
   pathMap = new Map;
   filePaths.forEach((filePath) => {
     let stat: Stats;
@@ -66,16 +76,70 @@ function findDuplicateFiles(filePaths: string[]) {
     sizePaths.push(filePath);
   });
 
-  [ ...pathMap.entries() ].forEach(pathSizeTuple => {
-    const [
-      size,
-      sizePaths,
-    ] = pathSizeTuple;
-    if(sizePaths.length > 1) {
-      console.log(size);
-      console.log(sizePaths);
+  /*
+    Next, pare the list of duplicates down to actual duplicates
+      by calculating the file hashes of the potential duplicates
+  */
+
+  hashMap = new Map;
+
+  let pathMapEntries: [ number, string[] ][] = [ ...pathMap.entries() ];
+  let hashCount: number = 0;
+
+  for(let i = 0; i < pathMapEntries.length; ++i) {
+    const pathMapEntry = pathMapEntries[i];
+    const [ , filePaths ] = pathMapEntry;
+    if(filePaths.length < 2) {
+      continue;
     }
-  });
+    for(let k = 0; k < filePaths.length; ++k) {
+      let rs: ReadStream;
+      let readPromise: Promise<void>;
+      let hasher: Hasher;
+      let hashStr: string;
+      let hashArr: string[];
+
+      const filePath = filePaths[k];
+
+      hasher = getHasher();
+
+      const chunkCb = (chunk: string | Buffer) => {
+        hasher.update(chunk);
+      };
+
+      readPromise = new Promise((resolve, reject) => {
+        rs = createReadStream(filePath);
+        rs.on('error', err => {
+          if(isObject(err) && (
+            (err.code === 'EISDIR')
+            || (err.code === 'ENOENT')
+          )) {
+            console.error(`${err.code}: ${filePath}`);
+          } else {
+            reject(err);
+          }
+        });
+        rs.on('close', () => {
+          resolve();
+        });
+        rs.on('data', chunk => {
+          chunkCb(chunk);
+        });
+      });
+      await readPromise;
+      hashStr = hasher.digest();
+      if(!hashMap.has(hashStr)) {
+        hashMap.set(hashStr, []);
+      }
+      hashArr = hashMap.get(hashStr)!;
+      hashArr.push(filePath);
+      hashCount++;
+      if((hashCount % 1000) === 0) {
+        process.stdout.write('.');
+      }
+    }
+  }
+  process.stdout.write('\n');
 
 }
 
