@@ -11,3 +11,5 @@ data
 package-lock.json
 data
 build
+
+logs

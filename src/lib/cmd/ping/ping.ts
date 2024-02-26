@@ -2,6 +2,7 @@
 import child_process, { ChildProcess } from 'child_process';
 import { PostgresClient } from '../../db/pg-client';
 import { ipProc } from '../net/ip';
+import { logger } from '../../logger';
 
 type PingResult = {
   bytes: number;
@@ -50,6 +51,10 @@ export async function pingMain(addr?: string) {
       pingRes.timeUnit,
     ];
     await pgClient.query(queryString, queryParams);
+    logger.info({
+      srcAddr,
+      ...pingRes
+    });
   };
 
   await ipProc();
@@ -83,7 +88,7 @@ function pingProc(opts: PingProcOpts): Promise<void> {
       resolve();
     });
     proc.on('error', err => {
-      console.error(err);
+      logger.error(err);
       reject(err);
     });
   });
@@ -110,7 +115,7 @@ function pingProc(opts: PingProcOpts): Promise<void> {
     });
   });
   proc.stderr?.on('data', (data) => {
-    console.error(`${data}`);
+    logger.error(`${data}`);
   });
 
   return procPromise;
