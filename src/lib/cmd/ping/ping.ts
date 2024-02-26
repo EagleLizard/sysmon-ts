@@ -56,7 +56,7 @@ export async function pingMain(addr?: string) {
 
   await pingProc({
     addr: addr ?? 'localhost',
-    count: 3,
+    // count: 3,
     pingCb,
   });
   await pgClient.end();
