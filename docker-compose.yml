@@ -6,6 +6,8 @@ services:
     command: tail -F __not_exists__
     stop_grace_period: 1s
     network_mode: host
+    volumes:
+      - ./logs:/home/ezd/logs
     # ports:
     #   - ${POSTGRES_PORT}:${POSTGRES_PORT}
     #   - ${EZD_API_PORT}:${EZD_API_PORT}
