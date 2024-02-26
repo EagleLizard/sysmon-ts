@@ -4,6 +4,7 @@ import { checkDir, getPathRelativeToCwd } from '../util/files';
 
 export enum SYSMON_COMMAND_ENUM {
   SCAN_DIR = 'SCAN_DIR',
+  PING = 'PING',
 }
 
 export type SysmonCommand = {
@@ -19,10 +20,16 @@ const SYSMON_COMMANDS: Record<SYSMON_COMMAND_ENUM, SysmonCommand> = {
     command: 'scandir',
     short: 'sd',
   },
+  [SYSMON_COMMAND_ENUM.PING]: {
+    kind: SYSMON_COMMAND_ENUM.PING,
+    command: 'ping',
+    short: 'p',
+  }
 };
 
 const SYSMON_CMD_KEYS: SYSMON_COMMAND_ENUM[] = [
   SYSMON_COMMAND_ENUM.SCAN_DIR,
+  SYSMON_COMMAND_ENUM.PING,
 ];
 
 export function parseSysmonArgs(): SysmonCommand {
@@ -54,6 +61,11 @@ export function parseSysmonArgs(): SysmonCommand {
       }
       console.log(dirPath);
       cmd.arg = dirPath;
+      break;
+    case SYSMON_COMMAND_ENUM.PING:
+      let addr: string | undefined;
+      addr = restPositionals[0];
+      cmd.arg = addr;
       break;
     default:
       throw new Error(`unhandled command kind: ${cmd.kind}`);
