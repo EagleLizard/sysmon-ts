@@ -17,3 +17,20 @@ import { logger } from './lib/logger';
 async function main() {
   await sysmonMain();
 }
+
+function shutdown(sig: string) {
+  logger.info(`${sig} received.`);
+}
+
+process.on('SIGINT', () => {
+  shutdown('SIGINT');
+});
+process.on('SIGTERM', () => {
+  shutdown('SIGTERM');
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.info('unhandledRejection:');
+  logger.info(reason);
+});
+
