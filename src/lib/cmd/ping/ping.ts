@@ -3,6 +3,10 @@ import child_process, { ChildProcess } from 'child_process';
 import { PostgresClient } from '../../db/pg-client';
 import { ipProc } from '../net/ip';
 import { logger } from '../../logger';
+import { Timer } from '../../util/timer';
+import { SysmonCommand } from '../sysmon-args';
+import { config } from '../../../config';
+import { PingService } from '../../service/ping-service';
 
 type PingResult = {
   bytes: number;
@@ -16,22 +20,67 @@ type PingResult = {
 type PingProcOpts = {
   addr: string,
   count?: number,
+  wait?: number,
   pingCb: (pingRes: PingResult) => void;
 };
 
-export async function pingMain(addr?: string) {
+export async function pingMain(cmd: SysmonCommand) {
+  let pingTimer: Timer;
+  let addr: string;
+  let waitStr: string | undefined;
+  let wait: number | undefined;
+  let countStr: string | undefined;
+  let count: number | undefined;
+  let pingProcOpts: PingProcOpts;
+
+  let srcAddrId: number;
+  let addrId: number;
+  if(cmd.arg === undefined) {
+    throw new Error(`at least 1 positional argument required for command '${cmd.command}'`);
+  }
+  addr = cmd.arg;
+  waitStr = cmd.opts?.['i']?.value[0];
+  if(
+    waitStr !== undefined
+    && !isNaN(+waitStr)
+  ) {
+    wait = +waitStr;
+  }
+  countStr = cmd.opts?.['c']?.value[0];
+  if(
+    (countStr !== undefined)
+    && !isNaN(+countStr)
+  ) {
+    count = +countStr;
+  }
 
   const pgClient = await PostgresClient.getClient();
 
   const srcAddr = await ipProc();
 
+  let rawSrcAddrId: number | undefined;
+  rawSrcAddrId = await PingService.getAddrIdByVal(srcAddr);
+  if(rawSrcAddrId === undefined) {
+    srcAddrId = await PingService.insertAddr(srcAddr);
+  } else {
+    srcAddrId = rawSrcAddrId;
+  }
+
+  let rawAddrId: number | undefined;
+  rawAddrId = await PingService.getAddrIdByVal(addr);
+  if(rawAddrId === undefined) {
+    addrId = await PingService.insertAddr(addr);
+  } else {
+    addrId = rawAddrId;
+  }
+
   const pingCb = async (pingRes: PingResult) => {
     let queryString: string;
-    let queryParams: [ string, number, string, number, number, number, string];
+    let queryParams: [ number, number, number, number, number, number, string];
     let col_names = [
-      'src_addr',
+      'src_addr_id',
       'bytes',
-      'addr',
+      'addr_id',
       'seq',
       'ttl',
       'time',
@@ -40,31 +89,64 @@ export async function pingMain(addr?: string) {
     let col_nums = col_names.map((col_name, idx) => {
       return `$${idx + 1}`;
     }).join(', ');
+    if(pingRes.addr !== addr) {
+      throw new Error(`received ip '${pingRes.addr}', expected '${srcAddr}'`);
+    }
     queryString = `INSERT INTO ping (${col_names.join(', ')}) VALUES(${col_nums})`;
     queryParams = [
-      srcAddr,
+      srcAddrId,
       pingRes.bytes,
-      pingRes.addr,
+      addrId,
       pingRes.seq,
       pingRes.ttl,
       pingRes.time,
       pingRes.timeUnit,
     ];
+
     await pgClient.query(queryString, queryParams);
-    logger.info({
-      srcAddr,
-      ...pingRes
-    });
+    if(
+      ((pingRes.seq % 3) === 0)
+      && (config.ENVIRONMENT === 'development')
+    ) {
+      logger.info({
+        srcAddr,
+        ...pingRes
+      });
+    }
+    if(pingTimer.currentMs() > 1.5e4) {
+      if(config.ENVIRONMENT === 'development') {
+        logger.info(`${'~'.repeat(100)}`);
+      }
+      logger.info({
+        srcAddr,
+        ...pingRes
+      });
+      pingTimer.reset();
+    }
   };
 
   await ipProc();
 
-  await pingProc({
+  pingProcOpts = {
     addr: addr ?? 'localhost',
-    // count: 3,
     pingCb,
-  });
-  await pgClient.end();
+  };
+  if(wait !== undefined) {
+    pingProcOpts.wait = wait;
+  }
+  if(count !== undefined) {
+    pingProcOpts.count = count;
+  }
+  console.log(pingProcOpts);
+  pingTimer = Timer.start();
+  await pingProc(pingProcOpts);
+  // await pingProc({
+  //   addr: addr ?? 'localhost',
+  //   // count: 3,
+  //   wait: 0.5,
+  //   pingCb,
+  // });
+  await pgClient.release();
 }
 
 function pingProc(opts: PingProcOpts): Promise<void> {
@@ -79,7 +161,14 @@ function pingProc(opts: PingProcOpts): Promise<void> {
       `${opts.count}`,
     );
   }
+  if(opts.wait !== undefined) {
+    procArgs.push(
+      '-i',
+      `${opts.wait}`,
+    );
+  }
   procArgs.push(opts.addr);
+  logger.info(`ping ${procArgs.join(' ')}`);
   proc = child_process.spawn('ping', procArgs);
 
   procPromise = new Promise((resolve, reject) => {

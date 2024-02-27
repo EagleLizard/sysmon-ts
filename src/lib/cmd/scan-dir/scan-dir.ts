@@ -7,12 +7,19 @@ import { Timer } from '../../util/timer';
 import { Dirent, ReadStream, Stats, createReadStream, lstatSync, readdirSync, writeFileSync } from 'fs';
 import { Hasher, getHasher } from '../../util/hasher';
 import { isObject } from '../../util/validate-primitives';
+import { FIND_DUPLICATES_FLAG_CMD, SysmonCommand } from '../sysmon-args';
 
-export async function scanDirMain(dirPath: string) {
+export async function scanDirMain(cmd: SysmonCommand) {
   let scanDirResult: ScanDirResult;
   let timer: Timer;
   let scanMs: number;
   let findDuplicatesMs: number;
+  let dirPath: string;
+  if(cmd.arg === undefined) {
+    throw new Error(`at least 1 positional argument required for command '${cmd.command}'`);
+  }
+  dirPath = cmd.arg;
+
   console.log(`Scanning: ${dirPath}`);
   timer = Timer.start();
   scanDirResult = scanDir(dirPath);
@@ -21,6 +28,9 @@ export async function scanDirMain(dirPath: string) {
   console.log(`dirs: ${scanDirResult.dirs.length}`);
   console.log(`Scan took: ${getIntuitiveTimeString(scanMs)}`);
 
+  if(cmd.opts?.[FIND_DUPLICATES_FLAG_CMD.flag] === undefined) {
+    return;
+  }
   timer = Timer.start();
   const duplicateFiles = await findDuplicateFiles(scanDirResult.files);
   console.log({ duplicateFiles });
