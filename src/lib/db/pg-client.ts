@@ -14,7 +14,7 @@ export  class PostgresClient {
     return client;
   }
 
-  static async query(query: string | QueryConfig<string[]>, values?: string[]): Promise<QueryResult> {
+  static async query<T extends any[], V extends any[]>(query: string | QueryConfig<T[]>, values?: V): Promise<QueryResult> {
     let client = await PostgresClient.getClient();
     let queryRes = await client.query(query, values);
     client.release();
