@@ -1,12 +1,13 @@
 
 import child_process, { ChildProcess } from 'child_process';
-import { PostgresClient } from '../../db/pg-client';
 import { ipProc } from '../net/ip';
 import { logger } from '../../logger';
 import { Timer } from '../../util/timer';
 import { SysmonCommand } from '../sysmon-args';
 import { config } from '../../../config';
 import { PingService } from '../../service/ping-service';
+
+let activePingProc: ChildProcess | undefined;
 
 type PingResult = {
   bytes: number;
@@ -73,35 +74,14 @@ export async function pingMain(cmd: SysmonCommand) {
   }
 
   const pingCb = async (pingRes: PingResult) => {
-    let queryString: string;
-    let queryParams: [ number, number, number, number, number, number, string];
-    let col_names = [
-      'src_addr_id',
-      'bytes',
-      'addr_id',
-      'seq',
-      'ttl',
-      'time',
-      'time_unit',
-    ];
-    let col_nums = col_names.map((col_name, idx) => {
-      return `$${idx + 1}`;
-    }).join(', ');
     if(pingRes.addr !== addr) {
       throw new Error(`received ip '${pingRes.addr}', expected '${srcAddr}'`);
     }
-    queryString = `INSERT INTO ping (${col_names.join(', ')}) VALUES(${col_nums})`;
-    queryParams = [
+    await PingService.insertPing({
       srcAddrId,
-      pingRes.bytes,
       addrId,
-      pingRes.seq,
-      pingRes.ttl,
-      pingRes.time,
-      pingRes.timeUnit,
-    ];
-
-    await PostgresClient.query(queryString, queryParams);
+      ...pingRes,
+    });
     if(
       ((pingRes.seq % 3) === 0)
       && (config.ENVIRONMENT === 'development')
@@ -137,7 +117,11 @@ export async function pingMain(cmd: SysmonCommand) {
   }
   console.log(pingProcOpts);
   pingTimer = Timer.start();
-  await pingProc(pingProcOpts);
+  const [ pingProc, pingProcPromise ] = spawnPingProc(pingProcOpts);
+
+  activePingProc = pingProc;
+
+  await pingProcPromise;
   // await pingProc({
   //   addr: addr ?? 'localhost',
   //   // count: 3,
@@ -146,7 +130,14 @@ export async function pingMain(cmd: SysmonCommand) {
   // });
 }
 
-function pingProc(opts: PingProcOpts): Promise<void> {
+export function killActivePingProc() {
+  if(activePingProc === undefined) {
+    return;
+  }
+  activePingProc.kill('SIGINT');
+}
+
+function spawnPingProc(opts: PingProcOpts): [ ChildProcess, Promise<void> ] {
   let proc: ChildProcess;
   let procPromise: Promise<void>;
   let procArgs: string[];
@@ -204,7 +195,7 @@ function pingProc(opts: PingProcOpts): Promise<void> {
     logger.error(`${data}`);
   });
 
-  return procPromise;
+  return [ proc, procPromise ];
 }
 
 function parsePingLine(line: string): PingResult {

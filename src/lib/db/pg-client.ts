@@ -1,6 +1,7 @@
 
 import { Pool, QueryConfig, QueryResult } from 'pg';
 import { config } from '../../config';
+import { logger } from '../logger';
 
 const pgPool = new Pool({
   port: config.POSTGRES_PORT,
@@ -19,5 +20,10 @@ export  class PostgresClient {
     let queryRes = await client.query(query, values);
     client.release();
     return queryRes;
+  }
+
+  static end() {
+    logger.info('ending postgres pool');
+    return pgPool.end();
   }
 }

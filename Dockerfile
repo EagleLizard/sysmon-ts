@@ -1,5 +1,7 @@
 
 FROM node:20-alpine
+ENV TZ="America/Denver"
+
 ENV USER ezd
 ENV HOME /home/$USER
 WORKDIR $HOME

@@ -4,6 +4,8 @@ sourceMapSupport.install();
 
 import { sysmonMain } from './lib/sysmon';
 import { logger } from './lib/logger';
+import { PostgresClient } from './lib/db/pg-client';
+import { killActivePingProc } from './lib/cmd/ping/ping';
 
 (async () => {
   try {
@@ -18,8 +20,10 @@ async function main() {
   await sysmonMain();
 }
 
-function shutdown(sig: string) {
+async function shutdown(sig: string) {
   logger.info(`${sig} received.`);
+  killActivePingProc();
+  await PostgresClient.end();
 }
 
 process.on('SIGINT', () => {
@@ -30,7 +34,7 @@ process.on('SIGTERM', () => {
 });
 
 process.on('unhandledRejection', (reason) => {
-  logger.info('unhandledRejection:');
-  logger.info(reason);
+  logger.error('unhandledRejection:');
+  logger.error(reason);
 });
 
