@@ -54,8 +54,6 @@ export async function pingMain(cmd: SysmonCommand) {
     count = +countStr;
   }
 
-  const pgClient = await PostgresClient.getClient();
-
   const srcAddr = await ipProc();
 
   let rawSrcAddrId: number | undefined;
@@ -103,7 +101,7 @@ export async function pingMain(cmd: SysmonCommand) {
       pingRes.timeUnit,
     ];
 
-    await pgClient.query(queryString, queryParams);
+    await PostgresClient.query(queryString, queryParams);
     if(
       ((pingRes.seq % 3) === 0)
       && (config.ENVIRONMENT === 'development')
@@ -146,7 +144,6 @@ export async function pingMain(cmd: SysmonCommand) {
   //   wait: 0.5,
   //   pingCb,
   // });
-  await pgClient.release();
 }
 
 function pingProc(opts: PingProcOpts): Promise<void> {

@@ -1,12 +1,10 @@
-import { PoolClient } from 'pg';
+
 import { PostgresClient } from '../db/pg-client';
 import { isNumber } from '../util/validate-primitives';
 
 export class PingService {
   static async getAddrIdByVal(addr: string): Promise<number | undefined> {
-    let pgClient: PoolClient;
-    pgClient = await PostgresClient.getClient();
-    let addrQueryRes = await pgClient.query([
+    let addrQueryRes = await PostgresClient.query([
       'select * from ping_addr pa',
       `where pa.addr = '${addr}'`,
     ].join(' '));
@@ -14,10 +12,8 @@ export class PingService {
   }
 
   static async insertAddr(addr: string): Promise<number> {
-    let pgClient: PoolClient;
     let rawAddrId: number | undefined;
-    pgClient = await PostgresClient.getClient();
-    let insertQueryRes = await pgClient.query([
+    let insertQueryRes = await PostgresClient.query([
       'insert into ping_addr (addr) values($1)  returning *'
     ].join(' '), [
       addr,
