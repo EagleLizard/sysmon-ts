@@ -1,11 +1,12 @@
 
-import child_process, { ChildProcess } from 'child_process';
+import { ChildProcess } from 'child_process';
 import { ipProc } from '../net/ip';
 import { logger } from '../../logger';
 import { Timer } from '../../util/timer';
 import { SysmonCommand } from '../sysmon-args';
 import { config } from '../../../config';
 import { PingService } from '../../service/ping-service';
+import { spawnProc } from '../proc';
 
 const PING_INFO_LOG_INTERVAL_MS = (config.ENVIRONMENT === 'development')
   ? 0.25e3
@@ -118,12 +119,6 @@ export async function pingMain(cmd: SysmonCommand) {
   activePingProc = pingProc;
 
   await pingProcPromise;
-  // await pingProc({
-  //   addr: addr ?? 'localhost',
-  //   // count: 3,
-  //   wait: 0.5,
-  //   pingCb,
-  // });
 }
 
 export function killActivePingProc() {
@@ -133,9 +128,7 @@ export function killActivePingProc() {
   activePingProc.kill('SIGINT');
 }
 
-function spawnPingProc(opts: PingProcOpts): [ ChildProcess, Promise<void> ] {
-  let proc: ChildProcess;
-  let procPromise: Promise<void>;
+function spawnPingProc(opts: PingProcOpts): [ ChildProcess, Promise<string | void> ] {
   let procArgs: string[];
 
   procArgs = [];
@@ -153,18 +146,6 @@ function spawnPingProc(opts: PingProcOpts): [ ChildProcess, Promise<void> ] {
   }
   procArgs.push(opts.addr);
   logger.info(`ping ${procArgs.join(' ')}`);
-  proc = child_process.spawn('ping', procArgs);
-
-  procPromise = new Promise((resolve, reject) => {
-    proc.on('close', (code) => {
-      console.log(code);
-      resolve();
-    });
-    proc.on('error', err => {
-      logger.error(err);
-      reject(err);
-    });
-  });
 
   const lineCb = (line: string) => {
     let pingRes: PingResult;
@@ -178,20 +159,19 @@ function spawnPingProc(opts: PingProcOpts): [ ChildProcess, Promise<void> ] {
     }
   };
 
-  proc.stdout?.on('data', (data) => {
-    let dataStr: string;
-    let lines: string[];
-    dataStr = `${data}`;
-    lines = dataStr.split('\n').filter(line => line.trim().length > 0);
-    lines.forEach(line => {
-      lineCb(line);
-    });
-  });
-  proc.stderr?.on('data', (data) => {
-    logger.error(`${data}`);
+  let procRes = spawnProc('ping', procArgs, {
+    onData: (data) => {
+      let dataStr: string;
+      let lines: string[];
+      dataStr = `${data}`;
+      lines = dataStr.split('\n').filter(line => line.trim().length > 0);
+      lines.forEach(line => {
+        lineCb(line);
+      });
+    },
   });
 
-  return [ proc, procPromise ];
+  return [ procRes.proc, procRes.promise ];
 }
 
 function parsePingLine(line: string): PingResult {
