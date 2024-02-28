@@ -7,6 +7,10 @@ import { SysmonCommand } from '../sysmon-args';
 import { config } from '../../../config';
 import { PingService } from '../../service/ping-service';
 
+const PING_INFO_LOG_INTERVAL_MS = (config.ENVIRONMENT === 'development')
+  ? 0.25e3
+  : 5e3
+;
 let activePingProc: ChildProcess | undefined;
 
 type PingResult = {
@@ -82,19 +86,11 @@ export async function pingMain(cmd: SysmonCommand) {
       addrId,
       ...pingRes,
     });
-    if(
-      ((pingRes.seq % 3) === 0)
-      && (config.ENVIRONMENT === 'development')
-    ) {
-      logger.info({
-        srcAddr,
-        ...pingRes
-      });
-    }
-    if(pingTimer.currentMs() > 1.5e4) {
-      if(config.ENVIRONMENT === 'development') {
-        logger.info(`${'~'.repeat(100)}`);
-      }
+
+    if(pingTimer.currentMs() > PING_INFO_LOG_INTERVAL_MS) {
+      // if(config.ENVIRONMENT === 'development') {
+      //   logger.info(`${'~'.repeat(100)}`);
+      // }
       logger.info({
         srcAddr,
         ...pingRes
