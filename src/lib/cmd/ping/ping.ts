@@ -1,4 +1,6 @@
 
+import { std } from 'mathjs';
+
 import { ChildProcess } from 'child_process';
 import { ipProc } from '../net/ip';
 import { logger } from '../../logger';
@@ -7,8 +9,7 @@ import { SysmonCommand } from '../sysmon-args';
 import { config } from '../../../config';
 import { PingService } from '../../service/ping-service';
 import { spawnProc } from '../proc';
-import { isString } from '../../util/validate-primitives';
-import { getStdDev } from '../../util/math-util';
+import { isNumber, isString } from '../../util/validate-primitives';
 
 const PING_INFO_LOG_INTERVAL_MS = (config.ENVIRONMENT === 'development')
   ? 0.25e3
@@ -26,9 +27,10 @@ type PingResult = {
 };
 
 type PingProcOpts = {
-  addr: string,
-  count?: number,
-  wait?: number,
+  addr: string;
+  count?: number;
+  wait?: number;
+  I?: string;
   pingCb: (pingRes: PingResult) => void;
 };
 
@@ -40,6 +42,7 @@ export async function pingMain(cmd: SysmonCommand) {
   let countStr: string | undefined;
   let count: number | undefined;
   let pingProcOpts: PingProcOpts;
+  let iface: string | undefined;
 
   if(cmd.args === undefined) {
     throw new Error(`at least 1 positional argument required for command '${cmd.command}'`);
@@ -61,6 +64,8 @@ export async function pingMain(cmd: SysmonCommand) {
   ) {
     count = +countStr;
   }
+
+  iface = cmd.opts?.['I']?.value[0] ?? undefined;
 
   const srcAddr = await ipProc();
 
@@ -113,6 +118,9 @@ export async function pingMain(cmd: SysmonCommand) {
   if(count !== undefined) {
     pingProcOpts.count = count;
   }
+  if(iface !== undefined) {
+    pingProcOpts.I = iface;
+  }
   console.log(pingProcOpts);
   pingTimer = Timer.start();
   const [ pingProc, pingProcPromise ] = spawnPingProc(pingProcOpts);
@@ -148,9 +156,15 @@ async function runPingStat(cmd: SysmonCommand) {
     avgSum += pingStat.avg;
   });
   let totalAvg = avgSum / pingStats.length;
-  let stdDev = getStdDev(
-    pingStats.map(pingStat => pingStat.avg)
+  let stdDevRaw = std(
+    pingStats.map(pingStat => pingStat.avg),
+    'unbiased'
   );
+  if(!isNumber(stdDevRaw)) {
+    throw new Error(`Unexpected std() result: ${std}`);
+  }
+  let stdDev = stdDevRaw;
+  console.log({ stdDev });
   console.log({
     maxAvg,
     minAvg,
@@ -158,17 +172,34 @@ async function runPingStat(cmd: SysmonCommand) {
     totalAvgFixed: Math.round((totalAvg) * 1e3) / 1e3,
     stdDev,
   });
-  // let devPings = pingStats.filter(pingStat => {
-  //   return Math.floor(pingStat.avg - totalAvg) > (stdDev * 2);
-  // });
-  // // console.log(devPings);
-  // // console.log(devPings.map(pingStat => pingStat.time_bucket.toLocaleString()));
+  let devPings = pingStats.filter(pingStat => {
+    // return Math.floor(pingStat.avg - totalAvg) > (stdDev * 3);
+    return (pingStat.avg - totalAvg) > (stdDev * 4);
+  });
+  // console.log(devPings);
+  let sortedDevPings = devPings.slice();
+  sortedDevPings.sort((a, b) => {
+    let aHm = a.time_bucket.getHours() + '' + a.time_bucket.getMinutes();
+    let bHm = b.time_bucket.getHours() + '' + b.time_bucket.getMinutes();
+    // return +aHm - +bHm;
+    return aHm.localeCompare(bHm);
+    // return b.time_bucket.toTimeString().localeCompare(a.time_bucket.toTimeString());
+  });
+  // console.log(
+  //   sortedDevPings.map(pingStat => {
+  //     return pingStat.time_bucket.toLocaleString();
+  //   }).join('\n')
+  // );
+  // console.log(devPings.map(pingStat => pingStat.time_bucket.toLocaleString()));
 }
 
 function spawnPingProc(opts: PingProcOpts): [ ChildProcess, Promise<string | void> ] {
   let procArgs: string[];
 
   procArgs = [];
+
+  procArgs.push(opts.addr);
+
   if(opts.count !== undefined) {
     procArgs.push(
       '-c',
@@ -181,7 +212,12 @@ function spawnPingProc(opts: PingProcOpts): [ ChildProcess, Promise<string | voi
       `${opts.wait}`,
     );
   }
-  procArgs.push(opts.addr);
+  if(opts.I !== undefined) {
+    procArgs.push(
+      '-I',
+      `${opts.I}`,
+    );
+  }
   logger.info(`ping ${procArgs.join(' ')}`);
 
   const lineCb = (line: string) => {

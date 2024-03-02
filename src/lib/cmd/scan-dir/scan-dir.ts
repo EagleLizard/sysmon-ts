@@ -6,8 +6,9 @@ import { getIntuitiveTimeString } from '../../util/format-util';
 import { Timer } from '../../util/timer';
 import { Dirent, ReadStream, Stats, createReadStream, lstatSync, readdirSync, writeFileSync } from 'fs';
 import { Hasher, getHasher } from '../../util/hasher';
-import { isObject } from '../../util/validate-primitives';
+import { isObject, isString } from '../../util/validate-primitives';
 import { FIND_DUPLICATES_FLAG_CMD, SysmonCommand } from '../sysmon-args';
+import { logger } from '../../logger';
 
 export async function scanDirMain(cmd: SysmonCommand) {
   let scanDirResult: ScanDirResult;
@@ -195,10 +196,27 @@ function scanDir(dirPaths: string[]): ScanDirResult {
   pathCount = 0;
 
   while(dirQueue.length > 0) {
-    let rootDirent: Stats;
+    let rootDirent: Stats | undefined;
     currDirPath = dirQueue.shift()!;
-    rootDirent = lstatSync(currDirPath);
-    if(rootDirent.isDirectory()) {
+    try {
+      rootDirent = lstatSync(currDirPath);
+    } catch(e) {
+      if(
+        isObject(e)
+        && isString(e.code)
+        && (e.code === 'EACCES')
+      ) {
+        logger.error(`${e.code} ${currDirPath}`);
+      } else {
+        console.error(e);
+        logger.error(e);
+        throw e;
+      }
+    }
+    if(
+      (rootDirent !== undefined)
+      && rootDirent.isDirectory()
+    ) {
       try {
         currDirents = readdirSync(currDirPath, {
           withFileTypes: true,

@@ -111,6 +111,11 @@ export function parseSysmonArgs(): SysmonCommand {
           ...parsedArgv.opts['c']
         };
       }
+      if(parsedArgv.opts['I'] !== undefined) {
+        cmd.opts['I'] = {
+          ...parsedArgv.opts['I']
+        };
+      }
       if(
         parsedArgv.opts['stats'] !== undefined
         || parsedArgv.opts['s'] !== undefined
@@ -233,7 +238,7 @@ function parseArgv(argv: string[]): ParsedArgv {
 
 function parseFlag(flagStr: string): string {
   let flag: string | undefined;
-  flag = /[-]{1,2}([a-z-]+)/.exec(flagStr)?.[1];
+  flag = /[-]{1,2}([a-zA-Z-]+)/.exec(flagStr)?.[1];
   if(flag === undefined) {
     throw new Error(`Unexpected flag: '${flagStr}'`);
   }

@@ -11,6 +11,7 @@ import { killActivePingProc } from './lib/cmd/ping/ping';
   try {
     await main();
   } catch(e) {
+    console.error(e);
     logger.error(e);
     throw e;
   }
