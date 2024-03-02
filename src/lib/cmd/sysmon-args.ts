@@ -1,5 +1,6 @@
 
 import { checkDir, getPathRelativeToCwd } from '../util/files';
+import { isString } from '../util/validate-primitives';
 
 export enum SYSMON_COMMAND_ENUM {
   SCAN_DIR = 'SCAN_DIR',
@@ -10,7 +11,7 @@ export type SysmonCommand = {
   kind: SYSMON_COMMAND_ENUM,
   command: string,
   short?: string,
-  arg?: string;
+  args?: string[];
   opts?: Record<string, ArgvOpt>
 };
 
@@ -67,7 +68,7 @@ export function parseSysmonArgs(): SysmonCommand {
   });
 
   cmdStr = parsedArgv.cmd;
-  restPositionals = parsedArgv.arg;
+  restPositionals = parsedArgv.args;
   let cmd = {
     ...getCommand(cmdStr)
   };
@@ -83,7 +84,8 @@ export function parseSysmonArgs(): SysmonCommand {
         throw new Error(`${cmd.command} expects a directory argument, found: ${dirPath}`);
       }
       console.log(dirPath);
-      cmd.arg = dirPath;
+      // cmd.args = dirPath;
+      cmd.args = restPositionals;
       cmd.opts = {};
       if(hasSysmonCmdFlag(parsedArgv, FIND_DUPLICATES_FLAG_CMD)) {
         cmd.opts[FIND_DUPLICATES_FLAG_CMD.flag] = {
@@ -93,8 +95,11 @@ export function parseSysmonArgs(): SysmonCommand {
       break;
     case SYSMON_COMMAND_ENUM.PING:
       let addr: string | undefined;
-      addr = restPositionals[0];
-      cmd.arg = addr;
+      cmd.args = [];
+      if(isString(restPositionals[0])) {
+        addr = restPositionals[0];
+        cmd.args.push(addr);
+      }
       cmd.opts = {};
       if(parsedArgv.opts['i'] !== undefined) {
         cmd.opts['i'] = {
@@ -104,6 +109,14 @@ export function parseSysmonArgs(): SysmonCommand {
       if(parsedArgv.opts['c'] !== undefined) {
         cmd.opts['c'] = {
           ...parsedArgv.opts['c']
+        };
+      }
+      if(
+        parsedArgv.opts['stats'] !== undefined
+        || parsedArgv.opts['s'] !== undefined
+      ) {
+        cmd.opts['stats'] = {
+          ...(parsedArgv.opts['stats'] ?? parsedArgv.opts['s']),
         };
       }
       break;
@@ -130,14 +143,14 @@ type ArgvOpt = {
 
 type ParsedArgv = {
   cmd: string;
-  arg: string[];
+  args: string[];
   opts: Record<string, ArgvOpt>;
 };
 
 function parseArgv(argv: string[]): ParsedArgv {
   let args: string[];
   let cmd: string;
-  let cmdArg: string | undefined;
+  let cmdArgs: string[];
   let restArgs: string[];
 
   let parsedArgv: ParsedArgv;
@@ -145,12 +158,26 @@ function parseArgv(argv: string[]): ParsedArgv {
 
   args = argv.slice(2);
   cmd = args[0];
-  if(isFlagArg(args[1])) {
-    restArgs = args.slice(1);
-  } else {
-    cmdArg = args[1];
-    restArgs = args.slice(2);
-  }
+  cmdArgs = [];
+  restArgs = [];
+  args.slice(1).some((arg, idx) => {
+    if(isFlagArg(arg)) {
+      restArgs = args.slice(idx + 1);
+      return true;
+    }
+    cmdArgs.push(arg);
+  });
+  // if(isFlagArg(args[1])) {
+  //   restArgs = args.slice(1);
+  // } else {
+  //   // cmdArgs = args[1];
+  //   cmdArgs.push(args[1]);
+  //   restArgs = args.slice(2);
+  // }
+  console.log({
+    cmdArgs,
+    restArgs,
+  });
 
   opts = {};
   let flagFlag = false;
@@ -192,11 +219,14 @@ function parseArgv(argv: string[]): ParsedArgv {
 
   parsedArgv = {
     cmd,
-    arg: [],
+    args: [],
     opts,
   };
-  if(cmdArg !== undefined) {
-    parsedArgv.arg.push(cmdArg);
+  if(cmdArgs !== undefined) {
+    cmdArgs.forEach(arg => {
+      parsedArgv.args.push(arg);
+    });
+    // parsedArgv.args.push(cmdArgs);
   }
   return parsedArgv;
 }

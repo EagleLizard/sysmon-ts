@@ -11,6 +11,7 @@ const config = {
   POSTGRES_USER: process.env.POSTGRES_USER,
   POSTGRES_PASSWORD: process.env.POSTGRES_PASSWORD,
   POSTGRES_DB: process.env.POSTGRES_DB,
+  EZD_API_BASE_URL: process.env.EZD_API_BASE_URL,
   platform: os.platform(),
 };
 

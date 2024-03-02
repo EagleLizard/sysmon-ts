@@ -10,8 +10,11 @@ export async function sysmonMain() {
   console.log(cmd.opts);
   switch(cmd.kind) {
     case SYSMON_COMMAND_ENUM.SCAN_DIR:
-      if(!isString(cmd.arg)) {
-        throw new Error(`Unexpected ${cmd.command} dir arg type: expected 'string', found ${typeof cmd.arg}`);
+      if(!Array.isArray(cmd.args)) {
+        throw new Error(`Unexpected ${cmd.command} dir arg type: expected 'string', found ${typeof cmd.args}`);
+      }
+      if(!cmd.args.every(arg => isString(arg))) {
+        throw new Error(`Unexpected ${cmd.command} dir arg type: expected 'string[]', found ${cmd.args.map(arg => typeof arg)}`);
       }
       await scanDirMain(cmd);
       break;

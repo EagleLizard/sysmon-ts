@@ -14,15 +14,15 @@ export async function scanDirMain(cmd: SysmonCommand) {
   let timer: Timer;
   let scanMs: number;
   let findDuplicatesMs: number;
-  let dirPath: string;
-  if(cmd.arg === undefined) {
+  let dirPaths: string[];
+  if(cmd.args === undefined) {
     throw new Error(`at least 1 positional argument required for command '${cmd.command}'`);
   }
-  dirPath = cmd.arg;
+  dirPaths = cmd.args;
 
-  console.log(`Scanning: ${dirPath}`);
+  console.log(`Scanning: ${dirPaths}`);
   timer = Timer.start();
-  scanDirResult = scanDir(dirPath);
+  scanDirResult = scanDir(dirPaths);
   scanMs = timer.stop();
   console.log(`files: ${scanDirResult.files.length}`);
   console.log(`dirs: ${scanDirResult.dirs.length}`);
@@ -81,6 +81,22 @@ async function findDuplicateFiles(filePaths: string[]) {
   let pathMapEntries: [ number, string[] ][] = [ ...pathMap.entries() ];
   let hashCount: number = 0;
 
+  const possibleDupesFileStr = [ ...pathMapEntries ].reduce((acc, curr) => {
+    let [ size, dupeFilePaths ] = curr;
+    if(dupeFilePaths.length > 1) {
+      acc.push(`${size}`);
+      dupeFilePaths.forEach(dupeFilePath => {
+        acc.push(dupeFilePath);
+      });
+    }
+    return acc;
+  }, [] as string[]).join('\n');
+  let possibleDupesFilePath = [
+    DATA_DIR_PATH,
+    'possible-dupes.txt',
+  ].join(path.sep);
+  writeFileSync(possibleDupesFilePath, possibleDupesFileStr);
+
   for(let i = 0; i < pathMapEntries.length; ++i) {
     const pathMapEntry = pathMapEntries[i];
     const [ , filePaths ] = pathMapEntry;
@@ -134,6 +150,22 @@ async function findDuplicateFiles(filePaths: string[]) {
       }
     }
   }
+
+  let dupesFileStr = [ ...hashMap.entries() ].reduce((acc, curr) => {
+
+    let [ hash, dupeFilePaths ] = curr;
+    acc.push(`\n${hash}`);
+    dupeFilePaths.forEach(dupeFilePath => {
+      acc.push(dupeFilePath);
+    });
+    return acc;
+  }, [] as string[]).join('\n');
+  let dupesFilePath = [
+    DATA_DIR_PATH,
+    'dupes.txt',
+  ].join(path.sep);
+  writeFileSync(dupesFilePath, dupesFileStr);
+
   process.stdout.write('\n');
   console.log(`hashMap.keys().length: ${[ ...hashMap.keys() ].length}`);
 }
@@ -143,7 +175,7 @@ type ScanDirResult = {
   files: string[];
 };
 
-function scanDir(dirPath: string): ScanDirResult {
+function scanDir(dirPaths: string[]): ScanDirResult {
   let allDirs: string[];
   let allFiles: string[];
 
@@ -154,7 +186,7 @@ function scanDir(dirPath: string): ScanDirResult {
   let pathCount: number;
 
   dirQueue = [
-    dirPath,
+    ...dirPaths,
   ];
 
   allDirs = [];

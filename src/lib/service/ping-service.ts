@@ -1,11 +1,14 @@
 
+import { config } from '../../config';
 import { PostgresClient } from '../db/pg-client';
+import { logger } from '../logger';
+import { PingStatDto } from '../models/ping-stat-dto';
 import { isNumber } from '../util/validate-primitives';
 
 export type InsertPingParams = {
-  srcAddrId: number;
+  srcAddr: string;
   bytes: number;
-  addrId: number;
+  addr: string;
   seq: number;
   ttl: number;
   time: number;
@@ -13,12 +16,39 @@ export type InsertPingParams = {
 }
 
 export class PingService {
+
+  static async getStats(): Promise<PingStatDto[] | undefined> {
+    let pingStatsResults: PingStatDto[] | undefined;
+    let url: string;
+    url = `${config.EZD_API_BASE_URL}/v1/ping/stats`;
+    let pingStatsRawResp = await fetch(url);
+    let pingStatsResp = await pingStatsRawResp.json();
+    if(Array.isArray(pingStatsResp.result)) {
+      pingStatsResults = pingStatsResp.result.map((rawStat: unknown) => {
+        return PingStatDto.deserialize(rawStat);
+      });
+    }
+    return pingStatsResults;
+  }
+
   static async getAddrIdByVal(addr: string): Promise<number | undefined> {
-    let addrQueryRes = await PostgresClient.query([
-      'select * from ping_addr pa',
-      `where pa.addr = '${addr}'`,
-    ].join(' '));
-    return addrQueryRes.rows[0]?.ping_addr_id;
+    let url: string;
+    url = `${config.EZD_API_BASE_URL}/v1/addr`;
+    const body = {
+      addr,
+    };
+    try {
+      let resp = await fetch(url, {
+        body: JSON.stringify(body),
+      });
+      let respBody = await resp.json();
+      if(!isNumber(respBody.ping_addr_id)) {
+        return;
+      }
+      return respBody.ping_addr_id;
+    } catch(e) {
+      logger.error(e);
+    }
   }
 
   static async insertAddr(addr: string): Promise<number> {
@@ -35,36 +65,29 @@ export class PingService {
     return rawAddrId;
   }
 
-  static insertPing(params: InsertPingParams) {
-    let col_names: string[];
-    let col_names_str: string;
-    let col_nums_str: string;
-
-    let queryStr: string;
-    let queryParams: [ number, number, number, number, number, number, string ];
-    col_names = [
-      'src_addr_id',
-      'bytes',
-      'addr_id',
-      'seq',
-      'ttl',
-      'time',
-      'time_unit',
-    ];
-    col_nums_str = col_names.map((col_name, idx) => {
-      return `$${idx + 1}`;
-    }).join(', ');
-    col_names_str = col_names.join(', ');
-    queryStr = `INSERT INTO ping (${col_names_str}) VALUES(${col_nums_str})`;
-    queryParams = [
-      params.srcAddrId,
-      params.bytes,
-      params.addrId,
-      params.seq,
-      params.ttl,
-      params.time,
-      params.timeUnit,
-    ];
-    return PostgresClient.query(queryStr, queryParams);
+  static async postPing(params: InsertPingParams) {
+    let url: string;
+    url = `${config.EZD_API_BASE_URL}/v1/ping`;
+    const body = {
+      src_addr: params.srcAddr,
+      addr: params.addr,
+      bytes: params.bytes,
+      seq: params.seq,
+      ttl: params.ttl,
+      time: params.time,
+      time_unit: params.timeUnit,
+    };
+    try {
+      let resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      return resp;
+    } catch(e) {
+      logger.error(e);
+    }
   }
 }
