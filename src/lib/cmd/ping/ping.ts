@@ -1,7 +1,6 @@
 
-import { std } from 'mathjs';
-
 import { ChildProcess } from 'child_process';
+
 import { ipProc } from '../net/ip';
 import { logger } from '../../logger';
 import { Timer } from '../../util/timer';
@@ -9,7 +8,8 @@ import { SysmonCommand } from '../sysmon-args';
 import { config } from '../../../config';
 import { PingService } from '../../service/ping-service';
 import { spawnProc } from '../proc';
-import { isNumber, isString } from '../../util/validate-primitives';
+import { isString } from '../../util/validate-primitives';
+import { runPingStat } from './ping-stats';
 
 const PING_INFO_LOG_INTERVAL_MS = (config.ENVIRONMENT === 'development')
   ? 0.25e3
@@ -135,62 +135,6 @@ export function killActivePingProc() {
     return;
   }
   activePingProc.kill('SIGINT');
-}
-
-async function runPingStat(cmd: SysmonCommand) {
-  let pingStats = await PingService.getStats();
-  if(pingStats === undefined) {
-    throw new Error('Error getting ping stats.');
-  }
-  console.log('stats');
-  let maxAvg = -Infinity;
-  let minAvg = Infinity;
-  let avgSum = 0;
-  pingStats.forEach(pingStat => {
-    if(pingStat.avg > maxAvg) {
-      maxAvg = pingStat.avg;
-    }
-    if(pingStat.avg < minAvg) {
-      minAvg = pingStat.avg;
-    }
-    avgSum += pingStat.avg;
-  });
-  let totalAvg = avgSum / pingStats.length;
-  let stdDevRaw = std(
-    pingStats.map(pingStat => pingStat.avg),
-    'unbiased'
-  );
-  if(!isNumber(stdDevRaw)) {
-    throw new Error(`Unexpected std() result: ${std}`);
-  }
-  let stdDev = stdDevRaw;
-  console.log({ stdDev });
-  console.log({
-    maxAvg,
-    minAvg,
-    totalAvg,
-    totalAvgFixed: Math.round((totalAvg) * 1e3) / 1e3,
-    stdDev,
-  });
-  let devPings = pingStats.filter(pingStat => {
-    // return Math.floor(pingStat.avg - totalAvg) > (stdDev * 3);
-    return (pingStat.avg - totalAvg) > (stdDev * 4);
-  });
-  // console.log(devPings);
-  let sortedDevPings = devPings.slice();
-  sortedDevPings.sort((a, b) => {
-    let aHm = a.time_bucket.getHours() + '' + a.time_bucket.getMinutes();
-    let bHm = b.time_bucket.getHours() + '' + b.time_bucket.getMinutes();
-    // return +aHm - +bHm;
-    return aHm.localeCompare(bHm);
-    // return b.time_bucket.toTimeString().localeCompare(a.time_bucket.toTimeString());
-  });
-  // console.log(
-  //   sortedDevPings.map(pingStat => {
-  //     return pingStat.time_bucket.toLocaleString();
-  //   }).join('\n')
-  // );
-  // console.log(devPings.map(pingStat => pingStat.time_bucket.toLocaleString()));
 }
 
 function spawnPingProc(opts: PingProcOpts): [ ChildProcess, Promise<string | void> ] {

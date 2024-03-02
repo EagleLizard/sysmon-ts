@@ -1,6 +1,5 @@
 
 import { config } from '../../config';
-import { PostgresClient } from '../db/pg-client';
 import { logger } from '../logger';
 import { PingStatDto } from '../models/ping-stat-dto';
 import { isNumber } from '../util/validate-primitives';
@@ -49,20 +48,6 @@ export class PingService {
     } catch(e) {
       logger.error(e);
     }
-  }
-
-  static async insertAddr(addr: string): Promise<number> {
-    let rawAddrId: number | undefined;
-    let insertQueryRes = await PostgresClient.query([
-      'insert into ping_addr (addr) values($1)  returning *'
-    ].join(' '), [
-      addr,
-    ]);
-    rawAddrId = insertQueryRes.rows[0]?.ping_addr_id;
-    if(!isNumber(rawAddrId)) {
-      throw new Error(`could not insert addr: ${addr}`);
-    }
-    return rawAddrId;
   }
 
   static async postPing(params: InsertPingParams) {

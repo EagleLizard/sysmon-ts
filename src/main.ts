@@ -4,7 +4,6 @@ sourceMapSupport.install();
 
 import { sysmonMain } from './lib/sysmon';
 import { logger } from './lib/logger';
-import { PostgresClient } from './lib/db/pg-client';
 import { killActivePingProc } from './lib/cmd/ping/ping';
 
 (async () => {
@@ -24,7 +23,6 @@ async function main() {
 async function shutdown(sig: string) {
   logger.info(`${sig} received.`);
   killActivePingProc();
-  await PostgresClient.end();
   process.exit(0);
   // setTimeout(() => {
   //   console.log(`timeout reached for ${sig}, exiting`);
