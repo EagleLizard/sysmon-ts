@@ -121,12 +121,15 @@ async function getDefaultLinuxIface(): Promise<string> {
 
   let procRes = spawnProc(routeCmd, routeArgs);
   routeResStr = await procRes.promise;
+  console.log({
+    routeResStr
+  });
 
   routeResStr.split('\n').some((line) => {
     if(!line.trim().startsWith(routeAddr)) {
       return false;
     }
-    iface = /([a-z0-9]+) {2}src [0-9.]+/.exec(line)?.[1];
+    iface = /([a-z0-9]+) {1,2}src [0-9.]+/.exec(line)?.[1];
     return iface !== undefined;
   });
   if(iface === undefined) {
