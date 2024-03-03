@@ -15,6 +15,17 @@ export type SysmonCommand = {
   opts?: Record<string, ArgvOpt>
 };
 
+type ArgvOpt = {
+  flag: string;
+  value: string[];
+};
+
+type ParsedArgv = {
+  cmd: string;
+  args: string[];
+  opts: Record<string, ArgvOpt>;
+};
+
 const SYSMON_COMMANDS: Record<SYSMON_COMMAND_ENUM, SysmonCommand> = {
   [SYSMON_COMMAND_ENUM.SCAN_DIR]: {
     kind: SYSMON_COMMAND_ENUM.SCAN_DIR,
@@ -43,14 +54,62 @@ type SysmonCommandFlag<T> = {
   short: string;
 };
 
-export const FIND_DUPLICATES_FLAG_CMD:SysmonCommandFlag<SCANDIR_CMD_FLAG_ENUM> = {
+enum PING_CMD_FLAG_ENUM {
+  WAIT = 'WAIT', // i
+  COUNT = 'COUNT', // c
+  INTERFACE = 'INTERFACE', // I
+  STATS = 'STATS', // s, stats
+  IP = 'IP', // ip, ip
+  STDDEV = 'STDDEV', // sd, stddev
+}
+
+export const PING_CMD_FLAG_MAP: Record<PING_CMD_FLAG_ENUM, SysmonCommandFlag<PING_CMD_FLAG_ENUM>> = {
+  [PING_CMD_FLAG_ENUM.WAIT]: {
+    kind: PING_CMD_FLAG_ENUM.WAIT,
+    flag: 'wait',
+    short: 'i',
+  },
+  [PING_CMD_FLAG_ENUM.COUNT]: {
+    kind: PING_CMD_FLAG_ENUM.COUNT,
+    flag: 'count',
+    short: 'c',
+  },
+  [PING_CMD_FLAG_ENUM.INTERFACE]: {
+    kind: PING_CMD_FLAG_ENUM.INTERFACE,
+    flag: 'iface',
+    short: 'I',
+  },
+  [PING_CMD_FLAG_ENUM.STATS]: {
+    kind: PING_CMD_FLAG_ENUM.STATS,
+    flag: 'stats',
+    short: 's',
+  },
+  [PING_CMD_FLAG_ENUM.IP]: {
+    kind: PING_CMD_FLAG_ENUM.IP,
+    flag: 'ip',
+    short: 'ip',
+  },
+  [PING_CMD_FLAG_ENUM.STDDEV]: {
+    kind: PING_CMD_FLAG_ENUM.STDDEV,
+    flag: 'stddev',
+    short: 'sd',
+  }
+};
+
+const PING_CMD_FLAG_KEYS: PING_CMD_FLAG_ENUM[] = [
+  PING_CMD_FLAG_ENUM.WAIT,
+  PING_CMD_FLAG_ENUM.COUNT,
+  PING_CMD_FLAG_ENUM.INTERFACE,
+  PING_CMD_FLAG_ENUM.STATS,
+  PING_CMD_FLAG_ENUM.IP,
+  PING_CMD_FLAG_ENUM.STDDEV,
+];
+
+export const FIND_DUPLICATES_FLAG_CMD: SysmonCommandFlag<SCANDIR_CMD_FLAG_ENUM> = {
   kind: SCANDIR_CMD_FLAG_ENUM.FIND_DUPLICATES,
   flag: 'find-duplicates',
   short: 'd'
 };
-
-export const WAIT_FLAG_CMD = {};
-export const COUNT_FLAG_CMD = {};
 
 export const SCANDIR_CMD_FLAGS: Record<SCANDIR_CMD_FLAG_ENUM, SysmonCommandFlag<SCANDIR_CMD_FLAG_ENUM>> = {
   [SCANDIR_CMD_FLAG_ENUM.FIND_DUPLICATES]: FIND_DUPLICATES_FLAG_CMD,
@@ -100,7 +159,20 @@ export function parseSysmonArgs(): SysmonCommand {
         addr = restPositionals[0];
         cmd.args.push(addr);
       }
-      cmd.opts = {};
+      const flagOpts = {} as Record<string, ArgvOpt>;
+      PING_CMD_FLAG_KEYS.forEach(flagKey => {
+        let pingFlag = PING_CMD_FLAG_MAP[flagKey];
+        if(
+          (parsedArgv.opts[pingFlag.flag] !== undefined)
+          || (parsedArgv.opts[pingFlag.short] !== undefined)
+        ) {
+          flagOpts[pingFlag.flag] = {
+            ...(parsedArgv.opts[pingFlag.flag] ?? parsedArgv.opts[pingFlag.short])
+          };
+        }
+      });
+      cmd.opts = flagOpts;
+      break;
       if(parsedArgv.opts['i'] !== undefined) {
         cmd.opts['i'] = {
           ...parsedArgv.opts['i']
@@ -140,17 +212,6 @@ function hasSysmonCmdFlag<T>(parsedArgv: ParsedArgv, sysmonCmdflag: SysmonComman
     )
   );
 }
-
-type ArgvOpt = {
-  flag: string;
-  value: string[];
-};
-
-type ParsedArgv = {
-  cmd: string;
-  args: string[];
-  opts: Record<string, ArgvOpt>;
-};
 
 function parseArgv(argv: string[]): ParsedArgv {
   let args: string[];

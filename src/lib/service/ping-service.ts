@@ -16,6 +16,21 @@ export type InsertPingParams = {
 
 export class PingService {
 
+  static async getStatsByAddr(addrId: number): Promise<PingStatDto[] | undefined> {
+    let pingStatResults: PingStatDto[] | undefined;
+    let url: string;
+    let pingStatsRawRespone: Response;
+    url = `${config.EZD_API_BASE_URL}/v1/addr/${addrId}/ping/stats`;
+    pingStatsRawRespone = await fetch(url);
+    let pingStatsResp = await pingStatsRawRespone.json();
+    if(Array.isArray(pingStatsResp.result)) {
+      pingStatResults = pingStatsResp.result.map((rawStat: unknown) => {
+        return PingStatDto.deserialize(rawStat);
+      });
+    }
+    return pingStatResults;
+  }
+
   static async getStats(): Promise<PingStatDto[] | undefined> {
     let pingStatsResults: PingStatDto[] | undefined;
     let url: string;
@@ -39,13 +54,18 @@ export class PingService {
     };
     try {
       let resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify(body),
       });
       let respBody = await resp.json();
-      if(!isNumber(respBody.ping_addr_id)) {
+      // console.log(respBody);
+      if(!isNumber(respBody.result?.ping_addr_id)) {
         return;
       }
-      return respBody.ping_addr_id;
+      return respBody.result.ping_addr_id;
     } catch(e) {
       console.error(e);
       logger.error(e);
