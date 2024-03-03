@@ -173,30 +173,6 @@ export function parseSysmonArgs(): SysmonCommand {
       });
       cmd.opts = flagOpts;
       break;
-      if(parsedArgv.opts['i'] !== undefined) {
-        cmd.opts['i'] = {
-          ...parsedArgv.opts['i']
-        };
-      }
-      if(parsedArgv.opts['c'] !== undefined) {
-        cmd.opts['c'] = {
-          ...parsedArgv.opts['c']
-        };
-      }
-      if(parsedArgv.opts['I'] !== undefined) {
-        cmd.opts['I'] = {
-          ...parsedArgv.opts['I']
-        };
-      }
-      if(
-        parsedArgv.opts['stats'] !== undefined
-        || parsedArgv.opts['s'] !== undefined
-      ) {
-        cmd.opts['stats'] = {
-          ...(parsedArgv.opts['stats'] ?? parsedArgv.opts['s']),
-        };
-      }
-      break;
     default:
       throw new Error(`unhandled command kind: ${cmd.kind}`);
   }
