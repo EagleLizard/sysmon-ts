@@ -19,8 +19,9 @@ export class PingService {
   static async getStats(): Promise<PingStatDto[] | undefined> {
     let pingStatsResults: PingStatDto[] | undefined;
     let url: string;
+    let pingStatsRawResp: Response;
     url = `${config.EZD_API_BASE_URL}/v1/ping/stats`;
-    let pingStatsRawResp = await fetch(url);
+    pingStatsRawResp = await fetch(url);
     let pingStatsResp = await pingStatsRawResp.json();
     if(Array.isArray(pingStatsResp.result)) {
       pingStatsResults = pingStatsResp.result.map((rawStat: unknown) => {
@@ -46,7 +47,9 @@ export class PingService {
       }
       return respBody.ping_addr_id;
     } catch(e) {
+      console.error(e);
       logger.error(e);
+      throw e;
     }
   }
 
@@ -72,7 +75,9 @@ export class PingService {
       });
       return resp;
     } catch(e) {
+      console.error(e);
       logger.error(e);
+      throw e;
     }
   }
 }

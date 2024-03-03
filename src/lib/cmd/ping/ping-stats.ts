@@ -3,10 +3,29 @@ import { std } from 'mathjs';
 
 import { PingService } from '../../service/ping-service';
 import { SysmonCommand } from '../sysmon-args';
-import { isNumber } from '../../util/validate-primitives';
+import { isNumber, isString } from '../../util/validate-primitives';
 import { PingStatDto } from '../../models/ping-stat-dto';
+import { getDateStr } from '../../util/datetime-util';
+
+const DEFAULT_NUM_STD_DEVIATIONS = 5;
 
 export async function runPingStat(cmd: SysmonCommand) {
+  let numStdDeviations: number;
+
+  if(
+    (cmd.opts?.s !== undefined)
+    || (cmd.opts?.stats !== undefined)
+  ) {
+    let statsOpt = cmd.opts?.s ?? cmd.opts?.stats;
+    numStdDeviations = (
+      isString(statsOpt.value[0])
+      && !isNaN(+statsOpt.value[0])
+    )
+      ? +statsOpt.value[0]
+      : DEFAULT_NUM_STD_DEVIATIONS
+    ;
+  }
+
   let pingStats = await PingService.getStats();
   if(pingStats === undefined) {
     throw new Error('Error getting ping stats.');
@@ -59,11 +78,13 @@ export async function runPingStat(cmd: SysmonCommand) {
   });
   let devPings = pingStats.filter(pingStat => {
     // return Math.floor(pingStat.avg - totalAvg) > (stdDev * 3);
-    return (pingStat.avg - totalAvg) > (stdDev * 3);
+    // return (pingStat.avg - totalAvg) > (stdDev * 1);
+    // return (pingStat.avg - totalAvg) > (stdDev * 2);
+    // return (pingStat.avg - totalAvg) > (stdDev * 3);
     // return (pingStat.avg - totalAvg) > (stdDev * 4);
-    // return (pingStat.avg - totalAvg) > (stdDev * 5);
+    return (pingStat.avg - totalAvg) > (stdDev * numStdDeviations);
     // return (pingStat.avg - totalAvg) > (stdDev * 6);
-    return (pingStat.avg - totalAvg) > (stdDev * 7);
+    // return (pingStat.avg - totalAvg) > (stdDev * 7);
   });
   // console.log(devPings);
   let sortedDevPings = devPings.slice();
@@ -74,6 +95,7 @@ export async function runPingStat(cmd: SysmonCommand) {
     let aHm = getHourMinuteString(a.time_bucket);
     let bHm = getHourMinuteString(b.time_bucket);
     // return +aHm - +bHm;
+    // return a.time_bucket.valueOf() - b.time_bucket.valueOf();
     return aHm.localeCompare(bHm);
     // return b.time_bucket.toTimeString().localeCompare(a.time_bucket.toTimeString());
   });
@@ -103,7 +125,7 @@ function printStats(pingStats: PingStatDto[], minAvg: number, maxAvg: number, sc
     avgOutVal = avgMod * scale;
     avgOutStr = '='.repeat(Math.round(avgOutVal));
     // console.log(`${pingStat.time_bucket.toLocaleString()} ${avgOutStr}`);
-    console.log(`${getDateTimeStr(pingStat.time_bucket)} ${avgOutStr}`);
+    console.log(`${getDateStr(pingStat.time_bucket)} ${avgOutStr}`);
   });
 }
 
@@ -123,26 +145,3 @@ function getHourMinuteString(date: Date) {
   }
   return `${hoursStr}${minutesStr}`;
 }
-
-export function getDateTimeStr(date: Date): string {
-
-  // Get the date components
-  const day = date.getDate().toString().padStart(2, '0');
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const year = date.getFullYear().toString();
-
-  // Get the time components
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
-
-  // Format the time as AM/PM
-  const amOrPm = hours >= 12 ? 'PM' : 'AM';
-  const formattedHours = (hours % 12 || 12).toString().padStart(2, '0');
-  const formattedMinutes = minutes.toString().padStart(2, '0');
-
-  // Construct the formatted string
-  const formattedDateTime = `[${month}-${day}-${year}] ${formattedHours}:${formattedMinutes} ${amOrPm}`;
-
-  return formattedDateTime;
-}
-
