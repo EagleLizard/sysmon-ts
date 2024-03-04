@@ -98,6 +98,19 @@ async function findDuplicateFiles(filePaths: string[]) {
   ].join(path.sep);
   writeFileSync(possibleDupesFilePath, possibleDupesFileStr);
 
+  let totalFileCount = pathMapEntries.reduce((acc, curr) => {
+    acc += (curr[1].length > 1)
+      ? curr[1].length
+      : 0
+    ;
+    return acc;
+  }, 0);
+
+  let hashProgess: number;
+  let hashProgessLong: number;
+  hashProgess = 0;
+  hashProgessLong = 0;
+
   for(let i = 0; i < pathMapEntries.length; ++i) {
     const pathMapEntry = pathMapEntries[i];
     const [ , filePaths ] = pathMapEntry;
@@ -110,6 +123,9 @@ async function findDuplicateFiles(filePaths: string[]) {
       let hasher: Hasher;
       let hashStr: string;
       let hashArr: string[];
+
+      let nextHashProgress: number;
+      let nextHashProgressLong: number;
 
       const filePath = filePaths[k];
 
@@ -146,8 +162,20 @@ async function findDuplicateFiles(filePaths: string[]) {
       hashArr = hashMap.get(hashStr)!;
       hashArr.push(filePath);
       hashCount++;
-      if((hashCount % 1000) === 0) {
+      nextHashProgress = (hashCount / totalFileCount) * 100;
+      nextHashProgressLong = (hashCount / totalFileCount) * 100;
+      if(
+        (nextHashProgress - hashProgess) > 0.5
+      ) {
+        hashProgess = nextHashProgress;
         process.stdout.write('.');
+        // process.stdout.write(`.${((hashCount / totalFileCount) * 100).toFixed(1)}%.`);
+      }
+      if(
+        (nextHashProgressLong - hashProgessLong) > 2
+      ) {
+        hashProgessLong = nextHashProgressLong;
+        process.stdout.write(`.${((hashCount / totalFileCount) * 100).toFixed(1)}%.`);
       }
     }
   }
