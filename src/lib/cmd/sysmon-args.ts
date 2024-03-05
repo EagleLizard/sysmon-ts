@@ -46,6 +46,7 @@ const SYSMON_CMD_KEYS: SYSMON_COMMAND_ENUM[] = [
 
 enum SCANDIR_CMD_FLAG_ENUM {
   FIND_DUPLICATES = 'FIND_DUPLICATES',
+  FIND_DIRS = 'FIND_DIRS',
 }
 
 type SysmonCommandFlag<T> = {
@@ -113,7 +114,17 @@ export const FIND_DUPLICATES_FLAG_CMD: SysmonCommandFlag<SCANDIR_CMD_FLAG_ENUM> 
 
 export const SCANDIR_CMD_FLAGS: Record<SCANDIR_CMD_FLAG_ENUM, SysmonCommandFlag<SCANDIR_CMD_FLAG_ENUM>> = {
   [SCANDIR_CMD_FLAG_ENUM.FIND_DUPLICATES]: FIND_DUPLICATES_FLAG_CMD,
+  [SCANDIR_CMD_FLAG_ENUM.FIND_DIRS]: {
+    kind: SCANDIR_CMD_FLAG_ENUM.FIND_DIRS,
+    flag: 'find-dirs',
+    short: 'fd',
+  },
 };
+
+const SCANDIR_CMD_FLAG_KEYS: SCANDIR_CMD_FLAG_ENUM[] = [
+  SCANDIR_CMD_FLAG_ENUM.FIND_DUPLICATES,
+  SCANDIR_CMD_FLAG_ENUM.FIND_DIRS,
+];
 
 export const FIND_DUPLICATES_FLAG = 'find-duplicates';
 
@@ -143,14 +154,8 @@ export function parseSysmonArgs(): SysmonCommand {
         throw new Error(`${cmd.command} expects a directory argument, found: ${dirPath}`);
       }
       console.log(dirPath);
-      // cmd.args = dirPath;
       cmd.args = restPositionals;
-      cmd.opts = {};
-      if(hasSysmonCmdFlag(parsedArgv, FIND_DUPLICATES_FLAG_CMD)) {
-        cmd.opts[FIND_DUPLICATES_FLAG_CMD.flag] = {
-          ...parsedArgv.opts[FIND_DUPLICATES_FLAG_CMD.flag],
-        };
-      }
+      cmd.opts = getCmdFlagOpts(SCANDIR_CMD_FLAG_KEYS, SCANDIR_CMD_FLAGS, parsedArgv);
       break;
     case SYSMON_COMMAND_ENUM.PING:
       let addr: string | undefined;
@@ -159,19 +164,7 @@ export function parseSysmonArgs(): SysmonCommand {
         addr = restPositionals[0];
         cmd.args.push(addr);
       }
-      const flagOpts = {} as Record<string, ArgvOpt>;
-      PING_CMD_FLAG_KEYS.forEach(flagKey => {
-        let pingFlag = PING_CMD_FLAG_MAP[flagKey];
-        if(
-          (parsedArgv.opts[pingFlag.flag] !== undefined)
-          || (parsedArgv.opts[pingFlag.short] !== undefined)
-        ) {
-          flagOpts[pingFlag.flag] = {
-            ...(parsedArgv.opts[pingFlag.flag] ?? parsedArgv.opts[pingFlag.short])
-          };
-        }
-      });
-      cmd.opts = flagOpts;
+      cmd.opts = getCmdFlagOpts(PING_CMD_FLAG_KEYS, PING_CMD_FLAG_MAP, parsedArgv);
       break;
     default:
       throw new Error(`unhandled command kind: ${cmd.kind}`);
@@ -179,14 +172,21 @@ export function parseSysmonArgs(): SysmonCommand {
   return cmd;
 }
 
-function hasSysmonCmdFlag<T>(parsedArgv: ParsedArgv, sysmonCmdflag: SysmonCommandFlag<T> | undefined) {
-  return (
-    (sysmonCmdflag !== undefined)
-    && (
-      (parsedArgv.opts[sysmonCmdflag.flag] !== undefined)
-      || (parsedArgv.opts[sysmonCmdflag.short] !== undefined)
-    )
-  );
+function getCmdFlagOpts<T extends string | number, M>(cmdFlagKeys: T[], cmdFlagMap: Record<T, SysmonCommandFlag<M>>, parsedArgv: ParsedArgv): Record<string, ArgvOpt> {
+  let flagOpts: Record<string, ArgvOpt>;
+  flagOpts = {};
+  cmdFlagKeys.forEach(flagKey => {
+    let pingFlag = cmdFlagMap[flagKey];
+    if(
+      (parsedArgv.opts[pingFlag.flag] !== undefined)
+      || (parsedArgv.opts[pingFlag.short] !== undefined)
+    ) {
+      flagOpts[pingFlag.flag] = {
+        ...(parsedArgv.opts[pingFlag.flag] ?? parsedArgv.opts[pingFlag.short])
+      };
+    }
+  });
+  return flagOpts;
 }
 
 function parseArgv(argv: string[]): ParsedArgv {
@@ -283,9 +283,12 @@ function parseFlag(flagStr: string): string {
 }
 
 function isFlagArg(argStr: string): boolean {
+  return /^-{1,2}[a-zA-Z][a-zA-Z-]*/.test(argStr);
   return (
-    argStr.startsWith('-')
-    || argStr.startsWith('--')
+    (
+      argStr.startsWith('-')
+      || argStr.startsWith('--')
+    )
   );
 }
 

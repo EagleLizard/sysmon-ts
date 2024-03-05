@@ -4,11 +4,19 @@ import { DATA_DIR_PATH } from '../../../constants';
 import { mkdirIfNotExist } from '../../util/files';
 import { getIntuitiveTimeString } from '../../util/format-util';
 import { Timer } from '../../util/timer';
-import { Dirent, ReadStream, Stats, createReadStream, lstatSync, readdirSync, writeFileSync } from 'fs';
-import { Hasher, getHasher } from '../../util/hasher';
+import {
+  Dirent,
+  Stats,
+  createWriteStream,
+  lstatSync,
+  readdirSync,
+  writeFileSync
+} from 'fs';
 import { isObject, isString } from '../../util/validate-primitives';
 import { FIND_DUPLICATES_FLAG_CMD, SysmonCommand } from '../sysmon-args';
 import { logger } from '../../logger';
+import { getDateFileStr } from '../../util/datetime-util';
+import { findDuplicateFiles } from './find-duplicate-files';
 
 export async function scanDirMain(cmd: SysmonCommand) {
   let scanDirResult: ScanDirResult;
@@ -16,6 +24,10 @@ export async function scanDirMain(cmd: SysmonCommand) {
   let scanMs: number;
   let findDuplicatesMs: number;
   let dirPaths: string[];
+  let nowDate: Date;
+
+  nowDate = new Date;
+
   if(cmd.args === undefined) {
     throw new Error(`at least 1 positional argument required for command '${cmd.command}'`);
   }
@@ -33,170 +45,28 @@ export async function scanDirMain(cmd: SysmonCommand) {
     return;
   }
   timer = Timer.start();
-  const duplicateFiles = await findDuplicateFiles(scanDirResult.files);
+  const duplicateFiles = await findDuplicateFiles(scanDirResult.files, nowDate);
   console.log({ duplicateFiles });
   findDuplicatesMs = timer.stop();
   console.log(`findDuplicates took: ${getIntuitiveTimeString(findDuplicatesMs)}`);
 
   mkdirIfNotExist(DATA_DIR_PATH);
+  const dirsDataFileName = `${getDateFileStr(nowDate)}_dirs.txt`;
   const dirsDataFilePath = [
     DATA_DIR_PATH,
-    'dirs.txt',
+    dirsDataFileName,
   ].join(path.sep);
+  const filesDataDirName = `${getDateFileStr(nowDate)}_files.txt`;
   const filesDataFilePath = [
     DATA_DIR_PATH,
-    'files.txt',
+    filesDataDirName,
   ].join(path.sep);
   writeFileSync(dirsDataFilePath, scanDirResult.dirs.join('\n'));
-  writeFileSync(filesDataFilePath, scanDirResult.files.join('\n'));
-}
-
-async function findDuplicateFiles(filePaths: string[]) {
-  let pathMap: Map<number, string[]>;
-  let hashMap: Map<string, string[]>;
-  /*
-    First, find potential duplicates - a file can be a duplicate if it
-      has the same size as another file.
-  */
-  pathMap = new Map;
-  filePaths.forEach((filePath) => {
-    let stat: Stats;
-    let size: number;
-    let sizePaths: string[];
-    stat = lstatSync(filePath);
-    size = stat.size;
-    if(!pathMap.has(size)) {
-      pathMap.set(size, []);
-    }
-    sizePaths = pathMap.get(size)!;
-    sizePaths.push(filePath);
+  let ws = createWriteStream(filesDataFilePath);
+  scanDirResult.files.forEach(filePath => {
+    ws.write(`${filePath}\n`);
   });
-
-  /*
-    Next, pare the list of duplicates down to actual duplicates
-      by calculating the file hashes of the potential duplicates
-  */
-
-  hashMap = new Map;
-
-  let pathMapEntries: [ number, string[] ][] = [ ...pathMap.entries() ];
-  let hashCount: number = 0;
-
-  const possibleDupesFileStr = [ ...pathMapEntries ].reduce((acc, curr) => {
-    let [ size, dupeFilePaths ] = curr;
-    if(dupeFilePaths.length > 1) {
-      acc.push(`${size}`);
-      dupeFilePaths.forEach(dupeFilePath => {
-        acc.push(dupeFilePath);
-      });
-    }
-    return acc;
-  }, [] as string[]).join('\n');
-  let possibleDupesFilePath = [
-    DATA_DIR_PATH,
-    'possible-dupes.txt',
-  ].join(path.sep);
-  writeFileSync(possibleDupesFilePath, possibleDupesFileStr);
-
-  let totalFileCount = pathMapEntries.reduce((acc, curr) => {
-    acc += (curr[1].length > 1)
-      ? curr[1].length
-      : 0
-    ;
-    return acc;
-  }, 0);
-
-  let hashProgess: number;
-  let hashProgessLong: number;
-  hashProgess = 0;
-  hashProgessLong = 0;
-
-  for(let i = 0; i < pathMapEntries.length; ++i) {
-    const pathMapEntry = pathMapEntries[i];
-    const [ , filePaths ] = pathMapEntry;
-    if(filePaths.length < 2) {
-      continue;
-    }
-    for(let k = 0; k < filePaths.length; ++k) {
-      let rs: ReadStream;
-      let readPromise: Promise<void>;
-      let hasher: Hasher;
-      let hashStr: string;
-      let hashArr: string[];
-
-      let nextHashProgress: number;
-      let nextHashProgressLong: number;
-
-      const filePath = filePaths[k];
-
-      hasher = getHasher();
-
-      const chunkCb = (chunk: string | Buffer) => {
-        hasher.update(chunk);
-      };
-
-      readPromise = new Promise((resolve, reject) => {
-        rs = createReadStream(filePath);
-        rs.on('error', err => {
-          if(isObject(err) && (
-            (err.code === 'EISDIR')
-            || (err.code === 'ENOENT')
-          )) {
-            console.error(`${err.code}: ${filePath}`);
-          } else {
-            reject(err);
-          }
-        });
-        rs.on('close', () => {
-          resolve();
-        });
-        rs.on('data', chunk => {
-          chunkCb(chunk);
-        });
-      });
-      await readPromise;
-      hashStr = hasher.digest();
-      if(!hashMap.has(hashStr)) {
-        hashMap.set(hashStr, []);
-      }
-      hashArr = hashMap.get(hashStr)!;
-      hashArr.push(filePath);
-      hashCount++;
-      nextHashProgress = (hashCount / totalFileCount) * 100;
-      nextHashProgressLong = (hashCount / totalFileCount) * 100;
-      if(
-        (nextHashProgress - hashProgess) > 0.5
-      ) {
-        hashProgess = nextHashProgress;
-        process.stdout.write('.');
-        // process.stdout.write(`.${((hashCount / totalFileCount) * 100).toFixed(1)}%.`);
-      }
-      if(
-        (nextHashProgressLong - hashProgessLong) > 2
-      ) {
-        hashProgessLong = nextHashProgressLong;
-        process.stdout.write(`.${((hashCount / totalFileCount) * 100).toFixed(1)}%.`);
-      }
-    }
-  }
-
-  let dupesFileStr = [ ...hashMap.entries() ].reduce((acc, curr) => {
-
-    let [ hash, dupeFilePaths ] = curr;
-    acc.push(`\n${hash}`);
-    dupeFilePaths.forEach(dupeFilePath => {
-      acc.push(dupeFilePath);
-    });
-    return acc;
-  }, [] as string[]).join('\n');
-  let dupesFilePath = [
-    DATA_DIR_PATH,
-    'dupes.txt',
-  ].join(path.sep);
-  writeFileSync(dupesFilePath, dupesFileStr);
-
-  process.stdout.write('\n');
-  console.log(`hashMap.keys().length: ${[ ...hashMap.keys() ].length}`);
+  ws.close();
 }
 
 type ScanDirResult = {

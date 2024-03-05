@@ -8,3 +8,11 @@ export function getDateStr(date: Date) {
   */
   return format(date, '[MM-dd-y] hh:mm aa');
 }
+
+export function getDateFileStr(date: Date) {
+  /*
+    02272024_0945
+    02272024_1304
+  */
+  return format(date, 'MMddy_kkmm');
+}

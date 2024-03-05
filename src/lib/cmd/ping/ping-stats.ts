@@ -89,15 +89,9 @@ export async function runPingStat(cmd: SysmonCommand) {
     stdDev,
   });
   let devPings = pingStats.filter(pingStat => {
-    // return Math.floor(pingStat.avg - totalAvg) > (stdDev * 3);
-    // return (pingStat.avg - totalAvg) > (stdDev * 1);
-    // return (pingStat.avg - totalAvg) > (stdDev * 2);
-    // return (pingStat.avg - totalAvg) > (stdDev * 3);
-    // return (pingStat.avg - totalAvg) > (stdDev * 4);
     // return true;
     return (pingStat.avg - totalAvg) > (stdDev * numStdDeviations);
-    // return (pingStat.avg - totalAvg) > (stdDev * 6);
-    // return (pingStat.avg - totalAvg) > (stdDev * 7);
+    // return Math.abs(pingStat.avg - totalAvg) > (stdDev * numStdDeviations);
   });
   // console.log(devPings);
   let sortedDevPings = devPings.slice();
@@ -117,20 +111,8 @@ export async function runPingStat(cmd: SysmonCommand) {
 
     // return b.time_bucket.toTimeString().localeCompare(a.time_bucket.toTimeString());
   });
-  // console.log(
-  //   sortedDevPings.map(devPing => {
-  //     return devPing.time_bucket.toLocaleString() + ' ' + getHourMinuteString(devPing.time_bucket);
-  //   }).join('\n')
-  // );
 
   printStats(sortedDevPings, minAvg, maxAvg, scale);
-
-  // console.log(
-  //   sortedDevPings.map(pingStat => {
-  //     return pingStat.time_bucket.toLocaleString();
-  //   }).join('\n')
-  // );
-  // console.log(devPings.map(pingStat => pingStat.time_bucket.toLocaleString()));
 }
 
 function printStats(pingStats: PingStatDto[], minAvg: number, maxAvg: number, scale: number) {

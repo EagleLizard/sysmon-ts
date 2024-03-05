@@ -2,8 +2,8 @@
 import { createHash, Hash } from 'crypto';
 
 // const alg = 'sha256';
-const alg = 'md5';
-// const alg = 'sha1';
+// const alg = 'md5';
+const alg = 'sha1';
 // const outputFormat = 'base64';
 const outputFormat = 'hex';
 
