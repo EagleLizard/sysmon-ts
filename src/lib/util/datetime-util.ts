@@ -16,3 +16,7 @@ export function getDateFileStr(date: Date) {
   */
   return format(date, 'MMddy_kkmm');
 }
+
+export function getDayStr(date: Date) {
+  return format(date, 'E');
+}

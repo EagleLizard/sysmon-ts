@@ -6,8 +6,11 @@ import { pingMain } from './cmd/ping/ping';
 
 export async function sysmonMain() {
   const cmd = parseSysmonArgs();
+  console.log('cmd:');
   console.log(cmd);
+  console.log('cmd.opts:');
   console.log(cmd.opts);
+  // console.log(JSON.stringify(cmd, null, 2));
   switch(cmd.kind) {
     case SYSMON_COMMAND_ENUM.SCAN_DIR:
       if(!Array.isArray(cmd.args)) {
