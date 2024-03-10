@@ -62,6 +62,7 @@ enum PING_CMD_FLAG_ENUM {
   STATS = 'STATS', // s, stats
   IP = 'IP', // ip, ip
   NETWORK = 'NETWORK', // net, network
+  BUCKET = 'BUCKET', // b, bucket
   STDDEV = 'STDDEV', // sd, stddev
 }
 
@@ -96,6 +97,11 @@ export const PING_CMD_FLAG_MAP: Record<PING_CMD_FLAG_ENUM, SysmonCommandFlag<PIN
     flag: 'network',
     short: 'net',
   },
+  [PING_CMD_FLAG_ENUM.BUCKET]: {
+    kind: PING_CMD_FLAG_ENUM.BUCKET,
+    flag: 'bucket',
+    short: 'b',
+  },
   [PING_CMD_FLAG_ENUM.STDDEV]: {
     kind: PING_CMD_FLAG_ENUM.STDDEV,
     flag: 'stddev',
@@ -110,6 +116,7 @@ const PING_CMD_FLAG_KEYS: PING_CMD_FLAG_ENUM[] = [
   PING_CMD_FLAG_ENUM.STATS,
   PING_CMD_FLAG_ENUM.IP,
   PING_CMD_FLAG_ENUM.NETWORK,
+  PING_CMD_FLAG_ENUM.BUCKET,
   PING_CMD_FLAG_ENUM.STDDEV,
 ];
 

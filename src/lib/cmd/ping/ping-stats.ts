@@ -6,7 +6,7 @@ import { PING_CMD_FLAG_MAP, SysmonCommand } from '../sysmon-args';
 import { isNumber, isString } from '../../util/validate-primitives';
 import { PingStatDto } from '../../models/ping-stat-dto';
 import { getDateStr } from '../../util/datetime-util';
-import { ADDR_TYPE_ENUM } from '../../models/addr-network';
+import { ADDR_TYPE_ENUM, TimeBucketUnit, validateTimeBucketUnit } from '../../models/ping-args';
 
 const DEFAULT_NUM_STD_DEVIATIONS = 5;
 
@@ -15,6 +15,8 @@ export async function runPingStat(cmd: SysmonCommand) {
   let addrOpt: string | undefined;
   let networkOpt: ADDR_TYPE_ENUM | undefined;
   let addrId: number | undefined;
+  let bucketVal: number | undefined;
+  let bucketUnit: TimeBucketUnit | undefined;
 
   if(
     (cmd.opts?.[PING_CMD_FLAG_MAP.STDDEV.flag] !== undefined)
@@ -46,6 +48,21 @@ export async function runPingStat(cmd: SysmonCommand) {
     }
   }
 
+  if(cmd.opts?.[PING_CMD_FLAG_MAP.BUCKET.flag] !== undefined) {
+    let bucketOpt = cmd.opts[PING_CMD_FLAG_MAP.BUCKET.flag];
+    let rawBucketVal = bucketOpt.value[0];
+    let rawBucketUnit = bucketOpt.value[1];
+    if(
+      isString(rawBucketVal)
+      && !isNaN(+rawBucketVal)
+    ) {
+      bucketVal = +rawBucketVal;
+    }
+    if(validateTimeBucketUnit(rawBucketUnit)) {
+      bucketUnit = rawBucketUnit;
+    }
+  }
+
   addrOpt = cmd.opts?.[PING_CMD_FLAG_MAP.IP.flag]?.value?.[0];
 
   if(addrOpt !== undefined) {
@@ -54,7 +71,11 @@ export async function runPingStat(cmd: SysmonCommand) {
 
   let pingStats: PingStatDto[] | undefined;
   if(addrId === undefined) {
-    pingStats = await PingService.getStats(networkOpt);
+    pingStats = await PingService.getStats({
+      addrType: networkOpt,
+      bucketVal,
+      bucketUnit,
+    });
   } else {
     pingStats = await PingService.getStatsByAddr(addrId);
   }
