@@ -55,6 +55,7 @@ export class PingService {
         queryParams.append('bucket_unit', opts.bucketUnit);
       }
     }
+
     url = `${config.EZD_API_BASE_URL}/v1/ping/stats`;
     if(queryParams.size > 0) {
       url = `${url}?${queryParams.toString()}`;
@@ -62,6 +63,7 @@ export class PingService {
 
     pingStatsRawResp = await fetch(url);
     let pingStatsResp = await pingStatsRawResp.json();
+
     if(Array.isArray(pingStatsResp.result)) {
       pingStatsResults = pingStatsResp.result.map((rawStat: unknown) => {
         return PingStatDto.deserialize(rawStat);

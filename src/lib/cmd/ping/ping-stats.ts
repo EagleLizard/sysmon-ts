@@ -5,7 +5,7 @@ import { PingService } from '../../service/ping-service';
 import { PING_CMD_FLAG_MAP, SysmonCommand } from '../sysmon-args';
 import { isNumber, isString } from '../../util/validate-primitives';
 import { PingStatDto } from '../../models/ping-stat-dto';
-import { getDateStr } from '../../util/datetime-util';
+import { getDateStr, getDayStr } from '../../util/datetime-util';
 import { ADDR_TYPE_ENUM, TimeBucketUnit, validateTimeBucketUnit } from '../../models/ping-args';
 
 const DEFAULT_NUM_STD_DEVIATIONS = 5;
@@ -95,7 +95,8 @@ export async function runPingStat(cmd: SysmonCommand) {
       minAvg = pingStat.avg;
     }
     avgSum += pingStat.avg;
-    totalPings += pingStat.count;
+    // totalPings += pingStat.count;
+    totalPings++;
   });
   let scale = 50;
   // let baseRange = maxAvg - minAvg;
@@ -150,7 +151,22 @@ export async function runPingStat(cmd: SysmonCommand) {
     // return a.time_bucket.valueOf() - b.time_bucket.valueOf();
 
     // return aHm.localeCompare(bHm);
-    return aHm.localeCompare(bHm);
+    // return aHm.localeCompare(bHm);
+
+    let dayCompare = a.time_bucket.getDay() - b.time_bucket.getDay();
+    if(dayCompare === 0) {
+      let hourMinCompare = aHm.localeCompare(bHm);
+      if(hourMinCompare === 0) {
+        let dateCompare = a.time_bucket.getDate() - b.time_bucket.getDate();
+        return dateCompare;
+      }
+      return hourMinCompare;
+    }
+    // if(compareRes === 0) {
+    //   let hourMinCompare = aHm.localeCompare(bHm);
+    //   return hourMinCompare;
+    // }
+    return dayCompare;
 
     // return b.time_bucket.toTimeString().localeCompare(a.time_bucket.toTimeString());
   });
@@ -170,7 +186,8 @@ function printStats(pingStats: PingStatDto[], minAvg: number, maxAvg: number, sc
     avgOutVal = avgMod * scale;
     avgOutStr = '='.repeat(Math.round(avgOutVal));
     // console.log(`${pingStat.time_bucket.toLocaleString()} ${avgOutStr}`);
-    console.log(`${getDateStr(pingStat.time_bucket)} ${avgOutStr} ${pingStat.avg}`);
+    // console.log(`${getDateStr(pingStat.time_bucket)} ${avgOutStr} ${pingStat.avg}`);
+    console.log(`${getDayStr(pingStat.time_bucket)} ${getDateStr(pingStat.time_bucket)} ${avgOutStr} ${pingStat.avg}`);
     // console.log(`${pingStat.time_bucket.getDay()} ${getDateStr(pingStat.time_bucket)} ${avgOutStr} ${pingStat.avg}`);
   });
 }
