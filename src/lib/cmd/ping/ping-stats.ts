@@ -10,58 +10,36 @@ import { ADDR_TYPE_ENUM, TimeBucketUnit, validateTimeBucketUnit } from '../../mo
 
 const DEFAULT_NUM_STD_DEVIATIONS = 5;
 
+type BucketOpt = {
+  bucketVal: number | undefined;
+  bucketUnit: TimeBucketUnit | undefined;
+};
+
+type AggregatePingStats = {
+  minAvg: number;
+  maxAvg: number;
+  avgSum: number;
+  totalPings: number;
+  totalAvg: number;
+};
+
 export async function runPingStat(cmd: SysmonCommand) {
   let numStdDeviations: number;
   let addrOpt: string | undefined;
   let networkOpt: ADDR_TYPE_ENUM | undefined;
   let addrId: number | undefined;
+  let bucketOpt: BucketOpt;
   let bucketVal: number | undefined;
   let bucketUnit: TimeBucketUnit | undefined;
 
-  if(
-    (cmd.opts?.[PING_CMD_FLAG_MAP.STDDEV.flag] !== undefined)
-  ) {
-    let stdDevOpt = cmd.opts[PING_CMD_FLAG_MAP.STDDEV.flag];
-    numStdDeviations = (
-      isString(stdDevOpt.value[0])
-      && !isNaN(+stdDevOpt.value[0])
-    )
-      ? +stdDevOpt.value[0]
-      : DEFAULT_NUM_STD_DEVIATIONS
-    ;
-  }
-  if(
-    (cmd.opts?.[PING_CMD_FLAG_MAP.NETWORK.flag] !== undefined)
-    && (isString(cmd.opts[PING_CMD_FLAG_MAP.NETWORK.flag].value[0]))
-  ) {
-    /*
-      check if network string is valid ADDR_TYPE
-    */
-    let rawAddrType = cmd.opts[PING_CMD_FLAG_MAP.NETWORK.flag].value[0];
-    if(
-      (rawAddrType === ADDR_TYPE_ENUM.GLOBAL)
-      || (rawAddrType === ADDR_TYPE_ENUM.LOCAL)
-    ) {
-      networkOpt = rawAddrType;
-    } else {
-      throw new Error(`Invalid network option: ${rawAddrType}`);
-    }
-  }
+  let aggStats: AggregatePingStats;
 
-  if(cmd.opts?.[PING_CMD_FLAG_MAP.BUCKET.flag] !== undefined) {
-    let bucketOpt = cmd.opts[PING_CMD_FLAG_MAP.BUCKET.flag];
-    let rawBucketVal = bucketOpt.value[0];
-    let rawBucketUnit = bucketOpt.value[1];
-    if(
-      isString(rawBucketVal)
-      && !isNaN(+rawBucketVal)
-    ) {
-      bucketVal = +rawBucketVal;
-    }
-    if(validateTimeBucketUnit(rawBucketUnit)) {
-      bucketUnit = rawBucketUnit;
-    }
-  }
+  numStdDeviations = getNumStdDev(cmd);
+  networkOpt = getNetworkOpt(cmd);
+
+  bucketOpt = getBucketOpt(cmd);
+  bucketVal = bucketOpt.bucketVal;
+  bucketUnit = bucketOpt.bucketUnit;
 
   addrOpt = cmd.opts?.[PING_CMD_FLAG_MAP.IP.flag]?.value?.[0];
 
@@ -82,39 +60,12 @@ export async function runPingStat(cmd: SysmonCommand) {
   if(pingStats === undefined) {
     throw new Error('Error getting ping stats.');
   }
-  console.log('stats');
-  let maxAvg = -Infinity;
-  let minAvg = Infinity;
-  let avgSum = 0;
-  let totalPings = 0;
-  pingStats.forEach(pingStat => {
-    if(pingStat.avg > maxAvg) {
-      maxAvg = pingStat.avg;
-    }
-    if(pingStat.avg < minAvg) {
-      minAvg = pingStat.avg;
-    }
-    avgSum += pingStat.avg;
-    // totalPings += pingStat.count;
-    totalPings++;
-  });
   let scale = 50;
-  // let baseRange = maxAvg - minAvg;
-  // pingStats.forEach((pingStat) => {
-  //   let avgVal: number;
-  //   let avgMod: number;
-  //   let avgOutVal: number;
-  //   let avgOutStr: string;
-  //   avgVal = pingStat.avg - minAvg;
-  //   avgMod = avgVal / baseRange;
-  //   avgOutVal = avgMod * scale;
-  //   avgOutStr = '='.repeat(Math.round(avgOutVal));
-  //   console.log(`${avgOutStr}`);
-  // });
+  console.log('stats');
 
+  aggStats = getAggregateStats(pingStats);
   // printStats(pingStats, minAvg, maxAvg, scale);
 
-  let totalAvg = avgSum / totalPings;
   let stdDevRaw = std(
     pingStats.map(pingStat => pingStat.avg),
     'unbiased'
@@ -125,16 +76,16 @@ export async function runPingStat(cmd: SysmonCommand) {
   let stdDev = stdDevRaw;
   console.log({ stdDev });
   console.log({
-    maxAvg,
-    minAvg,
-    totalAvg,
-    totalAvgFixed: Math.round((totalAvg) * 1e3) / 1e3,
+    maxAvg: aggStats.maxAvg,
+    minAvg: aggStats.minAvg,
+    totalAvg: aggStats.totalAvg,
+    totalAvgFixed: Math.round((aggStats.totalAvg) * 1e3) / 1e3,
     stdDev,
   });
 
   let devPings = pingStats.filter(pingStat => {
     // return true;
-    return (pingStat.avg - totalAvg) > (stdDev * numStdDeviations);
+    return (pingStat.avg - aggStats.totalAvg) > (stdDev * numStdDeviations);
     // return Math.abs(pingStat.avg - totalAvg) > (stdDev * numStdDeviations);
   });
 
@@ -171,7 +122,112 @@ export async function runPingStat(cmd: SysmonCommand) {
     // return b.time_bucket.toTimeString().localeCompare(a.time_bucket.toTimeString());
   });
 
-  printStats(sortedDevPings, minAvg, maxAvg, scale);
+  printStats(sortedDevPings, aggStats.minAvg, aggStats.maxAvg, scale);
+}
+
+function getAggregateStats(pingStats: PingStatDto[]): AggregatePingStats {
+  let maxAvg = -Infinity;
+  let minAvg = Infinity;
+  let avgSum = 0;
+  let totalPings = 0;
+  let totalAvg: number;
+  pingStats.forEach(pingStat => {
+    if(pingStat.avg > maxAvg) {
+      maxAvg = pingStat.avg;
+    }
+    if(pingStat.avg < minAvg) {
+      minAvg = pingStat.avg;
+    }
+    avgSum += pingStat.avg;
+    // totalPings += pingStat.count;
+    totalPings++;
+  });
+  // let baseRange = maxAvg - minAvg;
+  // pingStats.forEach((pingStat) => {
+  //   let avgVal: number;
+  //   let avgMod: number;
+  //   let avgOutVal: number;
+  //   let avgOutStr: string;
+  //   avgVal = pingStat.avg - minAvg;
+  //   avgMod = avgVal / baseRange;
+  //   avgOutVal = avgMod * scale;
+  //   avgOutStr = '='.repeat(Math.round(avgOutVal));
+  //   console.log(`${avgOutStr}`);
+  // });
+  totalAvg = avgSum / totalPings;
+
+  return {
+    minAvg,
+    maxAvg,
+    avgSum,
+    totalPings,
+    totalAvg,
+  };
+}
+
+function getBucketOpt(cmd: SysmonCommand): BucketOpt {
+  let bucketOpt: BucketOpt;
+  let bucketVal: number | undefined;
+  let bucketUnit: TimeBucketUnit | undefined;
+  if(cmd.opts?.[PING_CMD_FLAG_MAP.BUCKET.flag] !== undefined) {
+    let bucketOpt = cmd.opts[PING_CMD_FLAG_MAP.BUCKET.flag];
+    let rawBucketVal = bucketOpt.value[0];
+    let rawBucketUnit = bucketOpt.value[1];
+    if(
+      isString(rawBucketVal)
+      && !isNaN(+rawBucketVal)
+    ) {
+      bucketVal = +rawBucketVal;
+    }
+    if(validateTimeBucketUnit(rawBucketUnit)) {
+      bucketUnit = rawBucketUnit;
+    }
+  }
+  bucketOpt = {
+    bucketVal,
+    bucketUnit,
+  };
+  return bucketOpt;
+}
+
+function getNetworkOpt(cmd: SysmonCommand): ADDR_TYPE_ENUM | undefined {
+  let networkOpt: ADDR_TYPE_ENUM | undefined;
+
+  if(
+    (cmd.opts?.[PING_CMD_FLAG_MAP.NETWORK.flag] !== undefined)
+    && (isString(cmd.opts[PING_CMD_FLAG_MAP.NETWORK.flag].value[0]))
+  ) {
+    /*
+      check if network string is valid ADDR_TYPE
+    */
+    let rawAddrType = cmd.opts[PING_CMD_FLAG_MAP.NETWORK.flag].value[0];
+    if(
+      (rawAddrType === ADDR_TYPE_ENUM.GLOBAL)
+      || (rawAddrType === ADDR_TYPE_ENUM.LOCAL)
+    ) {
+      networkOpt = rawAddrType;
+    } else {
+      throw new Error(`Invalid network option: ${rawAddrType}`);
+    }
+  }
+  return networkOpt;
+}
+
+function getNumStdDev(cmd: SysmonCommand): number {
+  let numStdDeviations: number;
+  numStdDeviations = DEFAULT_NUM_STD_DEVIATIONS;
+  if(
+    (cmd.opts?.[PING_CMD_FLAG_MAP.STDDEV.flag] !== undefined)
+  ) {
+    let stdDevOpt = cmd.opts[PING_CMD_FLAG_MAP.STDDEV.flag];
+    if(
+      isString(stdDevOpt.value[0])
+      && !isNaN(+stdDevOpt.value[0])
+    ) {
+      numStdDeviations = +stdDevOpt.value[0];
+    }
+  }
+  return numStdDeviations;
 }
 
 function printStats(pingStats: PingStatDto[], minAvg: number, maxAvg: number, scale: number) {
