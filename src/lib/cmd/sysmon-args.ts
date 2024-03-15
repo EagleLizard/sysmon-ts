@@ -5,6 +5,7 @@ import { isString } from '../util/validate-primitives';
 export enum SYSMON_COMMAND_ENUM {
   SCAN_DIR = 'SCAN_DIR',
   PING = 'PING',
+  ADMIN = 'ADMIN',
 }
 
 export type SysmonCommand = {
@@ -36,12 +37,18 @@ const SYSMON_COMMANDS: Record<SYSMON_COMMAND_ENUM, SysmonCommand> = {
     kind: SYSMON_COMMAND_ENUM.PING,
     command: 'ping',
     short: 'p',
-  }
+  },
+  [SYSMON_COMMAND_ENUM.ADMIN]: {
+    kind: SYSMON_COMMAND_ENUM.ADMIN,
+    command: 'admin',
+    short: 'a',
+  },
 };
 
 const SYSMON_CMD_KEYS: SYSMON_COMMAND_ENUM[] = [
   SYSMON_COMMAND_ENUM.SCAN_DIR,
   SYSMON_COMMAND_ENUM.PING,
+  SYSMON_COMMAND_ENUM.ADMIN,
 ];
 
 enum SCANDIR_CMD_FLAG_ENUM {
@@ -179,6 +186,10 @@ export function parseSysmonArgs(): SysmonCommand {
         cmd.args.push(addr);
       }
       cmd.opts = getCmdFlagOpts(PING_CMD_FLAG_KEYS, PING_CMD_FLAG_MAP, parsedArgv);
+      break;
+    case SYSMON_COMMAND_ENUM.ADMIN:
+      cmd.args = restPositionals;
+      cmd.opts = {};
       break;
     default:
       throw new Error(`unhandled command kind: ${cmd.kind}`);

@@ -7,6 +7,8 @@ import { isNumber, isString } from '../../util/validate-primitives';
 import { PingStatDto } from '../../models/ping-stat-dto';
 import { getDateStr, getDayStr } from '../../util/datetime-util';
 import { ADDR_TYPE_ENUM, TimeBucketUnit, validateTimeBucketUnit } from '../../models/ping-args';
+import { Timer } from '../../util/timer';
+import { getIntuitiveTimeString } from '../../util/format-util';
 
 const DEFAULT_NUM_STD_DEVIATIONS = 5;
 
@@ -31,6 +33,8 @@ export async function runPingStat(cmd: SysmonCommand) {
   let bucketOpt: BucketOpt;
   let bucketVal: number | undefined;
   let bucketUnit: TimeBucketUnit | undefined;
+  let timer: Timer;
+  let getStatsMs: number;
 
   let aggStats: AggregatePingStats;
 
@@ -48,6 +52,7 @@ export async function runPingStat(cmd: SysmonCommand) {
   }
 
   let pingStats: PingStatDto[] | undefined;
+  timer = Timer.start();
   if(addrId === undefined) {
     pingStats = await PingService.getStats({
       addrType: networkOpt,
@@ -57,6 +62,10 @@ export async function runPingStat(cmd: SysmonCommand) {
   } else {
     pingStats = await PingService.getStatsByAddr(addrId);
   }
+  getStatsMs = timer.stop();
+  console.log(
+    `get stats took: ${getIntuitiveTimeString(getStatsMs)}`
+  );
   if(pingStats === undefined) {
     throw new Error('Error getting ping stats.');
   }
@@ -85,6 +94,7 @@ export async function runPingStat(cmd: SysmonCommand) {
 
   let devPings = pingStats.filter(pingStat => {
     // return true;
+    // return pingStat.avg > aggStats.totalAvg;
     return (pingStat.avg - aggStats.totalAvg) > (stdDev * numStdDeviations);
     // return Math.abs(pingStat.avg - totalAvg) > (stdDev * numStdDeviations);
   });

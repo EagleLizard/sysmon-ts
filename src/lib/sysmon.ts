@@ -3,6 +3,7 @@ import { SYSMON_COMMAND_ENUM, parseSysmonArgs } from './cmd/sysmon-args';
 import { isString } from './util/validate-primitives';
 import { scanDirMain } from './cmd/scan-dir/scan-dir';
 import { pingMain } from './cmd/ping/ping';
+import { adminMain } from './cmd/admin/admin-cmd';
 
 export async function sysmonMain() {
   const cmd = parseSysmonArgs();
@@ -23,6 +24,9 @@ export async function sysmonMain() {
       break;
     case SYSMON_COMMAND_ENUM.PING:
       await pingMain(cmd);
+      break;
+    case SYSMON_COMMAND_ENUM.ADMIN:
+      await adminMain(cmd);
       break;
     default:
       throw new Error(`unhandled command kind: ${cmd.kind}`);
