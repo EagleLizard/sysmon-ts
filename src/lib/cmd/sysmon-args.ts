@@ -6,6 +6,8 @@ export enum SYSMON_COMMAND_ENUM {
   SCAN_DIR = 'SCAN_DIR',
   PING = 'PING',
   ADMIN = 'ADMIN',
+  SPEEDTEST = 'SPEEDTEST',
+  T_NINE = 'T_NINE',
 }
 
 export type SysmonCommand = {
@@ -43,12 +45,24 @@ const SYSMON_COMMANDS: Record<SYSMON_COMMAND_ENUM, SysmonCommand> = {
     command: 'admin',
     short: 'a',
   },
+  [SYSMON_COMMAND_ENUM.SPEEDTEST]: {
+    kind: SYSMON_COMMAND_ENUM.SPEEDTEST,
+    command: 'speedtest',
+    short: 'st',
+  },
+  [SYSMON_COMMAND_ENUM.T_NINE]: {
+    kind: SYSMON_COMMAND_ENUM.T_NINE,
+    command: 't9',
+    short: 't9',
+  },
 };
 
 const SYSMON_CMD_KEYS: SYSMON_COMMAND_ENUM[] = [
   SYSMON_COMMAND_ENUM.SCAN_DIR,
   SYSMON_COMMAND_ENUM.PING,
   SYSMON_COMMAND_ENUM.ADMIN,
+  SYSMON_COMMAND_ENUM.SPEEDTEST,
+  SYSMON_COMMAND_ENUM.T_NINE,
 ];
 
 enum SCANDIR_CMD_FLAG_ENUM {
@@ -188,6 +202,14 @@ export function parseSysmonArgs(): SysmonCommand {
       cmd.opts = getCmdFlagOpts(PING_CMD_FLAG_KEYS, PING_CMD_FLAG_MAP, parsedArgv);
       break;
     case SYSMON_COMMAND_ENUM.ADMIN:
+      cmd.args = restPositionals;
+      cmd.opts = {};
+      break;
+    case SYSMON_COMMAND_ENUM.SPEEDTEST:
+      cmd.args = restPositionals;
+      cmd.opts = {};
+      break;
+    case SYSMON_COMMAND_ENUM.T_NINE:
       cmd.args = restPositionals;
       cmd.opts = {};
       break;

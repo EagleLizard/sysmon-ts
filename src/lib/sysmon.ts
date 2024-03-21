@@ -4,6 +4,8 @@ import { isString } from './util/validate-primitives';
 import { scanDirMain } from './cmd/scan-dir/scan-dir';
 import { pingMain } from './cmd/ping/ping';
 import { adminMain } from './cmd/admin/admin-cmd';
+import { speedtestMain } from './cmd/speedtest/speedtest';
+import { tNineMain } from './cmd/t-nine/t-nine';
 
 export async function sysmonMain() {
   const cmd = parseSysmonArgs();
@@ -27,6 +29,12 @@ export async function sysmonMain() {
       break;
     case SYSMON_COMMAND_ENUM.ADMIN:
       await adminMain(cmd);
+      break;
+    case SYSMON_COMMAND_ENUM.SPEEDTEST:
+      await speedtestMain(cmd);
+      break;
+    case SYSMON_COMMAND_ENUM.T_NINE:
+      await tNineMain(cmd);
       break;
     default:
       throw new Error(`unhandled command kind: ${cmd.kind}`);

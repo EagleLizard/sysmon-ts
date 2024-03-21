@@ -1,6 +1,6 @@
 import path from 'path';
 
-import { DATA_DIR_PATH } from '../../../constants';
+import { OUT_DATA_DIR_PATH } from '../../../constants';
 import { mkdirIfNotExist } from '../../util/files';
 import { getIntuitiveTimeString } from '../../util/format-util';
 import { Timer } from '../../util/timer';
@@ -13,13 +13,14 @@ import {
   writeFileSync
 } from 'fs';
 import { isObject, isString } from '../../util/validate-primitives';
-import { FIND_DUPLICATES_FLAG_CMD, SysmonCommand } from '../sysmon-args';
+import { FIND_DUPLICATES_FLAG_CMD, SCANDIR_CMD_FLAGS, SysmonCommand } from '../sysmon-args';
 import { logger } from '../../logger';
 import { getDateFileStr } from '../../util/datetime-util';
 import { findDuplicateFiles } from './find-duplicate-files';
 
 export async function scanDirMain(cmd: SysmonCommand) {
-  let scanDirResult: ScanDirResult;
+  let files: string[];
+  let dirs: string[];
   let timer: Timer;
   let scanMs: number;
   let findDuplicatesMs: number;
@@ -32,51 +33,80 @@ export async function scanDirMain(cmd: SysmonCommand) {
     throw new Error(`at least 1 positional argument required for command '${cmd.command}'`);
   }
   dirPaths = cmd.args;
+  files = [];
+  dirs = [];
+  const scanDirCb = (params: ScanDirCbParams) => {
+    // console.log(scanDirCbParams.fullPath);
+    if(params.isDir) {
+      dirs.push(params.fullPath);
+      let skipDir = (
+        (cmd.opts?.[SCANDIR_CMD_FLAGS.FIND_DIRS.flag] !== undefined)
+        && cmd.opts[SCANDIR_CMD_FLAGS.FIND_DIRS.flag].value.some(findDirPath => {
+          return params.fullPath.includes(findDirPath);
+        })
+      );
+      if(
+        skipDir
+      ) {
+        return {
+          skip: true,
+        };
+      }
+    } else {
+      files.push(params.fullPath);
+    }
+  };
 
   console.log(`Scanning: ${dirPaths}`);
   timer = Timer.start();
-  scanDirResult = scanDir(dirPaths);
+  scanDir(dirPaths, scanDirCb);
   scanMs = timer.stop();
-  console.log(`files: ${scanDirResult.files.length}`);
-  console.log(`dirs: ${scanDirResult.dirs.length}`);
+  console.log(`files: ${files.length}`);
+  console.log(`dirs: ${dirs.length}`);
   console.log(`Scan took: ${getIntuitiveTimeString(scanMs)}`);
+
+  mkdirIfNotExist(OUT_DATA_DIR_PATH);
+  const dirsDataFileName = `${getDateFileStr(nowDate)}_dirs.txt`;
+  const dirsDataFilePath = [
+    OUT_DATA_DIR_PATH,
+    dirsDataFileName,
+  ].join(path.sep);
+  const filesDataDirName = `${getDateFileStr(nowDate)}_files.txt`;
+  const filesDataFilePath = [
+    OUT_DATA_DIR_PATH,
+    filesDataDirName,
+  ].join(path.sep);
+  writeFileSync(dirsDataFilePath, dirs.join('\n'));
+  let ws = createWriteStream(filesDataFilePath);
+  files.forEach(filePath => {
+    ws.write(`${filePath}\n`);
+  });
+  ws.close();
 
   if(cmd.opts?.[FIND_DUPLICATES_FLAG_CMD.flag] === undefined) {
     return;
   }
   timer = Timer.start();
-  const duplicateFiles = await findDuplicateFiles(scanDirResult.files, nowDate);
+  const duplicateFiles = await findDuplicateFiles(files, nowDate);
   console.log({ duplicateFiles });
   findDuplicatesMs = timer.stop();
   console.log(`findDuplicates took: ${getIntuitiveTimeString(findDuplicatesMs)}`);
 
-  mkdirIfNotExist(DATA_DIR_PATH);
-  const dirsDataFileName = `${getDateFileStr(nowDate)}_dirs.txt`;
-  const dirsDataFilePath = [
-    DATA_DIR_PATH,
-    dirsDataFileName,
-  ].join(path.sep);
-  const filesDataDirName = `${getDateFileStr(nowDate)}_files.txt`;
-  const filesDataFilePath = [
-    DATA_DIR_PATH,
-    filesDataDirName,
-  ].join(path.sep);
-  writeFileSync(dirsDataFilePath, scanDirResult.dirs.join('\n'));
-  let ws = createWriteStream(filesDataFilePath);
-  scanDirResult.files.forEach(filePath => {
-    ws.write(`${filePath}\n`);
-  });
-  ws.close();
 }
 
-type ScanDirResult = {
-  dirs: string[];
-  files: string[];
+type ScanDirCbParams = {
+  isDir: boolean;
+  fullPath: string;
 };
 
-function scanDir(dirPaths: string[]): ScanDirResult {
-  let allDirs: string[];
-  let allFiles: string[];
+type ScanDirCbResult = {
+  skip?: boolean,
+} | void;
+
+function scanDir(
+  dirPaths: string[],
+  scanDirCb: (scanDirCbParams: ScanDirCbParams) => ScanDirCbResult
+) {
 
   let currDirents: Dirent[];
   let dirQueue: string[];
@@ -88,13 +118,11 @@ function scanDir(dirPaths: string[]): ScanDirResult {
     ...dirPaths,
   ];
 
-  allDirs = [];
-  allFiles = [];
-
   pathCount = 0;
 
   while(dirQueue.length > 0) {
     let rootDirent: Stats | undefined;
+    let scanDirCbResult: ScanDirCbResult;
     currDirPath = dirQueue.shift()!;
     try {
       rootDirent = lstatSync(currDirPath);
@@ -111,9 +139,14 @@ function scanDir(dirPaths: string[]): ScanDirResult {
         throw e;
       }
     }
+    scanDirCbResult = scanDirCb({
+      isDir: rootDirent?.isDirectory() ?? false,
+      fullPath: currDirPath,
+    });
     if(
       (rootDirent !== undefined)
       && rootDirent.isDirectory()
+      && !scanDirCbResult?.skip
     ) {
       try {
         currDirents = readdirSync(currDirPath, {
@@ -129,7 +162,6 @@ function scanDir(dirPaths: string[]): ScanDirResult {
           throw e;
         }
       }
-      allDirs.push(currDirPath);
       currDirents.forEach(currDirent => {
         // dirQueue.push([
         //   currDirent.path,
@@ -142,7 +174,6 @@ function scanDir(dirPaths: string[]): ScanDirResult {
       });
       pathCount++;
     } else {
-      allFiles.push(currDirPath);
       pathCount++;
     }
     if((pathCount % 1e4) === 0) {
@@ -150,10 +181,5 @@ function scanDir(dirPaths: string[]): ScanDirResult {
     }
   }
   process.stdout.write('\n');
-
-  return {
-    dirs: allDirs,
-    files: allFiles,
-  };
 }
 

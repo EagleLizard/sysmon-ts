@@ -41,4 +41,3 @@ process.on('unhandledRejection', (reason) => {
   logger.error('unhandledRejection:');
   logger.error(reason);
 });
-

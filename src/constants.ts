@@ -9,3 +9,9 @@ export const DATA_DIR_PATH = [
   DATA_DIR_NAME,
 ].join(path.sep);
 
+const OUT_DATA_DIR_NAME = 'out_data';
+export const OUT_DATA_DIR_PATH = [
+  BASE_DIR,
+  OUT_DATA_DIR_NAME,
+].join(path.sep);
+

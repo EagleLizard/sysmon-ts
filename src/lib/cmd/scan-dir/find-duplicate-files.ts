@@ -9,7 +9,7 @@ import {
 } from 'fs';
 
 import { getDateFileStr } from '../../util/datetime-util';
-import { DATA_DIR_PATH } from '../../../constants';
+import { OUT_DATA_DIR_PATH } from '../../../constants';
 import { Hasher, getHasher } from '../../util/hasher';
 import { isObject } from '../../util/validate-primitives';
 import { sleep } from '../../util/sleep';
@@ -51,7 +51,7 @@ export async function findDuplicateFiles(filePaths: string[], nowDate: Date) {
 
   let possibleDupesFileName = `${getDateFileStr(nowDate)}_possible-dupes.txt`;
   let possibleDupesFilePath = [
-    DATA_DIR_PATH,
+    OUT_DATA_DIR_PATH,
     possibleDupesFileName,
   ].join(path.sep);
 
@@ -186,7 +186,7 @@ export async function findDuplicateFiles(filePaths: string[], nowDate: Date) {
 
   let dupesFileName = `${getDateFileStr(nowDate)}_dupes.txt`;
   let dupesFilePath = [
-    DATA_DIR_PATH,
+    OUT_DATA_DIR_PATH,
     dupesFileName,
   ].join(path.sep);
   ws = createWriteStream(dupesFilePath);
