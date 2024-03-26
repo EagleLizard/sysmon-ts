@@ -75,43 +75,13 @@ export class AdminService {
     let rawRespBody: unknown;
 
     let cfg: SysmonCliConfig;
+    let storedOrNextToken: string | undefined;
 
     cfg = CliConfigService.getConfig();
 
-    if(cfg.token !== undefined) {
-      let jwtPayload: JwtSessionPayload;
-      let exp: number;
-      let jwtTtlMs: number;
-      let expiresInMs: number;
-      jwtPayload = getJwtPayload(cfg.token);
-      console.log({ jwtPayload });
-      exp = jwtPayload.exp * 1000;
-      if(Date.now() < exp) {
-        jwtTtlMs = (jwtPayload.exp - jwtPayload.iat) * 1000;
-        expiresInMs = exp - Date.now();
-        console.log(`Stored token expires in ${getIntuitiveTimeString(expiresInMs)}`);
-        /*
-          return the stored token if it's not
-            expired yet
-        */
-        console.log('stored token is valid.');
-        if(
-          (expiresInMs < (jwtTtlMs / 2))
-        ) {
-          /*
-            Use the token to get a new token if it
-             will expire soon
-          */
-          console.log('Exchanging token.');
-          let nextToken = await AdminService.exchangeToken(cfg.token);
-          cfg.token = nextToken;
-          CliConfigService.saveConfig(cfg);
-          return cfg.token;
-        }
-        return cfg.token;
-      } else {
-        console.log('Stored token is expired.');
-      }
+    storedOrNextToken = await getStoredTokenOrExchange(cfg);
+    if(storedOrNextToken !== undefined) {
+      return storedOrNextToken;
     }
 
     url = `${config.EZD_API_BASE_URL}/v1/jwt/auth`;
@@ -169,6 +139,60 @@ export class AdminService {
     nextToken = rawRespBody.nextToken;
     return nextToken;
   }
+}
+
+async function getStoredTokenOrExchange(cfg: SysmonCliConfig): Promise<string | undefined> {
+  let tokenValid: boolean;
+  let jwtPayload: JwtSessionPayload;
+  let tokenWillExpire: boolean;
+  let nextToken: string;
+  if(cfg.token !== undefined) {
+    jwtPayload = getJwtPayload(cfg.token);
+    console.log({ jwtPayload });
+    tokenValid = checkTokenExpired(jwtPayload);
+    if(tokenValid) {
+      tokenWillExpire = checkTokenWillExpire(jwtPayload);
+      if(tokenWillExpire) {
+        /*
+          Use the token to get a new token if it
+           will expire soon
+        */
+        console.log('Exchanging token.');
+        nextToken = await AdminService.exchangeToken(cfg.token);
+        cfg.token = nextToken;
+        CliConfigService.saveConfig(cfg);
+        return cfg.token;
+      }
+      /*
+        return the stored token if it's not
+          expired yet
+      */
+      return cfg.token;
+    } else {
+      console.log('Stored token is expired');
+    }
+  }
+}
+
+function checkTokenWillExpire(jwtPayload: JwtSessionPayload): boolean {
+  let jwtTtlMs: number;
+  let expiresInMs: number;
+  let tokenWillExpire: boolean;
+  let expiredInStr: string;
+  jwtTtlMs = (jwtPayload.exp - jwtPayload.iat) * 1000;
+  expiresInMs = (jwtPayload.exp * 1000) - Date.now();
+  expiredInStr = getIntuitiveTimeString(expiresInMs);
+  console.log(`Stored token expires in ${expiredInStr}`);
+  tokenWillExpire = expiresInMs < (jwtTtlMs / 2);
+  return tokenWillExpire;
+}
+
+function checkTokenExpired(jwtPayload: JwtSessionPayload): boolean {
+  let exp: number;
+  let tokenValid: boolean;
+  exp = jwtPayload.exp * 1000;
+  tokenValid = Date.now() < exp;
+  return tokenValid;
 }
 
 function getJwtPayload(token: string): JwtSessionPayload {
