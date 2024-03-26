@@ -1,4 +1,5 @@
 
+import { config } from '../../../config';
 import { KeychainKeyDto } from '../../models/keychain-key-dto';
 import { UserDto } from '../../models/user-dto';
 import { AdminService } from '../../service/admin-service';
@@ -21,9 +22,16 @@ type UserKeychain = {
 async function keychainCmd() {
   let keychainKeys: KeychainKeyDto[];
   let userKeychainMap: Map<string, UserKeychain>;
+  let userName: string;
+  let password: string;
+  userName = config.EZD_API_PASSWORD;
+  password = config.EZD_API_PASSWORD;
   userKeychainMap = new Map;
   console.log('Fetching keychain keys');
-  keychainKeys = await AdminService.getKeychainKeys();
+  keychainKeys = await AdminService.getKeychainKeys({
+    userName,
+    password,
+  });
   for(let i = 0; i < keychainKeys.length; ++i) {
     let currKeychainKey: KeychainKeyDto;
     currKeychainKey = keychainKeys[i];

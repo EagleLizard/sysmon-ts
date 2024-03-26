@@ -52,12 +52,22 @@ export const NUM_KEY_CHAR_MAP: Record<NUM_KEY_ENUM, string> = KEY_MAPPINGS.reduc
   return acc;
 }, {} as Record<NUM_KEY_ENUM, string>);
 
+export const DIGIT_CHAR_MAP: Record<string, string> = KEY_MAPPINGS.reduce((acc, curr) => {
+  acc[`${curr[1]}`] = curr[3];
+  return acc;
+}, {} as Record<string, string>);
+
 export const LETTER_TO_DIGIT_MAP: Record<string, string> = KEY_MAPPINGS.reduce((acc, curr) => {
   let chars: string[];
   chars = curr[3].split('');
   chars.forEach(char => {
     acc[char] = `${curr[1]}`;
   });
+  return acc;
+}, {} as Record<string, string>);
+
+export const KEY_TO_NUM_MAP: Record<string, string> = KEY_MAPPINGS.reduce((acc, curr) => {
+  acc[curr[2]] = `${curr[1]}`;
   return acc;
 }, {} as Record<string, string>);
 

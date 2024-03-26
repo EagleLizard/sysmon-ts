@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node dist/main.js",
-    "dev": "nodemon --ext '*' -w dist -w src --exec 'npm run-s start'",
+    "start": "node dist/main.js m",
+    "dev": "nodemon --ext '*' -w dist -w src --exec 'npm start'",
     "build": "tsc",
     "test": "vitest",
     "coverage": "vitest run --coverage"
@@ -30,6 +30,7 @@
     "date-fns": "^3.3.1",
     "dotenv": "^16.4.5",
     "mathjs": "^12.4.0",
+    "natural": "^6.12.0",
     "pg": "^8.11.3",
     "source-map-support": "^0.5.21",
     "winston": "^3.11.0",

@@ -1,26 +1,13 @@
 
 import fs from 'fs/promises';
+import readline from 'readline/promises';
 
 import { SysmonCommand } from '../sysmon-args';
 import path from 'path';
 import { DATA_DIR_PATH } from '../../../constants';
-import { KEY_MAPPINGS, NUM_KEY_ENUM } from './t-nine-key-mappings';
+import { DIGIT_CHAR_MAP, KEY_MAPPINGS, KEY_TO_NUM_MAP } from './t-nine-key-mappings';
 import { DigitTrie, DigitTrieNode } from './digit-trie';
-
-const NUM_KEY_MAP: Record<string, NUM_KEY_ENUM> = KEY_MAPPINGS.reduce((acc, curr) => {
-  acc[`${curr[1]}`] = curr[0];
-  return acc;
-}, {} as Record<string, NUM_KEY_ENUM>);
-
-const KEY_TO_NUM_MAP: Record<string, string> = KEY_MAPPINGS.reduce((acc, curr) => {
-  acc[curr[2]] = `${curr[1]}`;
-  return acc;
-}, {} as Record<string, string>);
-
-console.log('NUM_KEY_MAP');
-console.log(NUM_KEY_MAP);
-console.log('KEY_TO_NUM_MAP');
-console.log(KEY_TO_NUM_MAP);
+import { Key } from 'readline';
 
 export async function tNineMain(cmd: SysmonCommand) {
   let keys: string;
@@ -51,17 +38,79 @@ export async function tNineMain(cmd: SysmonCommand) {
     wordMatches = digitsNode.words;
     console.log(wordMatches);
   }
-  // let rl = readline.createInterface({
-  //   input: process.stdin,
-  //   output: process.stdout,
-  // });
-  // process.stdin.setRawMode(true);
-  // process.stdin.on('keypress', (str, key) => {
-  //   console.log({
-  //     str,
-  //     key,
-  //   });
-  // });
+
+  const CTRL_KEYS = [
+    'backspace',
+    'return',
+    'down',
+    'escape',
+  ];
+  const T_NINE_KEYS: string[] = KEY_MAPPINGS.map(keyMapping => {
+    return keyMapping[2];
+  });
+  let inputChars: string[];
+  inputChars = [];
+  let rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  await rl.question('press any key to continue');
+  // let rlInput = ((rl as unknown) as any).input as ReadStream;
+  process.stdin.on('keypress', (str: string, key: Key) => {
+    let isCtrlKey: boolean;
+    let isNumKey: boolean;
+    let inputDigits: string;
+    let currDigit: string | undefined;
+    isCtrlKey = CTRL_KEYS.some(ctrlKey => ctrlKey === key.name);
+    if(isCtrlKey || (key.ctrl === true)) {
+      console.log('');
+      switch(key.name) {
+        case 'backspace':
+          console.log('backspace');
+          inputChars.pop();
+          break;
+        case 'down':
+          return;
+        case 'return':
+          inputChars.length = 0;
+          break;
+        default:
+          console.log({
+            str,
+            key,
+          });
+      }
+      return;
+    }
+    isNumKey = T_NINE_KEYS.some(tNineKey => {
+      return tNineKey === key.sequence;
+    });
+    if(
+      !isNumKey
+      || (key.name === undefined)
+    ) {
+      console.log({
+        str,
+        key,
+      });
+      return;
+    }
+    console.log('');
+    inputChars.push(key.name);
+    currDigit = convertKeysToNums(key.name);
+
+    console.log(DIGIT_CHAR_MAP[currDigit]);
+    console.log(inputChars.join(''));
+    inputDigits = convertKeysToNums(inputChars.join(''));
+    console.log(inputDigits);
+    digitsNode = digitTrie.getDigits(inputDigits);
+    if(digitsNode !== undefined) {
+      console.log(digitsNode.words);
+    }
+  });
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+  process.stdin.setEncoding('utf8');
 }
 
 function convertKeysToNums(str: string): string {

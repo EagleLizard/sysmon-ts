@@ -4,10 +4,12 @@ import { isString } from '../util/validate-primitives';
 
 export enum SYSMON_COMMAND_ENUM {
   SCAN_DIR = 'SCAN_DIR',
+  MONITOR = 'MONITOR',
   PING = 'PING',
   ADMIN = 'ADMIN',
   SPEEDTEST = 'SPEEDTEST',
   T_NINE = 'T_NINE',
+  NLP = 'NLP',
 }
 
 export type SysmonCommand = {
@@ -30,6 +32,11 @@ type ParsedArgv = {
 };
 
 const SYSMON_COMMANDS: Record<SYSMON_COMMAND_ENUM, SysmonCommand> = {
+  [SYSMON_COMMAND_ENUM.MONITOR]: {
+    kind: SYSMON_COMMAND_ENUM.MONITOR,
+    command: 'monitor',
+    short: 'm',
+  },
   [SYSMON_COMMAND_ENUM.SCAN_DIR]: {
     kind: SYSMON_COMMAND_ENUM.SCAN_DIR,
     command: 'scandir',
@@ -55,14 +62,21 @@ const SYSMON_COMMANDS: Record<SYSMON_COMMAND_ENUM, SysmonCommand> = {
     command: 't9',
     short: 't9',
   },
+  [SYSMON_COMMAND_ENUM.NLP]: {
+    kind: SYSMON_COMMAND_ENUM.NLP,
+    command: 'nlp',
+    short: 'n',
+  },
 };
 
 const SYSMON_CMD_KEYS: SYSMON_COMMAND_ENUM[] = [
+  SYSMON_COMMAND_ENUM.MONITOR,
   SYSMON_COMMAND_ENUM.SCAN_DIR,
   SYSMON_COMMAND_ENUM.PING,
   SYSMON_COMMAND_ENUM.ADMIN,
   SYSMON_COMMAND_ENUM.SPEEDTEST,
   SYSMON_COMMAND_ENUM.T_NINE,
+  SYSMON_COMMAND_ENUM.NLP,
 ];
 
 enum SCANDIR_CMD_FLAG_ENUM {
@@ -179,6 +193,10 @@ export function parseSysmonArgs(): SysmonCommand {
   };
 
   switch(cmd.kind) {
+    case SYSMON_COMMAND_ENUM.MONITOR:
+      cmd.args = restPositionals;
+      cmd.opts = {};
+      break;
     case SYSMON_COMMAND_ENUM.SCAN_DIR:
       // expects a string arg
       if(restPositionals.length < 1) {
@@ -210,6 +228,10 @@ export function parseSysmonArgs(): SysmonCommand {
       cmd.opts = {};
       break;
     case SYSMON_COMMAND_ENUM.T_NINE:
+      cmd.args = restPositionals;
+      cmd.opts = {};
+      break;
+    case SYSMON_COMMAND_ENUM.NLP:
       cmd.args = restPositionals;
       cmd.opts = {};
       break;
