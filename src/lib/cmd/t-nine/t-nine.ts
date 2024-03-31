@@ -1,31 +1,32 @@
 
-import fs from 'fs/promises';
-import readline from 'readline/promises';
+import readline from 'readline';
+import { Key } from 'readline';
 
 import { SysmonCommand } from '../sysmon-args';
-import path from 'path';
-import { DATA_DIR_PATH } from '../../../constants';
+import { TNineService } from './t-nine-service';
 import { DIGIT_CHAR_MAP, KEY_MAPPINGS, KEY_TO_NUM_MAP } from './t-nine-key-mappings';
 import { DigitTrie, DigitTrieNode } from './digit-trie';
-import { Key } from 'readline';
+import { isString } from '../../util/validate-primitives';
 
 export async function tNineMain(cmd: SysmonCommand) {
   let keys: string;
   let numKeys: string;
   console.log('t9');
-  if(
-    cmd.args === undefined
-    || cmd.args.length < 1
-  ) {
-    throw new Error('t9 expects one argument');
-  }
-  keys = cmd.args.join(' ');
+  // if(
+  //   cmd.args === undefined
+  //   || cmd.args.length < 1
+  // ) {
+  //   throw new Error('t9 expects one argument');
+  // }
+  keys = cmd?.args?.join(' ') ?? '';
   console.log(keys);
   numKeys = convertKeysToNums(keys);
   console.log(numKeys);
 
-  let rawWords = await loadRawWords();
-  let digitTrie = new DigitTrie();
+  let rawWords = await TNineService.loadWords();
+  let freqMap = await TNineService.getFrequencyMap(rawWords);
+  console.log('rawWords');
+  let digitTrie = new DigitTrie(freqMap);
   for(let i = 0; i < rawWords.length; ++i) {
     let currWord: string;
     currWord = rawWords[i];
@@ -39,12 +40,6 @@ export async function tNineMain(cmd: SysmonCommand) {
     console.log(wordMatches);
   }
 
-  const CTRL_KEYS = [
-    'backspace',
-    'return',
-    'down',
-    'escape',
-  ];
   const T_NINE_KEYS: string[] = KEY_MAPPINGS.map(keyMapping => {
     return keyMapping[2];
   });
@@ -52,65 +47,90 @@ export async function tNineMain(cmd: SysmonCommand) {
   inputChars = [];
   let rl = readline.createInterface({
     input: process.stdin,
-    output: process.stdout,
+    // output: process.stdout,
   });
-  await rl.question('press any key to continue');
+  readline.emitKeypressEvents(process.stdin, rl);
+  // await rl.question('press any key to continue');
   // let rlInput = ((rl as unknown) as any).input as ReadStream;
+  process.stdin.setRawMode(true);
+  // process.stdin.resume();
+  process.stdin.setEncoding('utf8');
   process.stdin.on('keypress', (str: string, key: Key) => {
-    let isCtrlKey: boolean;
     let isNumKey: boolean;
-    let inputDigits: string;
+    let currChar: string;
     let currDigit: string | undefined;
-    isCtrlKey = CTRL_KEYS.some(ctrlKey => ctrlKey === key.name);
-    if(isCtrlKey || (key.ctrl === true)) {
-      console.log('');
+    let printInputChars: boolean;
+    let inputCharsChanged: boolean;
+    let inputDigits: string;
+    // console.log({
+    //   key,
+    //   str,
+    // });
+
+    printInputChars = false;
+    inputCharsChanged = false;
+
+    if(key.ctrl === true && key.name === 'c') {
+      process.stdin.setRawMode(false);
+      rl.close();
+      process.exitCode = 0;
+      return;
+    }
+
+    isNumKey = T_NINE_KEYS.some(tNineKey => {
+      return tNineKey === key.name;
+    });
+    if(!isString(key.name)) {
+      console.error(key);
+      console.error(new Error(`unrecognized key: ${key.name}, sequence: ${key.sequence}`));
+      return;
+    }
+    if(isNumKey) {
+      inputChars.push(key.name);
+      currDigit = convertKeysToNums(key.name);
+      printInputChars = true;
+      inputCharsChanged = true;
+    } else {
+      printInputChars = true;
       switch(key.name) {
         case 'backspace':
-          console.log('backspace');
           inputChars.pop();
+          inputCharsChanged = true;
           break;
         case 'down':
-          return;
+          console.log('TODO: select down');
+          break;
+        case 'up':
+          console.log('TODO: select up');
+          break;
         case 'return':
-          inputChars.length = 0;
           break;
         default:
-          console.log({
-            str,
-            key,
-          });
+          printInputChars = false;
       }
-      return;
     }
-    isNumKey = T_NINE_KEYS.some(tNineKey => {
-      return tNineKey === key.sequence;
-    });
-    if(
-      !isNumKey
-      || (key.name === undefined)
-    ) {
-      console.log({
-        str,
-        key,
-      });
-      return;
-    }
-    console.log('');
-    inputChars.push(key.name);
-    currDigit = convertKeysToNums(key.name);
 
-    console.log(DIGIT_CHAR_MAP[currDigit]);
-    console.log(inputChars.join(''));
-    inputDigits = convertKeysToNums(inputChars.join(''));
-    console.log(inputDigits);
-    digitsNode = digitTrie.getDigits(inputDigits);
-    if(digitsNode !== undefined) {
-      console.log(digitsNode.words);
+    if(inputCharsChanged && (inputChars.length > 0)) {
+      currChar = inputChars[inputChars.length - 1];
+      currDigit = convertKeysToNums(currChar);
+      inputDigits = convertKeysToNums(inputChars.join(''));
+      digitsNode = digitTrie.getDigits(inputDigits);
+      if(digitsNode !== undefined) {
+        let topWords = digitsNode.words.slice(0, 10);
+        let topWordsStr = [
+          `${topWords[0]}`,
+          ...topWords.slice(1),
+        ];
+        console.log(topWordsStr.join('\n'));
+        console.log('\n');
+      }
+      console.log(`\n'${currChar}' -> ${DIGIT_CHAR_MAP[currDigit]}\n`);
+    }
+
+    if(printInputChars && (inputChars.length > 0)) {
+      console.log(inputChars.join(''));
     }
   });
-  process.stdin.setRawMode(true);
-  process.stdin.resume();
-  process.stdin.setEncoding('utf8');
 }
 
 function convertKeysToNums(str: string): string {
@@ -124,22 +144,4 @@ function convertKeysToNums(str: string): string {
     numChars.push(KEY_TO_NUM_MAP[c]);
   }
   return numChars.join('');
-}
-
-async function loadRawWords() {
-  let wordFilePath: string;
-  let fileData: Buffer;
-  let fileLines: string[];
-  wordFilePath = [
-    DATA_DIR_PATH,
-    'words.txt',
-  ].join(path.sep);
-  fileData = await fs.readFile(wordFilePath);
-  fileLines = fileData.toString()
-    .split('\n')
-    .filter(fileLine => {
-      return fileLine.trim().length > 0;
-    })
-  ;
-  return fileLines;
 }

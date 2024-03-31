@@ -6,6 +6,7 @@ export enum SYSMON_COMMAND_ENUM {
   SCAN_DIR = 'SCAN_DIR',
   MONITOR = 'MONITOR',
   PING = 'PING',
+  PING_STAT = 'PING_STAT',
   ADMIN = 'ADMIN',
   SPEEDTEST = 'SPEEDTEST',
   T_NINE = 'T_NINE',
@@ -20,7 +21,7 @@ export type SysmonCommand = {
   opts?: Record<string, ArgvOpt>
 };
 
-type ArgvOpt = {
+export type ArgvOpt = {
   flag: string;
   value: string[];
 };
@@ -46,6 +47,11 @@ const SYSMON_COMMANDS: Record<SYSMON_COMMAND_ENUM, SysmonCommand> = {
     kind: SYSMON_COMMAND_ENUM.PING,
     command: 'ping',
     short: 'p',
+  },
+  [SYSMON_COMMAND_ENUM.PING_STAT]: {
+    kind: SYSMON_COMMAND_ENUM.PING_STAT,
+    command: 'ping-stat',
+    short: 'ps',
   },
   [SYSMON_COMMAND_ENUM.ADMIN]: {
     kind: SYSMON_COMMAND_ENUM.ADMIN,
@@ -73,6 +79,7 @@ const SYSMON_CMD_KEYS: SYSMON_COMMAND_ENUM[] = [
   SYSMON_COMMAND_ENUM.MONITOR,
   SYSMON_COMMAND_ENUM.SCAN_DIR,
   SYSMON_COMMAND_ENUM.PING,
+  SYSMON_COMMAND_ENUM.PING_STAT,
   SYSMON_COMMAND_ENUM.ADMIN,
   SYSMON_COMMAND_ENUM.SPEEDTEST,
   SYSMON_COMMAND_ENUM.T_NINE,
@@ -94,11 +101,6 @@ enum PING_CMD_FLAG_ENUM {
   WAIT = 'WAIT', // i
   COUNT = 'COUNT', // c
   INTERFACE = 'INTERFACE', // I
-  STATS = 'STATS', // s, stats
-  IP = 'IP', // ip, ip
-  NETWORK = 'NETWORK', // net, network
-  BUCKET = 'BUCKET', // b, bucket
-  STDDEV = 'STDDEV', // sd, stddev
 }
 
 export const PING_CMD_FLAG_MAP: Record<PING_CMD_FLAG_ENUM, SysmonCommandFlag<PING_CMD_FLAG_ENUM>> = {
@@ -117,42 +119,55 @@ export const PING_CMD_FLAG_MAP: Record<PING_CMD_FLAG_ENUM, SysmonCommandFlag<PIN
     flag: 'iface',
     short: 'I',
   },
-  [PING_CMD_FLAG_ENUM.STATS]: {
-    kind: PING_CMD_FLAG_ENUM.STATS,
-    flag: 'stats',
-    short: 's',
-  },
-  [PING_CMD_FLAG_ENUM.IP]: {
-    kind: PING_CMD_FLAG_ENUM.IP,
+};
+
+enum PING_STAT_CMD_FLAG_ENUM {
+  IP = 'IP', // ip, ip
+  NETWORK = 'NETWORK', // net, network
+  BUCKET = 'BUCKET', // b, bucket
+  STDDEV = 'STDDEV', // sd, stddev
+  START = 'START'
+}
+
+export const PING_STAT_CMD_FLAG_MAP: Record<PING_STAT_CMD_FLAG_ENUM, SysmonCommandFlag<PING_STAT_CMD_FLAG_ENUM>> = {
+  [PING_STAT_CMD_FLAG_ENUM.IP]: {
+    kind: PING_STAT_CMD_FLAG_ENUM.IP,
     flag: 'ip',
     short: 'ip',
   },
-  [PING_CMD_FLAG_ENUM.NETWORK]: {
-    kind: PING_CMD_FLAG_ENUM.NETWORK,
+  [PING_STAT_CMD_FLAG_ENUM.NETWORK]: {
+    kind: PING_STAT_CMD_FLAG_ENUM.NETWORK,
     flag: 'network',
     short: 'net',
   },
-  [PING_CMD_FLAG_ENUM.BUCKET]: {
-    kind: PING_CMD_FLAG_ENUM.BUCKET,
+  [PING_STAT_CMD_FLAG_ENUM.BUCKET]: {
+    kind: PING_STAT_CMD_FLAG_ENUM.BUCKET,
     flag: 'bucket',
     short: 'b',
   },
-  [PING_CMD_FLAG_ENUM.STDDEV]: {
-    kind: PING_CMD_FLAG_ENUM.STDDEV,
+  [PING_STAT_CMD_FLAG_ENUM.STDDEV]: {
+    kind: PING_STAT_CMD_FLAG_ENUM.STDDEV,
     flag: 'stddev',
     short: 'sd',
-  }
+  },
+  [PING_STAT_CMD_FLAG_ENUM.START]: {
+    kind: PING_STAT_CMD_FLAG_ENUM.START,
+    flag: 'start',
+    short: 's',
+  },
 };
 
 const PING_CMD_FLAG_KEYS: PING_CMD_FLAG_ENUM[] = [
   PING_CMD_FLAG_ENUM.WAIT,
   PING_CMD_FLAG_ENUM.COUNT,
   PING_CMD_FLAG_ENUM.INTERFACE,
-  PING_CMD_FLAG_ENUM.STATS,
-  PING_CMD_FLAG_ENUM.IP,
-  PING_CMD_FLAG_ENUM.NETWORK,
-  PING_CMD_FLAG_ENUM.BUCKET,
-  PING_CMD_FLAG_ENUM.STDDEV,
+];
+const PING_STAT_CMD_FLAG_KEYS: PING_STAT_CMD_FLAG_ENUM[] = [
+  PING_STAT_CMD_FLAG_ENUM.IP,
+  PING_STAT_CMD_FLAG_ENUM.NETWORK,
+  PING_STAT_CMD_FLAG_ENUM.BUCKET,
+  PING_STAT_CMD_FLAG_ENUM.STDDEV,
+  PING_STAT_CMD_FLAG_ENUM.START,
 ];
 
 export const FIND_DUPLICATES_FLAG_CMD: SysmonCommandFlag<SCANDIR_CMD_FLAG_ENUM> = {
@@ -218,6 +233,10 @@ export function parseSysmonArgs(): SysmonCommand {
         cmd.args.push(addr);
       }
       cmd.opts = getCmdFlagOpts(PING_CMD_FLAG_KEYS, PING_CMD_FLAG_MAP, parsedArgv);
+      break;
+    case SYSMON_COMMAND_ENUM.PING_STAT:
+      cmd.args = [];
+      cmd.opts = getCmdFlagOpts(PING_STAT_CMD_FLAG_KEYS, PING_STAT_CMD_FLAG_MAP, parsedArgv);
       break;
     case SYSMON_COMMAND_ENUM.ADMIN:
       cmd.args = restPositionals;

@@ -1,6 +1,6 @@
 import path from 'path';
 
-import { OUT_DATA_DIR_PATH } from '../../../constants';
+import { OUT_DATA_DIR_PATH, SCANDIR_OUT_DATA_DIR_PATH } from '../../../constants';
 import { mkdirIfNotExist } from '../../util/files';
 import { getIntuitiveTimeString } from '../../util/format-util';
 import { Timer } from '../../util/timer';
@@ -66,14 +66,16 @@ export async function scanDirMain(cmd: SysmonCommand) {
   console.log(`Scan took: ${getIntuitiveTimeString(scanMs)}`);
 
   mkdirIfNotExist(OUT_DATA_DIR_PATH);
+  mkdirIfNotExist(SCANDIR_OUT_DATA_DIR_PATH);
+
   const dirsDataFileName = `${getDateFileStr(nowDate)}_dirs.txt`;
   const dirsDataFilePath = [
-    OUT_DATA_DIR_PATH,
+    SCANDIR_OUT_DATA_DIR_PATH,
     dirsDataFileName,
   ].join(path.sep);
   const filesDataDirName = `${getDateFileStr(nowDate)}_files.txt`;
   const filesDataFilePath = [
-    OUT_DATA_DIR_PATH,
+    SCANDIR_OUT_DATA_DIR_PATH,
     filesDataDirName,
   ].join(path.sep);
   writeFileSync(dirsDataFilePath, dirs.join('\n'));

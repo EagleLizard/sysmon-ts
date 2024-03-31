@@ -15,8 +15,12 @@ export class DigitTrieNode {
 
 export class DigitTrie {
   head: DigitTrieNode;
-  constructor() {
+  frequencyMap: Map<string, number>;
+  constructor(
+    frequencyMap: Map<string, number>,
+  ) {
     this.head = new DigitTrieNode('');
+    this.frequencyMap = frequencyMap;
   }
 
   insert(word: string) {
@@ -53,6 +57,13 @@ export class DigitTrie {
       }
       currNode = nextNode;
     }
+    currNode.words.sort((a, b) => {
+      let aCount: number;
+      let bCount: number;
+      aCount = this.frequencyMap.get(a) ?? 0;
+      bCount = this.frequencyMap.get(b) ?? 0;
+      return bCount - aCount;
+    });
     return currNode;
   }
 }

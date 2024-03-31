@@ -9,7 +9,6 @@ import { config } from '../../../config';
 import { PingService } from '../../service/ping-service';
 import { spawnProc } from '../proc';
 import { isString } from '../../util/validate-primitives';
-import { runPingStat } from './ping-stats';
 import { NetService } from '../../service/net-service';
 
 const PING_INFO_LOG_INTERVAL_MS = (config.ENVIRONMENT === 'development')
@@ -72,19 +71,27 @@ export async function pingMain(cmd: SysmonCommand) {
 
   const srcAddr = await ipProc();
 
+  if(addr === undefined) {
+    logger.error(cmd);
+    throw new Error('Invalid ping command');
+  }
+  if(!isString(resolvedAddr)) {
+    throw new Error(`Failed to resolve: ${addr}`);
+  }
+
+  console.log({
+    addr,
+    resolvedAddr,
+  });
+
+  await ipProc();
+
   const pingCb = async (pingRes: PingResult) => {
     if(pingRes.addr !== resolvedAddr) {
       // throw new Error(`received ip '${pingRes.addr}', expected '${srcAddr}'`);
       throw new Error(`received ip '${pingRes.addr}', expected '${resolvedAddr}'`);
     }
-    // await PingService.insertPing({
-    //   srcAddrId,
-    //   addrId,
-    //   ...pingRes,
-    // });
     await PingService.postPing({
-      // srcAddrId,
-      // addrId,
       srcAddr,
       ...pingRes,
     });
@@ -100,25 +107,6 @@ export async function pingMain(cmd: SysmonCommand) {
       pingTimer.reset();
     }
   };
-
-  if(addr === undefined) {
-    if(cmd.opts?.stats !== undefined) {
-      return await runPingStat(cmd);
-    } else {
-      logger.error(cmd);
-      throw new Error('Invalid ping command');
-    }
-  }
-  if(!isString(resolvedAddr)) {
-    throw new Error(`Failed to resolve: ${addr}`);
-  }
-
-  console.log({
-    addr,
-    resolvedAddr,
-  });
-
-  await ipProc();
 
   pingProcOpts = {
     addr: resolvedAddr,

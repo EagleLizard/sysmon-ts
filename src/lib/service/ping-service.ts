@@ -19,6 +19,7 @@ export type PingGetStatsOpts = {
   addrType?: ADDR_TYPE_ENUM;
   bucketVal?: number;
   bucketUnit?: TimeBucketUnit;
+  start?: string;
 };
 
 export class PingService {
@@ -54,6 +55,9 @@ export class PingService {
       if(opts.bucketUnit !== undefined) {
         queryParams.append('bucket_unit', opts.bucketUnit);
       }
+    }
+    if(opts.start !== undefined) {
+      queryParams.append('start', opts.start);
     }
 
     url = `${config.EZD_API_BASE_URL}/v1/ping/stats`;

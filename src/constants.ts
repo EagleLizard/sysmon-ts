@@ -16,6 +16,12 @@ export const OUT_DATA_DIR_PATH = [
   OUT_DATA_DIR_NAME,
 ].join(path.sep);
 
+const SCANDIR_OUT_DATA_DIR_NAME = 'scandir';
+export const SCANDIR_OUT_DATA_DIR_PATH = [
+  OUT_DATA_DIR_PATH,
+  SCANDIR_OUT_DATA_DIR_NAME,
+].join(path.sep);
+
 const BASE_CONFIG_DIR_PATH = [
   os.homedir(),
   '.config',

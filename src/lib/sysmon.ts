@@ -8,6 +8,7 @@ import { speedtestMain } from './cmd/speedtest/speedtest';
 import { tNineMain } from './cmd/t-nine/t-nine';
 import { nlpMain } from './cmd/nlp/nlp-cmd';
 import { monitorCmdMain } from './cmd/monitor/monitor-cmd';
+import { runPingStat } from './cmd/ping/ping-stats';
 
 export async function sysmonMain() {
   const cmd = parseSysmonArgs();
@@ -31,6 +32,9 @@ export async function sysmonMain() {
       break;
     case SYSMON_COMMAND_ENUM.PING:
       await pingMain(cmd);
+      break;
+    case SYSMON_COMMAND_ENUM.PING_STAT:
+      await runPingStat(cmd);
       break;
     case SYSMON_COMMAND_ENUM.ADMIN:
       await adminMain(cmd);
