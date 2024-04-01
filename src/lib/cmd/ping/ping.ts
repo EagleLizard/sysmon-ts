@@ -84,8 +84,6 @@ export async function pingMain(cmd: SysmonCommand) {
     resolvedAddr,
   });
 
-  await ipProc();
-
   const pingCb = async (pingRes: PingResult) => {
     if(pingRes.addr !== resolvedAddr) {
       // throw new Error(`received ip '${pingRes.addr}', expected '${srcAddr}'`);

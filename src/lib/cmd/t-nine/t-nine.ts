@@ -11,6 +11,7 @@ import { isString } from '../../util/validate-primitives';
 export async function tNineMain(cmd: SysmonCommand) {
   let keys: string;
   let numKeys: string;
+  setProcName();
   console.log('t9');
   // if(
   //   cmd.args === undefined
@@ -52,7 +53,9 @@ export async function tNineMain(cmd: SysmonCommand) {
   readline.emitKeypressEvents(process.stdin, rl);
   // await rl.question('press any key to continue');
   // let rlInput = ((rl as unknown) as any).input as ReadStream;
-  process.stdin.setRawMode(true);
+  if(process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
+  }
   // process.stdin.resume();
   process.stdin.setEncoding('utf8');
   process.stdin.on('keypress', (str: string, key: Key) => {
@@ -62,10 +65,13 @@ export async function tNineMain(cmd: SysmonCommand) {
     let printInputChars: boolean;
     let inputCharsChanged: boolean;
     let inputDigits: string;
+    let outLines: string[];
     // console.log({
     //   key,
     //   str,
     // });
+
+    outLines = [];
 
     printInputChars = false;
     inputCharsChanged = false;
@@ -117,19 +123,27 @@ export async function tNineMain(cmd: SysmonCommand) {
       digitsNode = digitTrie.getDigits(inputDigits);
       if(digitsNode !== undefined) {
         let topWords = digitsNode.words.slice(0, 10);
-        let topWordsStr = [
-          `${topWords[0]}`,
-          ...topWords.slice(1),
-        ];
-        console.log(topWordsStr.join('\n'));
-        console.log('\n');
+        // let topWordsStr = [
+        //   `${topWords[0]}`,
+        //   ...topWords.slice(1),
+        // ];
+        for(let i = 0; i < topWords.length; ++i) {
+          outLines.push(topWords[i]);
+        }
+        // console.log(topWordsStr.join('\n'));
+        // console.log('\n');
       }
-      console.log(`\n'${currChar}' -> ${DIGIT_CHAR_MAP[currDigit]}\n`);
+      outLines.push(`'${currChar}' -> ${DIGIT_CHAR_MAP[currDigit]}`);
+      // console.log(`\n'${currChar}' -> ${DIGIT_CHAR_MAP[currDigit]}\n`);
     }
 
     if(printInputChars && (inputChars.length > 0)) {
-      console.log(inputChars.join(''));
+      outLines.push('-'.repeat(100));
+      outLines.push(inputChars.join(''));
+      // console.log(inputChars.join(''));
     }
+    console.clear();
+    console.log(outLines.join('\n'));
   });
 }
 
@@ -144,4 +158,8 @@ function convertKeysToNums(str: string): string {
     numChars.push(KEY_TO_NUM_MAP[c]);
   }
   return numChars.join('');
+}
+
+function setProcName() {
+  process.title = `${process.title}-t9`;
 }
