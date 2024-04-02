@@ -8,14 +8,23 @@ export class DllNode<TVal> {
 }
 
 export class Dll<TVal> {
+  private _length: number;
+
   first: DllNode<TVal> | undefined;
   last: DllNode<TVal> | undefined;
+
   constructor() {
+    this._length = 0;
+  }
+
+  get length() {
+    return this._length;
   }
 
   push(val: TVal) {
     let nextNode: DllNode<TVal>;
     nextNode = new DllNode(val);
+    this._length++;
     if(
       (this.first === undefined)
       || (this.last === undefined)
@@ -32,6 +41,7 @@ export class Dll<TVal> {
   pushFront(val: TVal) {
     let nextNode: DllNode<TVal>;
     nextNode = new DllNode(val);
+    this._length++;
     if(
       (this.first === undefined)
       || (this.last === undefined)
@@ -51,6 +61,7 @@ export class Dll<TVal> {
     if(currLast === undefined) {
       return;
     }
+    this._length--;
     if(currLast.prev === undefined) {
       // no more nodes, unset first and last
       this.first = undefined;
@@ -68,6 +79,7 @@ export class Dll<TVal> {
     if(currFirst === undefined) {
       return undefined;
     }
+    this._length--;
     if(currFirst.next === undefined) {
       // no more nodes, unset first and last
       this.first = undefined;
@@ -77,5 +89,14 @@ export class Dll<TVal> {
     this.first = currFirst.next;
     this.first.prev = undefined;
     return currFirst.val;
+  }
+
+  *[Symbol.iterator]() {
+    let currNode: DllNode<TVal> | undefined;
+    currNode = this.first;
+    while(currNode !== undefined) {
+      yield currNode.val;
+      currNode = currNode.next;
+    }
   }
 }

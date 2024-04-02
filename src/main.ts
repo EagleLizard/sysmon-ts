@@ -18,6 +18,8 @@ import { killRunningMonitor } from './lib/cmd/monitor/monitor-cmd';
 })();
 
 async function main() {
+  setProcName();
+
   process.on('SIGINT', () => {
     shutdown('SIGINT');
   });
@@ -29,8 +31,6 @@ async function main() {
     logger.error(reason);
   });
 
-  setProcName();
-
   await sysmonMain();
 }
 
@@ -38,11 +38,11 @@ async function shutdown(sig: string) {
   logger.info(`${sig} received.`);
   killActivePingProc();
   killRunningMonitor();
-  process.exit(0);
-  // setTimeout(() => {
-  //   console.log(`timeout reached for ${sig}, exiting`);
-  //   process.exit(1);
-  // }, 2000);
+  process.exitCode = 0;
+  setTimeout(() => {
+    console.log(`timeout reached for ${sig}, exiting`);
+    process.exit(1);
+  }, 2000);
 }
 
 function setProcName() {

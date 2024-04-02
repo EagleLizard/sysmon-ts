@@ -4,15 +4,22 @@ import os, { CpuInfo } from 'os';
 import { EventRegistry } from '../../util/event-registry';
 import { Timer } from '../../util/timer';
 import { SysmonCommand } from '../sysmon-args';
-import { getIntuitiveTimeString } from '../../util/format-util';
+import { getIntuitiveByteString, getIntuitiveTimeString } from '../../util/format-util';
+import { Dll, DllNode } from '../../models/dll';
 
 let monitorDeregisterCb: () => void = () => undefined;
 let stopMonitorLoopCb: () => void = () => undefined;
 let elapsedMs = 0;
 
-// const INTERVAL_MS = 1e3;
-const INTERVAL_MS = 500;
-// const INTERVAL_MS = 125;
+// const SAMPLE_INTERVAL_MS = 1e3;
+// const SAMPLE_INTERVAL_MS = 500;
+// const SAMPLE_INTERVAL_MS = 25;
+const SAMPLE_INTERVAL_MS = 10;
+
+// const FPS = 6;
+// const DRAW_INTERVAL_MS = Math.floor(1000 / FPS);
+// const DRAW_INTERVAL_MS = 1.5e3;
+const DRAW_INTERVAL_MS = 200;
 
 type MonitorEventData = {
   //
@@ -41,24 +48,69 @@ function getDoMon() {
   let cpus: CpuInfo[];
   let elapsedTimer: Timer;
   let printTimer: Timer;
-  let cpuSamples: [ number, CpuInfo[] ][];
+  let cpuSamples: Dll<[ number, CpuInfo[] ]>;
   let lastSample: [ number, CpuInfo[] ] | undefined;
-  cpuSamples = [];
+  let drawTimer: Timer;
+  let drawCount: number;
+  let sampleCount: number;
+  cpuSamples = new Dll();
   elapsedTimer = Timer.start();
   printTimer = Timer.start();
+  drawTimer = Timer.start();
+  drawCount = 0;
+  sampleCount = 0;
   return (evt: MonitorEventData) => {
     /*
       see: https://stackoverflow.com/a/36823972
     */
     let diffStats: CpuDiffStat[];
-    lastSample = cpuSamples[cpuSamples.length - 1];
+    sampleCount++;
+    // lastSample = cpuSamples[cpuSamples.length - 1];
+    lastSample = cpuSamples.last?.val;
     cpus = os.cpus();
     cpuSamples.push([
       Date.now(),
       cpus,
     ]);
+    const MAX_CPU_SAMPLES = 1e5;
+    if(cpuSamples.length > MAX_CPU_SAMPLES) {
+      let sampleCountDiff = cpuSamples.length - MAX_CPU_SAMPLES;
+      let toPrune = Math.ceil(MAX_CPU_SAMPLES / 32);
+      console.log({ sampleCountDiff });
+      console.log({ cpuSamplesLength: cpuSamples.length });
+      console.log('!!!! PRUNE !!!!');
+      // cpuSamples.splice(0, toPrune);
+      let prunedCount = 0;
+      while(prunedCount++ < toPrune) {
+        cpuSamples.popFront();
+      }
+      // cpuSamples.splice(0, toPrune);
+      console.log({ cpuSamplesLength: cpuSamples.length });
+    }
     elapsedMs = elapsedTimer.currentMs();
-    if(lastSample !== undefined) {
+    if(
+      (lastSample !== undefined)
+      && (drawTimer.currentMs() >= DRAW_INTERVAL_MS)
+    ) {
+      console.log({
+        drawTimerMs: drawTimer.currentMs(),
+      });
+      drawTimer.reset();
+      drawCount++;
+      let memUsage: NodeJS.MemoryUsage;
+      memUsage = process.memoryUsage();
+      console.log(`elapsed: ${getIntuitiveTimeString(elapsedMs)}`);
+      console.log({ DRAW_INTERVAL_MS });
+      console.log({ SAMPLE_INTERVAL_MS });
+      console.log({ drawCount });
+      // console.log({ sampleCount });
+      console.log({ cpuSamplesLength: cpuSamples.length });
+      console.log(`rss: ${getIntuitiveByteString(memUsage.rss) }`);
+      console.log(`heapTotal: ${getIntuitiveByteString(memUsage.heapTotal) }`);
+      console.log(`heapUsed: ${getIntuitiveByteString(memUsage.heapUsed) }`);
+      // console.log(`external: ${getIntuitiveByteString(memUsage.external) }`);
+      // console.log(`arrayBuffers: ${getIntuitiveByteString(memUsage.arrayBuffers) }`);
+      console.log('');
       if(lastSample[1] === undefined) {
         console.error(lastSample);
         const err = new Error('unexpected last cpu sample');
@@ -166,6 +218,6 @@ async function startMonLoop(eventRegistry: EventRegistry<MonitorEventData>) {
         return;
       }
       monLoop();
-    }, INTERVAL_MS);
+    }, SAMPLE_INTERVAL_MS);
   }
 }
