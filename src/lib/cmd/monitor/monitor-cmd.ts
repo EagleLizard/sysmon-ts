@@ -7,10 +7,11 @@ import { EventRegistry } from '../../util/event-registry';
 import { Timer } from '../../util/timer';
 import { SysmonCommand } from '../sysmon-args';
 import { getIntuitiveByteString, getIntuitiveTimeString } from '../../util/format-util';
-import { Dll, initializeDllNodePool } from '../../models/dll';
-import { MAX_CPU_SAMPLES, MONITOR_OUT_DATA_DIR_PATH } from '../../../constants';
+import { Dll } from '../../models/lists/dll';
+import { MONITOR_OUT_DATA_DIR_PATH } from '../../../constants';
 import { getDebugDateTimeStr, getLexicalDateTimeStr } from '../../util/datetime-util';
 import { mkdirIfNotExist } from '../../util/files';
+import { DllNode } from '../../models/lists/dll-node';
 
 let monitorDeregisterCb: () => void = () => undefined;
 let stopMonitorLoopCb: () => void = () => undefined;
@@ -23,7 +24,12 @@ let pruneCount = 0;
 // const SAMPLE_INTERVAL_MS = 1e3;
 // const SAMPLE_INTERVAL_MS = 500;
 // const SAMPLE_INTERVAL_MS = 25;
+// const SAMPLE_INTERVAL_MS = 5;
 const SAMPLE_INTERVAL_MS = 5;
+
+const MAX_CPU_SAMPLES = 1e5;
+
+const CPU_SAMPLE_PRUNE_MIN = 1e3;
 
 // const FPS = 6;
 // const DRAW_INTERVAL_MS = Math.floor(1000 / FPS);
@@ -53,10 +59,10 @@ type MonitorEventData = {
   //
 };
 
-type CpuSample = {
-  timestamp: number,
-  cpus: CpuInfo[],
-};
+// type CpuSample = {
+//   timestamp: number,
+//   cpus: CpuInfo[],
+// };
 
 export async function monitorCmdMain(cmd: SysmonCommand) {
   let evtRegistry: EventRegistry<MonitorEventData>;
@@ -74,18 +80,26 @@ function initMon() {
   debugMonWs = fs.createWriteStream(DEBUG_MON_FILE_PATH, {
     flags: 'a',
   });
-  initializeDllNodePool(MAX_CPU_SAMPLES);
+  DllNode.initDllNodePool({
+    poolSize: MAX_CPU_SAMPLES
+  });
+  // DllNode.initDllNodePool({
+  //   poolSize: -1,
+  // });
   debugLine('');
+  logDebugHeader();
   debugLine(startDate.toISOString());
-  debugLine('!'.repeat(100));
 }
 
 export function killRunningMonitor() {
   let killStr: string;
   killStr = `Killing monitor, elapsed: ${getIntuitiveTimeString(elapsedMs)}`;
-  console.log(killStr);
-  debugLine(killStr);
+  logDebugHeader();
   logDebugInfo();
+  console.log(killStr);
+  console.log(`### isPoolEndable(): ${DllNode.isPoolEnabled()} ###`);
+  debugLine(killStr);
+  // debugLine(`### isPoolEndable(): ${DllNode.isPoolEnabled()} ###`);
 
   monitorDeregisterCb();
   stopMonitorLoopCb();
@@ -117,6 +131,12 @@ function getDoMon() {
     sampleCount++;
     // lastSample = cpuSamples[cpuSamples.length - 1];
     lastSample = cpuSamples.last?.val;
+
+    /*
+      ##############################
+      push cpu sample
+      ##############################
+    */
     cpus = os.cpus();
     cpuSamples.push([
       Date.now(),
@@ -125,13 +145,18 @@ function getDoMon() {
 
     if(cpuSamples.length > MAX_CPU_SAMPLES) {
       let sampleCountDiff = cpuSamples.length - MAX_CPU_SAMPLES;
-      let toPrune = Math.ceil(MAX_CPU_SAMPLES / 32);
-      console.log({ sampleCountDiff });
-      console.log({ cpuSamplesLength: cpuSamples.length });
-      console.log('!!!! PRUNE !!!!');
-      debugLine(`sampleCountDiff: ${sampleCountDiff}`);
-      debugLine(`cpuSamplesLength: ${cpuSamples.length}`);
-      debugLine('!!!! PRUNE !!!!');
+      let toPrune = Math.max(
+        Math.ceil(MAX_CPU_SAMPLES / 32),
+        CPU_SAMPLE_PRUNE_MIN,
+      );
+      // console.log('!!!! PRUNE !!!!');
+      // console.log(`pruning ${toPrune} samples`);
+      // console.log({ sampleCountDiff });
+      // console.log({ cpuSamplesLength: cpuSamples.length });
+      // debugLine('!!!! PRUNE !!!!');
+      // debugLine(`sampleCountDiff[pre]: ${sampleCountDiff}`);
+      // debugLine(`pruning ${toPrune} samples`);
+      // debugLine(`cpuSamplesLength[post]: ${cpuSamples.length}`);
 
       pruneCount++;
       // cpuSamples.splice(0, toPrune);
@@ -141,10 +166,10 @@ function getDoMon() {
       }
 
       // cpuSamples.splice(0, toPrune);
-      console.log({ cpuSamplesLength: cpuSamples.length });
-      console.log({ pruneCount });
-      debugLine(`cpuSamplesLength: ${cpuSamples.length}`);
-      debugLine(`pruneCount: ${pruneCount}`);
+      // console.log({ cpuSamplesLength: cpuSamples.length });
+      // console.log({ pruneCount });
+      // debugLine(`cpuSamplesLength: ${cpuSamples.length}`);
+      // debugLine(`pruneCount: ${pruneCount}`);
     }
     elapsedMs = elapsedTimer.currentMs();
     if(
@@ -234,15 +259,23 @@ function getMemUsage(): NodeJS.MemoryUsage {
   return _memUsage;
 }
 
+function logDebugHeader() {
+  debugLine('!'.repeat(70));
+  debugLine(`### isPoolEndable(): ${DllNode.isPoolEnabled()} ###`);
+}
+
 function logDebugInfo() {
   let timeStr: string;
   let nowDate: Date;
+  let elapsedStr: string;
   nowDate = new Date;
   timeStr = getDebugDateTimeStr(nowDate);
+  elapsedStr = getIntuitiveTimeString(elapsedMs);
   debugLine('');
   debugLine(timeStr);
   debugLine('-'.repeat(timeStr.length));
-  debugLine(`elapsedMs: ${elapsedMs}`);
+  debugLine(elapsedStr);
+  debugLine(`${elapsedMs}ms`);
   debugLine('');
   debugLine(`cpu_sampleCount: ${sampleCount}`);
   debugLine(`drawCount: ${drawCount}`);
@@ -252,6 +285,9 @@ function logDebugInfo() {
   debugLine(`heapUsed: ${getIntuitiveByteString(_memUsage.heapUsed) }`);
   debugLine('');
   debugLine(`pruneCount: ${pruneCount}`);
+  if(DllNode.isPoolEnabled()) {
+    debugLine(`poolLength: ${DllNode.poolLength}`);
+  }
   // debugLine(`external: ${getIntuitiveByteString(_memUsage.external) }`);
   // debugLine(`arrayBuffers: ${getIntuitiveByteString(_memUsage.arrayBuffers) }`);
 }

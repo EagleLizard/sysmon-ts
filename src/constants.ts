@@ -43,5 +43,3 @@ export const MONITOR_OUT_DATA_DIR_PATH = [
   OUT_DATA_DIR_PATH,
   MONITOR_OUT_DATA_DIR_NAME,
 ].join(path.sep);
-
-export const MAX_CPU_SAMPLES = 1e5;
