@@ -1,10 +1,69 @@
 
+let dllNodePool: DllNode<unknown>[] | undefined;
+
+export function initializeDllNodePool(poolSize: number) {
+  if(dllNodePool !== undefined) {
+    throw new Error('DllNodePool already initialized');
+  }
+  dllNodePool = [];
+  dllNodePool = Array(poolSize).fill(0).map(() => {
+    return DllNode.init();
+  });
+  console.log(dllNodePool);
+}
+
+export function resetDllNodePool() {
+  dllNodePool = undefined;
+}
+
 export class DllNode<TVal> {
-  constructor(
-    public val: TVal,
-    public next?: DllNode<TVal>,
-    public prev?: DllNode<TVal>,
-  ) {}
+  private _val: TVal | undefined;
+  next?: DllNode<TVal>;
+  prev?: DllNode<TVal>;
+  private constructor(
+    val?: TVal
+  ) {
+    this._val = val ?? undefined;
+  }
+
+  get val(): TVal {
+    if(this._val === undefined) {
+      console.error(this);
+      throw new Error('Attempt to access "val" of uninitialized DllNode');
+    }
+    return this._val;
+  }
+
+  $destroy() {
+    // this._val = undefined;
+    // this.next = undefined;
+    // this.prev = undefined;
+    // push onto pool
+    if(dllNodePool === undefined) {
+      throw new Error('Attempted to call $destroy on DllNode before initializing pool');
+    }
+    dllNodePool.push(this);
+  }
+
+  static init<I>(
+    val?: I
+  ): DllNode<I> {
+    let poolNode: DllNode<unknown> | undefined;
+    // get from pool or make a new DllNode
+    if(dllNodePool === undefined) {
+      throw new Error('Attemped to initialize DllNode before initializing pool');
+    }
+    if(dllNodePool.length > 0) {
+      poolNode = dllNodePool.pop();
+      if(poolNode !== undefined) {
+        poolNode._val = val;
+        poolNode.next = undefined;
+        poolNode.prev = undefined;
+        return poolNode as DllNode<I>;
+      }
+    }
+    return new DllNode(val);
+  }
 }
 
 export class Dll<TVal> {
@@ -23,7 +82,7 @@ export class Dll<TVal> {
 
   push(val: TVal) {
     let nextNode: DllNode<TVal>;
-    nextNode = new DllNode(val);
+    nextNode = DllNode.init(val);
     this._length++;
     if(
       (this.first === undefined)
@@ -40,7 +99,7 @@ export class Dll<TVal> {
 
   pushFront(val: TVal) {
     let nextNode: DllNode<TVal>;
-    nextNode = new DllNode(val);
+    nextNode = DllNode.init(val);
     this._length++;
     if(
       (this.first === undefined)
@@ -57,6 +116,7 @@ export class Dll<TVal> {
 
   pop(): TVal | undefined {
     let currLast: DllNode<TVal> | undefined;
+    let val: TVal;
     currLast = this.last;
     if(currLast === undefined) {
       return;
@@ -70,11 +130,15 @@ export class Dll<TVal> {
     }
     this.last = currLast.prev;
     this.last.next = undefined;
-    return currLast.val;
+
+    val = currLast.val;
+    currLast.$destroy();
+    return val;
   }
 
   popFront(): TVal | undefined {
     let currFirst: DllNode<TVal> | undefined;
+    let val: TVal;
     currFirst = this.first;
     if(currFirst === undefined) {
       return undefined;
@@ -88,7 +152,9 @@ export class Dll<TVal> {
     }
     this.first = currFirst.next;
     this.first.prev = undefined;
-    return currFirst.val;
+    val = currFirst.val;
+    currFirst.$destroy();
+    return val;
   }
 
   *[Symbol.iterator]() {

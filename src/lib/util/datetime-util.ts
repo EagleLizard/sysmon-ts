@@ -17,6 +17,16 @@ export function getDateFileStr(date: Date) {
   return format(date, 'MMddy_kkmm');
 }
 
+/*
+  alphabetically sortable datetime string
+*/
+export function getLexicalDateTimeStr(date: Date) {
+  return format(date, 'y-MM-dd_HH-mm-ss');
+}
+export function getDebugDateTimeStr(date: Date) {
+  return format(date, '[MM-dd-y] HH:mm:ss.SSS');
+}
+
 export function getDayStr(date: Date) {
   return format(date, 'E');
 }

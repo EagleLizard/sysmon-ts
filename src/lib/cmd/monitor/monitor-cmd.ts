@@ -1,41 +1,92 @@
 
 import os, { CpuInfo } from 'os';
+import fs, { WriteStream } from 'fs';
+import path from 'path';
 
 import { EventRegistry } from '../../util/event-registry';
 import { Timer } from '../../util/timer';
 import { SysmonCommand } from '../sysmon-args';
 import { getIntuitiveByteString, getIntuitiveTimeString } from '../../util/format-util';
-import { Dll, DllNode } from '../../models/dll';
+import { Dll, initializeDllNodePool } from '../../models/dll';
+import { MAX_CPU_SAMPLES, MONITOR_OUT_DATA_DIR_PATH } from '../../../constants';
+import { getDebugDateTimeStr, getLexicalDateTimeStr } from '../../util/datetime-util';
+import { mkdirIfNotExist } from '../../util/files';
 
 let monitorDeregisterCb: () => void = () => undefined;
 let stopMonitorLoopCb: () => void = () => undefined;
 let elapsedMs = 0;
+let _memUsage = process.memoryUsage();
+let drawCount = 0;
+let sampleCount = 0;
+let pruneCount = 0;
 
 // const SAMPLE_INTERVAL_MS = 1e3;
 // const SAMPLE_INTERVAL_MS = 500;
 // const SAMPLE_INTERVAL_MS = 25;
-const SAMPLE_INTERVAL_MS = 10;
+const SAMPLE_INTERVAL_MS = 5;
 
 // const FPS = 6;
 // const DRAW_INTERVAL_MS = Math.floor(1000 / FPS);
 // const DRAW_INTERVAL_MS = 1.5e3;
-const DRAW_INTERVAL_MS = 200;
+// const DRAW_INTERVAL_MS = 200;
+const DRAW_INTERVAL_MS = 1e3;
+
+const startDate = new Date();
+
+// function numToBase64(n: number) {
+//   let nBytes = Math.ceil(Math.log2(n + 1) / 8);
+//   console.log({ nBytes });
+//   let buf = Buffer.alloc(nBytes);
+//   buf.writeUintBE(n, 0, nBytes);
+//   return buf.toString('base64');
+// }
+
+const DEBUG_MON_FILE_NAME = `${getLexicalDateTimeStr(startDate)}_debugmon.txt`;
+const DEBUG_MON_FILE_PATH  = [
+  MONITOR_OUT_DATA_DIR_PATH,
+  DEBUG_MON_FILE_NAME,
+].join(path.sep);
+
+let debugMonWs: WriteStream | undefined;
 
 type MonitorEventData = {
   //
 };
 
+type CpuSample = {
+  timestamp: number,
+  cpus: CpuInfo[],
+};
+
 export async function monitorCmdMain(cmd: SysmonCommand) {
   let evtRegistry: EventRegistry<MonitorEventData>;
-  setMonitorProcName();
+
+  initMon();
 
   evtRegistry = new EventRegistry(false);
   monitorDeregisterCb = evtRegistry.register(getDoMon());
   stopMonitorLoopCb = await startMonLoop(evtRegistry);
 }
 
+function initMon() {
+  setMonitorProcName();
+  mkdirIfNotExist(MONITOR_OUT_DATA_DIR_PATH);
+  debugMonWs = fs.createWriteStream(DEBUG_MON_FILE_PATH, {
+    flags: 'a',
+  });
+  initializeDllNodePool(MAX_CPU_SAMPLES);
+  debugLine('');
+  debugLine(startDate.toISOString());
+  debugLine('!'.repeat(100));
+}
+
 export function killRunningMonitor() {
-  console.log(`Killing monitor, elapsed: ${getIntuitiveTimeString(elapsedMs)}`);
+  let killStr: string;
+  killStr = `Killing monitor, elapsed: ${getIntuitiveTimeString(elapsedMs)}`;
+  console.log(killStr);
+  debugLine(killStr);
+  logDebugInfo();
+
   monitorDeregisterCb();
   stopMonitorLoopCb();
 }
@@ -47,15 +98,14 @@ function setMonitorProcName() {
 function getDoMon() {
   let cpus: CpuInfo[];
   let elapsedTimer: Timer;
-  let printTimer: Timer;
+  let debugTimer: Timer;
   let cpuSamples: Dll<[ number, CpuInfo[] ]>;
   let lastSample: [ number, CpuInfo[] ] | undefined;
   let drawTimer: Timer;
-  let drawCount: number;
-  let sampleCount: number;
+
   cpuSamples = new Dll();
   elapsedTimer = Timer.start();
-  printTimer = Timer.start();
+  debugTimer = Timer.start();
   drawTimer = Timer.start();
   drawCount = 0;
   sampleCount = 0;
@@ -72,20 +122,29 @@ function getDoMon() {
       Date.now(),
       cpus,
     ]);
-    const MAX_CPU_SAMPLES = 1e5;
+
     if(cpuSamples.length > MAX_CPU_SAMPLES) {
       let sampleCountDiff = cpuSamples.length - MAX_CPU_SAMPLES;
       let toPrune = Math.ceil(MAX_CPU_SAMPLES / 32);
       console.log({ sampleCountDiff });
       console.log({ cpuSamplesLength: cpuSamples.length });
       console.log('!!!! PRUNE !!!!');
+      debugLine(`sampleCountDiff: ${sampleCountDiff}`);
+      debugLine(`cpuSamplesLength: ${cpuSamples.length}`);
+      debugLine('!!!! PRUNE !!!!');
+
+      pruneCount++;
       // cpuSamples.splice(0, toPrune);
-      let prunedCount = 0;
-      while(prunedCount++ < toPrune) {
+      let numPruned = 0;
+      while(numPruned++ < toPrune) {
         cpuSamples.popFront();
       }
+
       // cpuSamples.splice(0, toPrune);
       console.log({ cpuSamplesLength: cpuSamples.length });
+      console.log({ pruneCount });
+      debugLine(`cpuSamplesLength: ${cpuSamples.length}`);
+      debugLine(`pruneCount: ${pruneCount}`);
     }
     elapsedMs = elapsedTimer.currentMs();
     if(
@@ -98,7 +157,7 @@ function getDoMon() {
       drawTimer.reset();
       drawCount++;
       let memUsage: NodeJS.MemoryUsage;
-      memUsage = process.memoryUsage();
+      memUsage = getMemUsage();
       console.log(`elapsed: ${getIntuitiveTimeString(elapsedMs)}`);
       console.log({ DRAW_INTERVAL_MS });
       console.log({ SAMPLE_INTERVAL_MS });
@@ -153,11 +212,48 @@ function getDoMon() {
       });
       console.log('');
     }
-    if(printTimer.currentMs() > 1e3) {
-      // console.log(`cpuSamples: ${cpuSamples.length}`);
-      printTimer.reset();
+    if(debugTimer.currentMs() > (1e3 * 60)) {
+      setImmediate(() => {
+        logDebugInfo();
+      });
+      debugTimer.reset();
     }
   };
+}
+
+function debugLine(data: string | Buffer | Uint8Array) {
+  if(debugMonWs === undefined) {
+    throw new Error('Attempt to call debugMonWs.write() before wrtiestream initialized');
+  }
+  debugMonWs.write(data);
+  debugMonWs.write('\n');
+}
+
+function getMemUsage(): NodeJS.MemoryUsage {
+  _memUsage = process.memoryUsage();
+  return _memUsage;
+}
+
+function logDebugInfo() {
+  let timeStr: string;
+  let nowDate: Date;
+  nowDate = new Date;
+  timeStr = getDebugDateTimeStr(nowDate);
+  debugLine('');
+  debugLine(timeStr);
+  debugLine('-'.repeat(timeStr.length));
+  debugLine(`elapsedMs: ${elapsedMs}`);
+  debugLine('');
+  debugLine(`cpu_sampleCount: ${sampleCount}`);
+  debugLine(`drawCount: ${drawCount}`);
+  debugLine('');
+  debugLine(`rss: ${getIntuitiveByteString(_memUsage.rss) }`);
+  debugLine(`heapTotal: ${getIntuitiveByteString(_memUsage.heapTotal) }`);
+  debugLine(`heapUsed: ${getIntuitiveByteString(_memUsage.heapUsed) }`);
+  debugLine('');
+  debugLine(`pruneCount: ${pruneCount}`);
+  // debugLine(`external: ${getIntuitiveByteString(_memUsage.external) }`);
+  // debugLine(`arrayBuffers: ${getIntuitiveByteString(_memUsage.arrayBuffers) }`);
 }
 
 type CpuDiffStat = {

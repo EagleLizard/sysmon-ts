@@ -39,10 +39,6 @@ async function shutdown(sig: string) {
   killActivePingProc();
   killRunningMonitor();
   process.exitCode = 0;
-  setTimeout(() => {
-    console.log(`timeout reached for ${sig}, exiting`);
-    process.exit(1);
-  }, 2000);
 }
 
 function setProcName() {
