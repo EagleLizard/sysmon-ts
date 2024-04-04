@@ -282,16 +282,26 @@ function getCpuMon() {
 
     doPrune = cpuSamples.length > MAX_CPU_SAMPLES;
     if(doPrune) {
-      let toPrune: number;
-      let nPruned: number;
+      /*
+        prune the oldest half of the whole interval
+      */
+      let midTimeStamp: number;
       pruneCount++;
+      if(cpuSamples.first?.val === undefined) {
+        throw new Error('cpuSamples.first is undefined during prune');
+      }
+      if(cpuSamples.last?.val === undefined) {
+        throw new Error('cpuSamples.last is undefined during prund');
+      }
       debugLine('!!!!! PRUNE !!!!!');
-      toPrune = Math.max(
-        Math.round(cpuSamples.length / 32),
-        CPU_SAMPLE_PRUNE_MIN,
+      midTimeStamp = (
+        cpuSamples.first.val.timestamp
+        + ((cpuSamples.last.val.timestamp - cpuSamples.first.val.timestamp) / 2)
       );
-      nPruned = 0;
-      while(nPruned++ < toPrune) {
+      while(
+        (cpuSamples.first !== undefined)
+        && (cpuSamples.first.val.timestamp < midTimeStamp)
+      ) {
         cpuSamples.popFront();
       }
     }
