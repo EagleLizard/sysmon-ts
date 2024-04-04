@@ -59,13 +59,15 @@ export class Dll<TVal> {
     this._length--;
     if(currLast.prev === undefined) {
       // no more nodes, unset first and last
+      if(this.first !== this.last) {
+        throw new Error('Dll with one element has mismatched first and last nodes');
+      }
       delete this.first;
       delete this.last;
-      return currLast.val;
+    } else {
+      this.last = currLast.prev;
+      this.last.next = undefined;
     }
-    this.last = currLast.prev;
-    this.last.next = undefined;
-
     val = currLast.val;
     currLast.$destroy();
     return val;
@@ -81,12 +83,15 @@ export class Dll<TVal> {
     this._length--;
     if(currFirst.next === undefined) {
       // no more nodes, unset first and last
+      if(this.first !== this.last) {
+        throw new Error('Dll with one element has mismatched first and last nodes');
+      }
       delete this.first;
       delete this.last;
-      return currFirst.val;
+    } else {
+      this.first = currFirst.next;
+      this.first.prev = undefined;
     }
-    this.first = currFirst.next;
-    this.first.prev = undefined;
     val = currFirst.val;
     currFirst.$destroy();
     return val;

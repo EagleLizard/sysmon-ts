@@ -1,18 +1,12 @@
 
-import { describe, it, expect, beforeEach, afterEach  } from 'vitest';
+import { describe, it, expect, beforeEach  } from 'vitest';
 import { DllNode } from './dll-node';
 import { Sll } from './sll';
 
 describe('singly linked list (SLL) tests', () => {
   let testNums: number[];
   beforeEach(() => {
-    DllNode.initDllNodePool({
-      poolSize: -1,
-    });
     testNums = [ 1, 2, 3, 4, 5 ];
-  });
-  afterEach(() => {
-    DllNode.resetDllNodePool();
   });
 
   it('tests pushFront() inserts nodes in correct order', () => {

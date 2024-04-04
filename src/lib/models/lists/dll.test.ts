@@ -1,18 +1,11 @@
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { Dll } from './dll';
-import { DllNode } from './dll-node';
 
 describe('Dll tests', () => {
   let testNums: number[] = [];
   beforeEach(() => {
     testNums = [ 1, 2, 3, 4, 5 ];
-    DllNode.initDllNodePool({
-      poolSize: 1,
-    });
-  });
-  afterEach(() => {
-    DllNode.resetDllNodePool();
   });
 
   it('Test init on push()', () => {
