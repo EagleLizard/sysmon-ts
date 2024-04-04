@@ -30,6 +30,7 @@ const SAMPLE_INTERVAL_MS = 100;
 // const SAMPLE_INTERVAL_MS = 25;
 // const SAMPLE_INTERVAL_MS = 10;
 // const SAMPLE_INTERVAL_MS = 5;
+// const SAMPLE_INTERVAL_MS = 0;
 
 // const FPS = 6;
 // const DRAW_INTERVAL_MS = Math.floor(1000 / FPS);
@@ -54,14 +55,13 @@ type MonitorEventData = {
 };
 console.log();
 type MonitorReturnValue = {
-  debugCb: () => void;
   logCb: () => void;
 }
 
-// type CpuSample = {
-//   timestamp: number,
-//   cpus: CpuInfo[],
-// };
+type CpuSample = {
+  timestamp: number,
+  cpuDiffStats: CpuDiffStat[],
+};
 
 export async function monitorCmdMain(cmd: SysmonCommand) {
   let evtRegistry: EventRegistry<MonitorEventData>;
@@ -116,6 +116,7 @@ function getMonMain() {
 
   monitorFns = [
     getDoMon(),
+    getCpuMon(),
     getProcCpuUsageMon(),
   ];
 
@@ -137,126 +138,41 @@ function getMonMain() {
     if(debugTimer.currentMs() > DEBUG_TIMER_INTERVAL_MS) {
       debugTimer.reset();
       logDebugInfo();
-      for(let i = 0; i < monitorResults.length; ++i) {
-        monitorResults[i].debugCb();
-      }
+      // for(let i = 0; i < monitorResults.length; ++i) {
+      //   monitorResults[i].debugCb();
+      // }
     }
   };
 }
 
 function getDoMon() {
-  let cpus: CpuInfo[];
   let elapsedTimer: Timer;
-  let cpuSamples: Dll<[ number, CpuInfo[] ]>;
-  let lastSample: [ number, CpuInfo[] ] | undefined;
 
   let monRet: MonitorReturnValue;
 
-  cpuSamples = new Dll();
   elapsedTimer = Timer.start();
   drawCount = 0;
   sampleCount = 0;
   return (evt: MonitorEventData) => {
-    /*
-      see: https://stackoverflow.com/a/36823972
-    */
-    let diffStats: CpuDiffStat[];
-    sampleCount++;
-    // lastSample = cpuSamples[cpuSamples.length - 1];
-    lastSample = cpuSamples.last?.val;
-
-    /*
-      ##############################
-      push cpu sample
-      ##############################
-    */
-    cpus = os.cpus();
-    cpuSamples.push([
-      Date.now(),
-      cpus,
-    ]);
-
-    if(cpuSamples.length > MAX_CPU_SAMPLES) {
-      let sampleCountDiff = cpuSamples.length - MAX_CPU_SAMPLES;
-      let toPrune = Math.max(
-        Math.ceil(MAX_CPU_SAMPLES / 32),
-        CPU_SAMPLE_PRUNE_MIN,
-      );
-
-      pruneCount++;
-      let numPruned = 0;
-      while(numPruned++ < toPrune) {
-        cpuSamples.popFront();
-      }
-    }
     const logCb = () => {
+      let memUsage: NodeJS.MemoryUsage;
+      memUsage = getMemUsage();
       elapsedMs = elapsedTimer.currentMs();
-      if(lastSample !== undefined) {
-        drawCount++;
-        let memUsage: NodeJS.MemoryUsage;
-        memUsage = getMemUsage();
-        console.log(`elapsed: ${getIntuitiveTimeString(elapsedMs)}`);
-        // console.log({ DRAW_INTERVAL_MS });
-        // console.log({ SAMPLE_INTERVAL_MS });
-        console.log({ drawCount });
-        // console.log({ sampleCount });
-        console.log({ cpuSamplesLength: cpuSamples.length });
-        console.log(`rss: ${getIntuitiveByteString(memUsage.rss) }`);
-        console.log(`heapTotal: ${getIntuitiveByteString(memUsage.heapTotal) }`);
-        console.log(`heapUsed: ${getIntuitiveByteString(memUsage.heapUsed) }`);
-        // console.log(`external: ${getIntuitiveByteString(memUsage.external) }`);
-        // console.log(`arrayBuffers: ${getIntuitiveByteString(memUsage.arrayBuffers) }`);
-        console.log('');
-        if(lastSample[1] === undefined) {
-          console.error(lastSample);
-          const err = new Error('unexpected last cpu sample');
-          console.error(err);
-          throw err;
-        }
-        // calculate the diff
-        let stats1: CpuStat[];
-        let stats2: CpuStat[];
-        stats1 = lastSample[1].map(getCpuStat);
-        stats2 = cpus.map(getCpuStat);
-        diffStats = stats2.map((endStat, idx) => {
-          let startStat: CpuStat;
-          let total: number;
-          let idle: number;
-          let diffStat: CpuDiffStat;
-          startStat = stats1[idx];
-          total = endStat.total - startStat.total;
-          idle = endStat.idle - startStat.idle;
-          diffStat = {
-            total,
-            idle,
-          };
-          return diffStat;
-        });
-        diffStats.forEach(diffStat => {
-          let percent: number;
-          let outScale: number;
-          let outNum: number;
-          let outStr: string;
-          percent = (diffStat.total === 0)
-            ? 0
-            : diffStat.idle / diffStat.total
-          ;
-          percent = 1 - percent;
-          outNum = Math.round(percent * 10000) / 100;
-          outScale = Math.round(percent * 20);
-          outStr = `${'='.repeat(outScale)} ${outNum}`;
-          console.log(outStr);
-        });
-
-        console.log('');
-      }
-    };
-    const debugCb = () => {
-
+      drawCount++;
+      console.log(`elapsed: ${getIntuitiveTimeString(elapsedMs)}`);
+      // console.log({ DRAW_INTERVAL_MS });
+      // console.log({ SAMPLE_INTERVAL_MS });
+      console.log({ drawCount });
+      // console.log({ sampleCount });
+      console.log(`rss: ${getIntuitiveByteString(memUsage.rss) }`);
+      console.log(`heapTotal: ${getIntuitiveByteString(memUsage.heapTotal) }`);
+      console.log(`heapUsed: ${getIntuitiveByteString(memUsage.heapUsed) }`);
+      // console.log(`external: ${getIntuitiveByteString(memUsage.external) }`);
+      // console.log(`arrayBuffers: ${getIntuitiveByteString(memUsage.arrayBuffers) }`);
+      console.log('');
     };
     monRet = {
       logCb,
-      debugCb,
     };
     return monRet;
   };
@@ -310,14 +226,105 @@ function getProcCpuUsageMon() {
       console.log(`${process.title} current usage: ${currProcPerc * 100}%`);
       console.log(`cpu total usage: ${totalMs} ms`);
     };
-    let debugCb = () => {
 
-    };
     monRet = {
       logCb,
-      debugCb,
     };
     return monRet;
+  };
+}
+
+function getCpuMon() {
+  let cpuSamples: Dll<CpuSample>;
+  let lastCpuStats: CpuStat[];
+  let totalCpuSampleCount: number;
+
+  totalCpuSampleCount = 0;
+
+  cpuSamples = new Dll();
+  lastCpuStats = os.cpus().map(getCpuStat);
+
+  return (evt: MonitorEventData) => {
+    /*
+      see: https://stackoverflow.com/a/36823972
+    */
+    let monitorRet: MonitorReturnValue;
+    let currCpuInfos: CpuInfo[];
+    let currCpuStats: CpuStat[];
+    let cpuDiffStats: CpuDiffStat[];
+    let cpuSample: CpuSample;
+    let doPrune: boolean;
+
+    doPrune = false;
+
+    totalCpuSampleCount++;
+    currCpuInfos = os.cpus();
+    currCpuStats = currCpuInfos.map(getCpuStat);
+
+    cpuDiffStats = [];
+    for(let i = 0; i < lastCpuStats.length; ++i) {
+      let startCpuStat: CpuStat;
+      let endCpuStat: CpuStat;
+      let currCpuDiffStat: CpuDiffStat;
+      startCpuStat = lastCpuStats[i];
+      endCpuStat = currCpuStats[i];
+      currCpuDiffStat = getCpuDiffStat(startCpuStat, endCpuStat);
+      cpuDiffStats.push(currCpuDiffStat);
+    }
+    cpuSample = {
+      timestamp: Date.now(),
+      cpuDiffStats,
+    };
+
+    cpuSamples.push(cpuSample);
+
+    doPrune = cpuSamples.length > MAX_CPU_SAMPLES;
+    if(doPrune) {
+      let toPrune: number;
+      let nPruned: number;
+      pruneCount++;
+      debugLine('!!!!! PRUNE !!!!!');
+      toPrune = Math.max(
+        Math.round(cpuSamples.length / 32),
+        CPU_SAMPLE_PRUNE_MIN,
+      );
+      nPruned = 0;
+      while(nPruned++ < toPrune) {
+        cpuSamples.popFront();
+      }
+    }
+
+    lastCpuStats = currCpuStats;
+
+    const logCb = () => {
+      let outSample: CpuSample;
+      if(cpuSamples.last === undefined) {
+        throw new Error('cpuSamples.last is undefined');
+      }
+      outSample = cpuSamples.last.val;
+      console.log({ totalCpuSampleCount });
+      console.log({ cpuSamplesLength: cpuSamples.length });
+      for(let i = 0; i < outSample.cpuDiffStats.length; ++i) {
+        let currDiffStat: CpuDiffStat;
+        let perc;
+        let outNum: number;
+        let outScale: number;
+        currDiffStat = outSample.cpuDiffStats[i];
+        perc = (currDiffStat.total === 0)
+          ? 0
+          : currDiffStat.idle / currDiffStat.total
+        ;
+        perc = 1 - perc;
+        outNum = Math.round(perc * 10000) / 100;
+        outScale = Math.round(perc * 20);
+        console.log(`${'='.repeat(outScale)} ${outNum}`);
+      }
+    };
+
+    monitorRet = {
+      logCb,
+    };
+    return monitorRet;
   };
 }
 
@@ -374,6 +381,19 @@ type CpuStat = {
   idle: number;
   times: CpuInfo['times'];
 };
+
+function getCpuDiffStat(startStat: CpuStat, endStat: CpuStat): CpuDiffStat {
+  let diffStat: CpuDiffStat;
+  let total: number;
+  let idle: number;
+  total = endStat.total - startStat.total;
+  idle = endStat.idle - startStat.idle;
+  diffStat = {
+    total,
+    idle,
+  };
+  return diffStat;
+}
 
 /*
   see os-utils reference:
