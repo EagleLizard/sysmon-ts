@@ -11,6 +11,7 @@ import { Dll } from '../../models/lists/dll';
 import { MONITOR_OUT_DATA_DIR_PATH } from '../../../constants';
 import { getDebugDateTimeStr, getLexicalDateTimeStr } from '../../util/datetime-util';
 import { mkdirIfNotExist } from '../../util/files';
+import { DllNode } from '../../models/lists/dll-node';
 
 let monitorDeregisterCb: () => void = () => undefined;
 let stopMonitorLoopCb: () => void = () => undefined;
@@ -21,13 +22,13 @@ let sampleCount = 0;
 let pruneCount = 0;
 
 const NUM_CPUS = os.cpus().length;
-const MAX_CPU_SAMPLES = 1e5;
+const MAX_CPU_SAMPLES = 1e4;
 const CPU_SAMPLE_PRUNE_MIN = 1e3;
 
 // const SAMPLE_INTERVAL_MS = 1e3;
 // const SAMPLE_INTERVAL_MS = 500;
-const SAMPLE_INTERVAL_MS = 100;
-// const SAMPLE_INTERVAL_MS = 25;
+// const SAMPLE_INTERVAL_MS = 100;
+const SAMPLE_INTERVAL_MS = 25;
 // const SAMPLE_INTERVAL_MS = 10;
 // const SAMPLE_INTERVAL_MS = 5;
 // const SAMPLE_INTERVAL_MS = 0;
@@ -36,7 +37,8 @@ const SAMPLE_INTERVAL_MS = 100;
 // const DRAW_INTERVAL_MS = Math.floor(1000 / FPS);
 // const DRAW_INTERVAL_MS = 1.5e3;
 // const DRAW_INTERVAL_MS = 200;
-const DRAW_INTERVAL_MS = 1e3;
+// const DRAW_INTERVAL_MS = 1e3;
+const DRAW_INTERVAL_MS = 200;
 
 const DEBUG_TIMER_INTERVAL_MS = (1e3 * 60);
 
@@ -53,7 +55,7 @@ let debugMonWs: WriteStream | undefined;
 type MonitorEventData = {
   //
 };
-console.log();
+
 type MonitorReturnValue = {
   logCb: () => void;
 }
@@ -301,22 +303,61 @@ function getCpuMon() {
       if(cpuSamples.last === undefined) {
         throw new Error('cpuSamples.last is undefined');
       }
-      outSample = cpuSamples.last.val;
+      /*
+        get samples for the last N milliseconds
+      */
+      let lookbackMs = 1e3;
+      let currNode: DllNode<CpuSample> | undefined;
+      let nowMs: number;
+      let outTimestamp: number;
+      let lookbackCount: number;
+      nowMs = Date.now();
+      currNode = cpuSamples.last;
+      outTimestamp = currNode?.val?.timestamp ?? -1;
+      lookbackCount = 0;
+      outSample = {
+        timestamp: outTimestamp,
+        cpuDiffStats: Array(NUM_CPUS).fill(0).map(() => {
+          return {
+            total: 0,
+            idle: 0,
+          };
+        }),
+      };
       console.log({ totalCpuSampleCount });
       console.log({ cpuSamplesLength: cpuSamples.length });
+      console.log('');
+      while(
+        (currNode?.prev !== undefined)
+        && (currNode.val.timestamp > (nowMs - lookbackMs))
+      ) {
+        currNode = currNode.prev;
+      }
+      while(currNode !== undefined) {
+        lookbackCount++;
+        for(let i = 0; i < currNode.val.cpuDiffStats.length; ++i) {
+          let currDiffStat: CpuDiffStat;
+          currDiffStat = currNode.val.cpuDiffStats[i];
+          outSample.cpuDiffStats[i].total += currDiffStat.total;
+          outSample.cpuDiffStats[i].idle += currDiffStat.idle;
+        }
+        currNode = currNode.next;
+      }
       for(let i = 0; i < outSample.cpuDiffStats.length; ++i) {
         let currDiffStat: CpuDiffStat;
-        let perc;
+        let perc: number;
         let outNum: number;
         let outScale: number;
         currDiffStat = outSample.cpuDiffStats[i];
+        currDiffStat.total = currDiffStat.total / lookbackCount;
+        currDiffStat.idle = currDiffStat.idle / lookbackCount;
         perc = (currDiffStat.total === 0)
           ? 0
           : currDiffStat.idle / currDiffStat.total
         ;
         perc = 1 - perc;
         outNum = Math.round(perc * 10000) / 100;
-        outScale = Math.round(perc * 20);
+        outScale = Math.round(perc * 30);
         console.log(`${'='.repeat(outScale)} ${outNum}`);
       }
     };
