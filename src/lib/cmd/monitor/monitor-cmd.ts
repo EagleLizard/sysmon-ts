@@ -13,6 +13,9 @@ import { getDebugDateTimeStr, getLexicalDateTimeStr } from '../../util/datetime-
 import { mkdirIfNotExist } from '../../util/files';
 import { DllNode } from '../../models/lists/dll-node';
 import { MonitorCmdOpts, getMonitorOpts } from './monitor-cmd-opts';
+import { CpuDiffStat, CpuStat, MonitorEventData, MonitorReturnValue } from '../../models/monitor/monitor-cmd';
+import { MonitorUtil } from '../../util/monitor-util';
+import { getProcCpuUsageMon } from './sysmon-proc-usage-mon';
 
 let monitorDeregisterCb: () => void = () => undefined;
 let stopMonitorLoopCb: () => void = () => undefined;
@@ -47,14 +50,6 @@ const DEBUG_MON_FILE_PATH  = [
 ].join(path.sep);
 
 let debugMonWs: WriteStream | undefined;
-
-type MonitorEventData = {
-  //
-};
-
-type MonitorReturnValue = {
-  logCb: () => void;
-}
 
 type CpuSample = {
   timestamp: number,
@@ -165,7 +160,7 @@ function getDoMon(cmdOpts: MonitorCmdOpts) {
       console.log({ DRAW_INTERVAL_MS });
       console.log({ SAMPLE_INTERVAL_MS: cmdOpts.SAMPLE_INTERVAL_MS });
       console.log({ drawCount });
-      console.log({ sampleCount });
+      // console.log({ sampleCount });
       console.log(`rss: ${getIntuitiveByteString(memUsage.rss) }`);
       console.log(`heapTotal: ${getIntuitiveByteString(memUsage.heapTotal) }`);
       console.log(`heapUsed: ${getIntuitiveByteString(memUsage.heapUsed) }`);
@@ -180,69 +175,6 @@ function getDoMon(cmdOpts: MonitorCmdOpts) {
   };
 }
 
-function getProcCpuUsageMon() {
-  let lastUsage: NodeJS.CpuUsage;
-  let lastCpus: CpuInfo[];
-  let lastSysCpuTime: number;
-
-  let monRet: MonitorReturnValue;
-
-  lastUsage = process.cpuUsage();
-  lastCpus = os.cpus();
-
-  return (evt: MonitorEventData) => {
-    let currProcPercOutVal: string;
-    let totalMsOutVal: string;
-    let currUsage: NodeJS.CpuUsage;
-    let currCpus: CpuInfo[];
-    let currSysCpuTime: number;
-
-    let currProcPerc: number;
-    let userMs: number;
-    let systemMs: number;
-    let totalMs: number;
-    currUsage = process.cpuUsage(lastUsage);
-    userMs = currUsage.user / 1e3;
-    systemMs = currUsage.system / 1e3;
-    totalMs = userMs + systemMs;
-
-    currCpus = os.cpus();
-    lastSysCpuTime = lastCpus.reduce((acc, curr) => {
-      let currStat: CpuStat;
-      currStat = getCpuStat(curr);
-      return acc + currStat.total;
-    }, 0);
-    currSysCpuTime = currCpus.reduce((acc, curr) => {
-      let currStat: CpuStat;
-      currStat = getCpuStat(curr);
-      return acc + currStat.total;
-    }, 0);
-
-    currProcPerc = (
-      totalMs / (
-        (currSysCpuTime - lastSysCpuTime) /  currCpus.length
-      )
-    );
-
-    lastUsage = currUsage;
-    currProcPercOutVal = (currProcPerc * 100).toFixed(3);
-    totalMsOutVal = (totalMs).toFixed(3);
-    let logCb = () => {
-      console.log(`${process.title} current usage: ${currProcPercOutVal}%`);
-      console.log(`cpu total usage: ${totalMsOutVal} ms`);
-    };
-
-    monRet = {
-      logCb,
-    };
-    return monRet;
-  };
-}
-
-type ProcCpuUsageSample = {
-  usage: NodeJS.CpuUsage;
- };
-
 function getCpuMon(cmdOpts: MonitorCmdOpts) {
   let cpuSamples: Dll<CpuSample>;
   let lastCpuStats: CpuStat[];
@@ -251,7 +183,7 @@ function getCpuMon(cmdOpts: MonitorCmdOpts) {
   totalCpuSampleCount = 0;
 
   cpuSamples = new Dll();
-  lastCpuStats = os.cpus().map(getCpuStat);
+  lastCpuStats = os.cpus().map(MonitorUtil.getCpuStat);
 
   return (evt: MonitorEventData) => {
     /*
@@ -268,7 +200,7 @@ function getCpuMon(cmdOpts: MonitorCmdOpts) {
 
     totalCpuSampleCount++;
     currCpuInfos = os.cpus();
-    currCpuStats = currCpuInfos.map(getCpuStat);
+    currCpuStats = currCpuInfos.map(MonitorUtil.getCpuStat);
 
     cpuDiffStats = [];
     for(let i = 0; i < lastCpuStats.length; ++i) {
@@ -277,7 +209,7 @@ function getCpuMon(cmdOpts: MonitorCmdOpts) {
       let currCpuDiffStat: CpuDiffStat;
       startCpuStat = lastCpuStats[i];
       endCpuStat = currCpuStats[i];
-      currCpuDiffStat = getCpuDiffStat(startCpuStat, endCpuStat);
+      currCpuDiffStat = MonitorUtil.getCpuDiffStat(startCpuStat, endCpuStat);
       cpuDiffStats.push(currCpuDiffStat);
     }
     cpuSample = {
@@ -457,56 +389,6 @@ function logDebugInfo() {
   debugLine(`pruneCount: ${pruneCount}`);
   // debugLine(`external: ${getIntuitiveByteString(_memUsage.external) }`);
   // debugLine(`arrayBuffers: ${getIntuitiveByteString(_memUsage.arrayBuffers) }`);
-}
-
-type CpuDiffStat = {
-  total: number,
-  idle: number,
-};
-
-type CpuStat = {
-  total: number;
-  idle: number;
-  times: CpuInfo['times'];
-};
-
-function getCpuDiffStat(startStat: CpuStat, endStat: CpuStat): CpuDiffStat {
-  let diffStat: CpuDiffStat;
-  let total: number;
-  let idle: number;
-  total = endStat.total - startStat.total;
-  idle = endStat.idle - startStat.idle;
-  diffStat = {
-    total,
-    idle,
-  };
-  return diffStat;
-}
-
-/*
-  see os-utils reference:
-    https://github.com/oscmejia/os-utils/blob/master/lib/osutils.js
-*/
-function getCpuStat(cpuInfo: CpuInfo): CpuStat {
-  let total: number;
-  let idle: number;
-  let times: CpuInfo['times'];
-  let cpuStat: CpuStat;
-  total = (
-    cpuInfo.times.user
-    + cpuInfo.times.nice
-    + cpuInfo.times.sys
-    + cpuInfo.times.idle
-    + cpuInfo.times.irq
-  );
-  idle = cpuInfo.times.idle;
-  times = cpuInfo.times;
-  cpuStat = {
-    total,
-    idle,
-    times,
-  };
-  return cpuStat;
 }
 
 async function startMonLoop(eventRegistry: EventRegistry<MonitorEventData>, cmdOpts: MonitorCmdOpts) {
