@@ -38,8 +38,10 @@ async function shutdown(sig: string) {
   logger.info(`${sig} received.`);
   killActivePingProc();
   killRunningMonitor();
-  process.exitCode = 0;
-  console.clear();
+  setImmediate(() => {
+    console.clear();
+    process.exitCode = 0;
+  });
 }
 
 function setProcName() {

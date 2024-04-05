@@ -1,6 +1,6 @@
 
 import { CpuInfo } from 'os';
-import { CpuDiffStat, CpuStat } from '../models/monitor/monitor-cmd';
+import { CpuDiffStat, CpuStat } from '../models/monitor/monitor-cmd-types';
 
 export class MonitorUtil {
   static getCpuStat(cpuInfo: CpuInfo): CpuStat {
