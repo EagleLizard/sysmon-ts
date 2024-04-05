@@ -39,6 +39,7 @@ async function shutdown(sig: string) {
   killActivePingProc();
   killRunningMonitor();
   process.exitCode = 0;
+  console.clear();
 }
 
 function setProcName() {

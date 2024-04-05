@@ -157,6 +157,24 @@ export const PING_STAT_CMD_FLAG_MAP: Record<PING_STAT_CMD_FLAG_ENUM, SysmonComma
   },
 };
 
+enum MONITOR_CMD_FLAG_ENUM {
+  SAMPLE_INTERVAL = 'SAMPLE_INTERVAL',
+  MAX_CPU_SAMPLES = 'MAX_CPU_SAMPLES',
+}
+
+export const MONITOR_CMD_FLAG_MAP: Record<MONITOR_CMD_FLAG_ENUM, SysmonCommandFlag<MONITOR_CMD_FLAG_ENUM>> = {
+  [MONITOR_CMD_FLAG_ENUM.SAMPLE_INTERVAL]: {
+    kind: MONITOR_CMD_FLAG_ENUM.SAMPLE_INTERVAL,
+    flag: 'sample-interval',
+    short: 'si',
+  },
+  [MONITOR_CMD_FLAG_ENUM.MAX_CPU_SAMPLES]: {
+    kind: MONITOR_CMD_FLAG_ENUM.MAX_CPU_SAMPLES,
+    flag: 'max-cpu-samplesl',
+    short: 'mcs',
+  }
+};
+
 const PING_CMD_FLAG_KEYS: PING_CMD_FLAG_ENUM[] = [
   PING_CMD_FLAG_ENUM.WAIT,
   PING_CMD_FLAG_ENUM.COUNT,
@@ -168,6 +186,10 @@ const PING_STAT_CMD_FLAG_KEYS: PING_STAT_CMD_FLAG_ENUM[] = [
   PING_STAT_CMD_FLAG_ENUM.BUCKET,
   PING_STAT_CMD_FLAG_ENUM.STDDEV,
   PING_STAT_CMD_FLAG_ENUM.START,
+];
+const MONITOR_CMD_FLAG_KEYS: MONITOR_CMD_FLAG_ENUM[] = [
+  MONITOR_CMD_FLAG_ENUM.SAMPLE_INTERVAL,
+  MONITOR_CMD_FLAG_ENUM.MAX_CPU_SAMPLES,
 ];
 
 export const FIND_DUPLICATES_FLAG_CMD: SysmonCommandFlag<SCANDIR_CMD_FLAG_ENUM> = {
@@ -210,7 +232,7 @@ export function parseSysmonArgs(): SysmonCommand {
   switch(cmd.kind) {
     case SYSMON_COMMAND_ENUM.MONITOR:
       cmd.args = restPositionals;
-      cmd.opts = {};
+      cmd.opts = getCmdFlagOpts(MONITOR_CMD_FLAG_KEYS, MONITOR_CMD_FLAG_MAP, parsedArgv);
       break;
     case SYSMON_COMMAND_ENUM.SCAN_DIR:
       // expects a string arg
