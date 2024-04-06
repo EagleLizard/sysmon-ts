@@ -1,19 +1,19 @@
 import { isString } from '../../util/validate-primitives';
 import { MONITOR_CMD_FLAG_MAP, SysmonCommand } from '../sysmon-args';
 
-const DEFAULT_SAMPLE_INTERVAL_MS = 500;
-const DEFAULT_MAX_CPU_SAMPLES = 1e4;
+const DEFAULT_SAMPLE_INTERVAL_MS = 100;
+const DEFAULT_SAMPLE_MAX = 1e4;
 
 export type MonitorCmdOpts = {
   SAMPLE_INTERVAL_MS: number;
-  MAX_CPU_SAMPLES: number;
+  SAMPLE_MAX: number;
 };
 
 export function getMonitorOpts(cmd: SysmonCommand): MonitorCmdOpts {
   let opts: MonitorCmdOpts;
   opts = {
     SAMPLE_INTERVAL_MS: getSampleIntervalOpt(cmd),
-    MAX_CPU_SAMPLES: getMaxCpuSamplesOpt(cmd),
+    SAMPLE_MAX: getMaxCpuSamplesOpt(cmd),
   };
   return opts;
 }
@@ -45,13 +45,13 @@ function getMaxCpuSamplesOpt(cmd: SysmonCommand): number {
   let maxCpuSamples: number;
   let rawVal: unknown;
   if(
-    (cmd.opts?.[MONITOR_CMD_FLAG_MAP.MAX_CPU_SAMPLES.flag] === undefined)
+    (cmd.opts?.[MONITOR_CMD_FLAG_MAP.SAMPLE_MAX.flag] === undefined)
   ) {
-    return DEFAULT_MAX_CPU_SAMPLES;
+    return DEFAULT_SAMPLE_MAX;
   }
-  rawVal = cmd.opts[MONITOR_CMD_FLAG_MAP.MAX_CPU_SAMPLES.flag].value[0];
+  rawVal = cmd.opts[MONITOR_CMD_FLAG_MAP.SAMPLE_MAX.flag].value[0];
   if(rawVal === undefined) {
-    throw new Error('The max-cpu-samples flag expects one argument.');
+    throw new Error(`The ${MONITOR_CMD_FLAG_MAP.SAMPLE_MAX.flag} flag expects one argument.`);
   }
   if(
     !isString(rawVal)

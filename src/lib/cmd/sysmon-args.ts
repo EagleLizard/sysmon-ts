@@ -159,7 +159,7 @@ export const PING_STAT_CMD_FLAG_MAP: Record<PING_STAT_CMD_FLAG_ENUM, SysmonComma
 
 enum MONITOR_CMD_FLAG_ENUM {
   SAMPLE_INTERVAL = 'SAMPLE_INTERVAL',
-  MAX_CPU_SAMPLES = 'MAX_CPU_SAMPLES',
+  SAMPLE_MAX = 'SAMPLE_MAX',
 }
 
 export const MONITOR_CMD_FLAG_MAP: Record<MONITOR_CMD_FLAG_ENUM, SysmonCommandFlag<MONITOR_CMD_FLAG_ENUM>> = {
@@ -168,10 +168,10 @@ export const MONITOR_CMD_FLAG_MAP: Record<MONITOR_CMD_FLAG_ENUM, SysmonCommandFl
     flag: 'sample-interval',
     short: 'si',
   },
-  [MONITOR_CMD_FLAG_ENUM.MAX_CPU_SAMPLES]: {
-    kind: MONITOR_CMD_FLAG_ENUM.MAX_CPU_SAMPLES,
-    flag: 'max-cpu-samplesl',
-    short: 'mcs',
+  [MONITOR_CMD_FLAG_ENUM.SAMPLE_MAX]: {
+    kind: MONITOR_CMD_FLAG_ENUM.SAMPLE_MAX,
+    flag: 'sample-max',
+    short: 'sm',
   }
 };
 
@@ -189,7 +189,7 @@ const PING_STAT_CMD_FLAG_KEYS: PING_STAT_CMD_FLAG_ENUM[] = [
 ];
 const MONITOR_CMD_FLAG_KEYS: MONITOR_CMD_FLAG_ENUM[] = [
   MONITOR_CMD_FLAG_ENUM.SAMPLE_INTERVAL,
-  MONITOR_CMD_FLAG_ENUM.MAX_CPU_SAMPLES,
+  MONITOR_CMD_FLAG_ENUM.SAMPLE_MAX,
 ];
 
 export const FIND_DUPLICATES_FLAG_CMD: SysmonCommandFlag<SCANDIR_CMD_FLAG_ENUM> = {

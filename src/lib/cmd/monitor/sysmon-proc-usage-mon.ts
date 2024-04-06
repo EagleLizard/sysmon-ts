@@ -1,22 +1,22 @@
-import os, { CpuInfo } from 'os';
-import { CpuStat, MonitorEventData, MonitorReturnValue } from '../../models/monitor/monitor-cmd-types';
-import { MonitorUtil } from '../../util/monitor-util';
-import { Dll } from '../../models/lists/dll';
-import { getIntuitiveByteString } from '../../util/format-util';
-import { Timer } from '../../util/timer';
 
-const MAX_MEM_USAGE_SAMPLES = 1e3;
+import { MonitorEventData, MonitorReturnValue } from '../../models/monitor/monitor-cmd-types';
+import { Dll } from '../../models/lists/dll';
+import { getIntuitiveByteString, getIntuitiveTimeString } from '../../util/format-util';
+import { Timer } from '../../util/timer';
+import { DllNode } from '../../models/lists/dll-node';
+import { MonitorCmdOpts } from './monitor-cmd-opts';
+
+type ProcCpuUsageMonOpts = {
+  //
+} & Pick<MonitorCmdOpts, 'SAMPLE_MAX'>;
 
 type MemUsageSample = {
   timestamp: number,
   memUsage: NodeJS.MemoryUsage;
 }
 
-export function getProcCpuUsageMon() {
+export function getProcUsageMon(opts: ProcCpuUsageMonOpts) {
   let monRet: MonitorReturnValue;
-  let lastUsage: NodeJS.CpuUsage;
-  let lastCpus: CpuInfo[];
-  let lastSysCpuTime: number;
 
   let memUsageSamples: Dll<MemUsageSample>;
   let memUsageSampleTimer: Timer;
@@ -31,51 +31,9 @@ export function getProcCpuUsageMon() {
 
   currMemUsage = process.memoryUsage();
 
-  lastUsage = process.cpuUsage();
-  lastCpus = os.cpus();
-
   memUsageSampleTimer = Timer.start();
 
   return (evt: MonitorEventData) => {
-    let currProcPercOutVal: string;
-    let totalMsOutVal: string;
-    let currUsage: NodeJS.CpuUsage;
-    let currCpus: CpuInfo[];
-    let currSysCpuTime: number;
-
-    let currProcPerc: number;
-    let userMs: number;
-    let systemMs: number;
-    let totalMs: number;
-
-    
-
-    currUsage = process.cpuUsage(lastUsage);
-    userMs = currUsage.user / 1e3;
-    systemMs = currUsage.system / 1e3;
-    totalMs = userMs + systemMs;
-
-    currCpus = os.cpus();
-    lastSysCpuTime = lastCpus.reduce((acc, curr) => {
-      let currStat: CpuStat;
-      currStat = MonitorUtil.getCpuStat(curr);
-      return acc + currStat.total;
-    }, 0);
-    currSysCpuTime = currCpus.reduce((acc, curr) => {
-      let currStat: CpuStat;
-      currStat = MonitorUtil.getCpuStat(curr);
-      return acc + currStat.total;
-    }, 0);
-
-    currProcPerc = (
-      totalMs / (
-        (currSysCpuTime - lastSysCpuTime) /  currCpus.length
-      )
-    );
-
-    lastUsage = currUsage;
-    currProcPercOutVal = (currProcPerc * 100).toFixed(3);
-    totalMsOutVal = (totalMs).toFixed(3);
 
     /* memory usage logic */
 
@@ -86,26 +44,35 @@ export function getProcCpuUsageMon() {
         timestamp: Date.now(),
         memUsage: currMemUsage,
       });
-      if(memUsageSamples.length > MAX_MEM_USAGE_SAMPLES) {
+      if(memUsageSamples.length > opts.SAMPLE_MAX) {
         pruneMemUsageSamples(memUsageSamples);
       }
     }
-
 
     let logCb = () => {
       let rss: number;
       let heapTotal: number;
       let heapUsed: number;
+      let lookbackMs: number;
+
+      lookbackMs = 1e3;
 
       rss = currMemUsage.rss;
       heapTotal = currMemUsage.heapTotal;
       heapUsed = currMemUsage.heapUsed;
+
+      /*
+        get the average over the last N milliseconds
+      */
+      let avgMemSample = getAvgMemSample(memUsageSamples, lookbackMs);
+
+      // console.log({ totalMsOutVal });
       console.log({ memUsageSampleCount: memUsageSamples.length });
+      console.log(`rss (${getIntuitiveTimeString(lookbackMs)} avg): ${getIntuitiveByteString(avgMemSample.memUsage.rss)}`);
       console.log(`rss: ${getIntuitiveByteString(rss)}`);
       console.log(`heapTotal: ${getIntuitiveByteString(heapTotal)}`);
       console.log(`heapUsed: ${getIntuitiveByteString(heapUsed)}`);
 
-      console.log(`${process.title} cpu usage: ${currProcPercOutVal}%`);
       // console.log(`cpu total usage: ${totalMsOutVal} ms`);
     };
 
@@ -114,6 +81,52 @@ export function getProcCpuUsageMon() {
     };
     return monRet;
   };
+}
+
+function getAvgMemSample(samples: Dll<MemUsageSample>, startMs: number): MemUsageSample {
+  let outSample: MemUsageSample;
+  let lookbackMs: number;
+  let currNode: DllNode<MemUsageSample> | undefined;
+
+  let nSamples: number;
+
+  lookbackMs = Date.now() - startMs;
+  currNode = samples.last;
+
+  outSample = {
+    timestamp: currNode?.val.timestamp ?? -1,
+    memUsage: {
+      rss: 0,
+      heapTotal: 0,
+      heapUsed: 0,
+      external: 0,
+      arrayBuffers: 0,
+    },
+  };
+
+  nSamples = 0;
+  while(
+    (currNode?.prev !== undefined)
+    && (currNode.prev.val.timestamp > lookbackMs)
+  ) {
+    ++nSamples;
+
+    outSample.memUsage.rss += currNode.val.memUsage.rss;
+    outSample.memUsage.heapTotal += currNode.val.memUsage.heapTotal;
+    outSample.memUsage.heapUsed += currNode.val.memUsage.heapUsed;
+    outSample.memUsage.external += currNode.val.memUsage.external;
+    outSample.memUsage.arrayBuffers += currNode.val.memUsage.arrayBuffers;
+
+    currNode = currNode.prev;
+  }
+
+  outSample.memUsage.rss = outSample.memUsage.rss / nSamples;
+  outSample.memUsage.heapTotal = outSample.memUsage.heapTotal / nSamples;
+  outSample.memUsage.heapUsed = outSample.memUsage.heapUsed / nSamples;
+  outSample.memUsage.external = outSample.memUsage.external / nSamples;
+  outSample.memUsage.arrayBuffers = outSample.memUsage.arrayBuffers / nSamples;
+
+  return outSample;
 }
 
 function pruneMemUsageSamples(samples: Dll<MemUsageSample>) {

@@ -38,17 +38,17 @@ export function getIntuitiveByteString(ms: number, toFixedVal = 3): string {
 
 export function getIntuitiveTime(ms: number): [ number, string ] {
   let timeTuple: [ number, string ];
-  if(ms > HOURS_IN_MS) {
+  if(ms >= HOURS_IN_MS) {
     timeTuple = [
       ms / HOURS_IN_MS,
       'h',
     ];
-  } else if(ms > MINUTES_IN_MS) {
+  } else if(ms >= MINUTES_IN_MS) {
     timeTuple = [
       ms / MINUTES_IN_MS,
       'm',
     ];
-  } else if(ms > SECONDS_IN_MS) {
+  } else if(ms >= SECONDS_IN_MS) {
     timeTuple = [
       ms / SECONDS_IN_MS,
       's',

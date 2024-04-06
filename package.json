@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node dist/main.js m -si 50 -mcs 1e3",
+    "start": "node dist/main.js m -si 50 -sm 1e3",
     "dev": "nodemon --ext '*' -w dist -w src --exec 'npm start'",
     "build": "tsc",
     "test": "vitest",

@@ -15,7 +15,7 @@ import { DllNode } from '../../models/lists/dll-node';
 import { MonitorCmdOpts, getMonitorOpts } from './monitor-cmd-opts';
 import { CpuDiffStat, CpuStat, MonitorEventData, MonitorReturnValue } from '../../models/monitor/monitor-cmd-types';
 import { MonitorUtil } from '../../util/monitor-util';
-import { getProcCpuUsageMon } from './sysmon-proc-usage-mon';
+import { getProcUsageMon } from './sysmon-proc-usage-mon';
 import { getDebugInfoMon, getDrawCount } from './debug-info-mon';
 
 let monitorDeregisterCb: () => void = () => undefined;
@@ -112,7 +112,7 @@ function getMonMain(cmdOpts: MonitorCmdOpts) {
   monitorFns = [
     getDebugInfoMon(cmdOpts, DRAW_INTERVAL_MS),
     getCpuMon(cmdOpts),
-    getProcCpuUsageMon(),
+    getProcUsageMon(cmdOpts),
   ];
 
   for(let i = 0; i < process.stdout.rows; ++i) {
@@ -189,7 +189,7 @@ function getCpuMon(cmdOpts: MonitorCmdOpts) {
 
     cpuSamples.push(cpuSample);
 
-    doPrune = cpuSamples.length > cmdOpts.MAX_CPU_SAMPLES;
+    doPrune = cpuSamples.length > cmdOpts.SAMPLE_MAX;
     if(doPrune) {
       pruneCpuSamples(cpuSamples);
     }
