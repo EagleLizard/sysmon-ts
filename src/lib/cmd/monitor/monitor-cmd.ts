@@ -279,7 +279,7 @@ function getAvgCpuSample(cpuSamples: Dll<CpuSample>, startMs: number): CpuSample
   if(cpuSamples.last === undefined) {
     throw new Error('cpuSamples.last is undefined');
   }
-  let lookbackMs = 1e3;
+  let lookbackMs = startMs;
   let currNode: DllNode<CpuSample> | undefined;
   let outTimestamp: number;
   let lookbackCount: number;
