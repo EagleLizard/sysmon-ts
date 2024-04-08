@@ -92,35 +92,33 @@ function setMonitorProcName() {
 function getMonMain(cmdOpts: MonitorCmdOpts) {
   let logTimer: Timer;
   let debugTimer: Timer;
-  let monitorFns: ((evt: MonitorEventData) => MonitorReturnValue)[];
+  let debugInfoMon: (evt: MonitorEventData) => MonitorReturnValue;
+  let cpuMon: (evt: MonitorEventData) => MonitorReturnValue;
+  let procUsageMon: (evt: MonitorEventData) => MonitorReturnValue;
   logTimer = Timer.start();
   debugTimer = Timer.start();
 
-  monitorFns = [
-    getDebugInfoMon(cmdOpts, DRAW_INTERVAL_MS),
-    getCpuMon(cmdOpts),
-    getProcUsageMon(cmdOpts),
-  ];
+  debugInfoMon = getDebugInfoMon(cmdOpts, DRAW_INTERVAL_MS);
+  cpuMon = getCpuMon(cmdOpts);
+  procUsageMon = getProcUsageMon(cmdOpts);
 
   for(let i = 0; i < process.stdout.rows; ++i) {
     console.log('');
   }
 
   return (evt: MonitorEventData) => {
-    let monitorResults: MonitorReturnValue[];
-
-    monitorResults = [];
-    for(let i = 0; i < monitorFns.length; ++i) {
-      monitorResults.push(monitorFns[i](evt));
-    }
+    let debugInfoMonRes = debugInfoMon(evt);
+    let cpuMonRes = cpuMon(evt);
+    let procUsageMonRes = procUsageMon(evt);
 
     if(logTimer.currentMs() > DRAW_INTERVAL_MS) {
       console.clear();
       console.log({ logTimerMs: logTimer.currentMs() });
       logTimer.reset();
-      for(let i = 0; i < monitorResults.length; ++i) {
-        monitorResults[i].logCb();
-      }
+
+      debugInfoMonRes.logCb();
+      cpuMonRes.logCb();
+      procUsageMonRes.logCb();
     }
     if(debugTimer.currentMs() > DEBUG_TIMER_INTERVAL_MS) {
       debugTimer.reset();
@@ -159,7 +157,7 @@ function logDebugInfo() {
   debugLine(`${elapsedMs}ms`);
   debugLine('');
   // debugLine(`cpu_sampleCount: ${sampleCount}`);
-  debugLine(`drawCount: ${getDrawCount}`);
+  debugLine(`drawCount: ${getDrawCount()}`);
   debugLine('');
   debugLine(`rss: ${getIntuitiveByteString(_memUsage.rss) }`);
   debugLine(`heapTotal: ${getIntuitiveByteString(_memUsage.heapTotal) }`);
