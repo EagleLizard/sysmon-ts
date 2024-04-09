@@ -11,9 +11,10 @@ import { getDebugDateTimeStr, getLexicalDateTimeStr } from '../../util/datetime-
 import { mkdirIfNotExist } from '../../util/files';
 import { MonitorCmdOpts, getMonitorOpts } from './monitor-cmd-opts';
 import { MonitorEventData, MonitorReturnValue } from '../../models/monitor/monitor-cmd-types';
-import { getProcUsageMon } from './sysmon-proc-usage-mon';
+import { MemUsageSample, ProcUsageMonResult, getProcUsageMon } from './sysmon-proc-usage-mon';
 import { getDebugInfoMon, getDrawCount } from './debug-info-mon';
 import { getCpuMon } from './cpu-mon';
+import { DllNode } from '../../models/lists/dll-node';
 
 let monitorDeregisterCb: () => void = () => undefined;
 let stopMonitorLoopCb: () => void = () => undefined;
@@ -92,11 +93,24 @@ function setMonitorProcName() {
 function getMonMain(cmdOpts: MonitorCmdOpts) {
   let logTimer: Timer;
   let debugTimer: Timer;
+  let logSampleTimer: Timer;
   let debugInfoMon: (evt: MonitorEventData) => MonitorReturnValue;
   let cpuMon: (evt: MonitorEventData) => MonitorReturnValue;
-  let procUsageMon: (evt: MonitorEventData) => MonitorReturnValue;
+  let procUsageMon: (evt: MonitorEventData) => ProcUsageMonResult;
+
+  let lastMemUsageTimestamp: number;
+  let rssAvg = 0;
+  let rssMin = Infinity;
+  let rssMax = -Infinity;
+
+  let totalMemSampleCount = 0;
+  let logSampleIntervalMs = 1e3;
+
+  lastMemUsageTimestamp = Date.now();
+
   logTimer = Timer.start();
   debugTimer = Timer.start();
+  logSampleTimer = Timer.start();
 
   debugInfoMon = getDebugInfoMon(cmdOpts, DRAW_INTERVAL_MS);
   cpuMon = getCpuMon(cmdOpts);
@@ -119,13 +133,46 @@ function getMonMain(cmdOpts: MonitorCmdOpts) {
       debugInfoMonRes.logCb();
       cpuMonRes.logCb();
       procUsageMonRes.logCb();
+
+      console.log(`rssAvg: ${getIntuitiveByteString(rssAvg)}`);
+      console.log(`rssMin: ${getIntuitiveByteString(rssMin)}`);
+      console.log(`rssMax: ${getIntuitiveByteString(rssMax)}`);
+      // console.log({ totalMemSampleCount });
     }
+
+    if(logSampleTimer.currentMs() >= logSampleIntervalMs) {
+      logSampleTimer.reset();
+      let memSamples = procUsageMonRes.getMemUsageSamples(lastMemUsageTimestamp);
+      let maxTimestamp = -Infinity;
+      let rssSum = 0;
+      if(
+        (memSamples.first === undefined)
+        || (memSamples.last === undefined)
+      ) {
+        throw new Error('Attempt to get samples from empty list');
+      }
+      let currNode: DllNode<MemUsageSample> | undefined;
+      currNode = memSamples.first;
+      while(currNode !== undefined) {
+        let currMemSample = currNode.val;
+        totalMemSampleCount++;
+        rssSum += currMemSample.memUsage.rss;
+        rssMin = Math.min(rssMin, currMemSample.memUsage.rss);
+        rssMax = Math.max(rssMax, currMemSample.memUsage.rss);
+        maxTimestamp = Math.max(maxTimestamp, currMemSample.timestamp);
+        currNode = currNode.next;
+      }
+      rssAvg = rssSum / memSamples.length;
+      lastMemUsageTimestamp = memSamples.last.val.timestamp;
+      if(lastMemUsageTimestamp !== maxTimestamp) {
+        throw new Error('asdaasd');
+      }
+      // memSamples.$destroy();
+    }
+
     if(debugTimer.currentMs() > DEBUG_TIMER_INTERVAL_MS) {
       debugTimer.reset();
       logDebugInfo();
-      // for(let i = 0; i < monitorResults.length; ++i) {
-      //   monitorResults[i].debugCb();
-      // }
     }
   };
 }

@@ -11,6 +11,18 @@ export class Dll<TVal> {
     this._length = 0;
   }
 
+  $destroy() {
+    let currNode = this.first;
+    while(currNode !== undefined) {
+      let nextNode = currNode.next;
+      currNode.$destroy();
+      currNode = nextNode;
+    }
+    delete this.first;
+    delete this.last;
+    this._length = -1;
+  }
+
   get length() {
     return this._length;
   }

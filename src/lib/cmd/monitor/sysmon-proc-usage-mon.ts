@@ -10,17 +10,23 @@ type ProcCpuUsageMonOpts = {
   //
 } & Pick<MonitorCmdOpts, 'SAMPLE_MAX'>;
 
-type MemUsageSample = {
+export type MemUsageSample = {
   timestamp: number,
   memUsage: NodeJS.MemoryUsage;
 }
 
+export type ProcUsageMonResult = {
+  getMemUsageSamples: (start: number) => Dll<MemUsageSample>;
+} & MonitorReturnValue;
+
 export function getProcUsageMon(opts: ProcCpuUsageMonOpts) {
-  let monRet: MonitorReturnValue;
+  let monRet: ProcUsageMonResult;
 
   let memUsageSamples: Dll<MemUsageSample>;
   let memUsageSampleTimer: Timer;
   let currMemUsage: NodeJS.MemoryUsage;
+
+  let totalMemSampleCount = 0;
 
   memUsageSamples = new Dll();
 
@@ -38,6 +44,7 @@ export function getProcUsageMon(opts: ProcCpuUsageMonOpts) {
     /* memory usage logic */
 
     if(memUsageSampleTimer.currentMs() > 0) {
+      totalMemSampleCount++;
       memUsageSampleTimer.reset();
       currMemUsage = process.memoryUsage();
       memUsageSamples.push({
@@ -61,28 +68,56 @@ export function getProcUsageMon(opts: ProcCpuUsageMonOpts) {
       heapTotal = currMemUsage.heapTotal;
       heapUsed = currMemUsage.heapUsed;
 
-      /*
-        get the average over the last N milliseconds
-      */
-      let avgMemSample = getAvgMemSample(memUsageSamples, lookbackMs);
-
       // console.log({ totalMsOutVal });
       console.log({ memUsageSampleCount: memUsageSamples.length });
-      console.log(`rss (${getIntuitiveTimeString(lookbackMs)} avg): ${getIntuitiveByteString(avgMemSample.memUsage.rss)}`);
+      // console.log(`rss (${getIntuitiveTimeString(lookbackMs)} avg): ${getIntuitiveByteString(avgMemSample.memUsage.rss)}`);
       console.log(`rss: ${getIntuitiveByteString(rss)}`);
-      console.log(`heapTotal: ${getIntuitiveByteString(heapTotal)}`);
-      console.log(`heapUsed: ${getIntuitiveByteString(heapUsed)}`);
+      // console.log(`heapTotal: ${getIntuitiveByteString(heapTotal)}`);
+      // console.log(`heapUsed: ${getIntuitiveByteString(heapUsed)}`);
 
       // console.log(`cpu total usage: ${totalMsOutVal} ms`);
     };
 
+    const getMemUsageSamples = (start: number) => {
+      return _getGetMemUsageSamples(memUsageSamples, start);
+    };
+
     monRet = {
       logCb,
+      getMemUsageSamples,
     };
     return monRet;
   };
 }
 
+function _getGetMemUsageSamples(samples: Dll<MemUsageSample>, start: number) {
+  let currNode: DllNode<MemUsageSample> | undefined;
+  let resultList: Dll<MemUsageSample>;
+  // let resultSamples: MemUsageSample[];
+  // resultSamples = [];
+
+  resultList = new Dll();
+
+  currNode = samples.last;
+
+  while(
+    (currNode !== undefined)
+    && (currNode.val.timestamp > start)
+  ) {
+    resultList.pushFront(currNode.val);
+    // resultSamples.push(currNode.val);
+    currNode = currNode.prev;
+  }
+
+  // resultSamples.reverse();
+
+  return resultList;
+
+}
+
+/*
+  get the average over the last N milliseconds
+*/
 function getAvgMemSample(samples: Dll<MemUsageSample>, startMs: number): MemUsageSample {
   let outSample: MemUsageSample;
   let lookbackMs: number;
