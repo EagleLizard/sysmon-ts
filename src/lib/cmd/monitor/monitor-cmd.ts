@@ -1,33 +1,30 @@
 
 import fs, { WriteStream } from 'fs';
 import path from 'path';
+import csv from 'csv';
 
 import { EventRegistry } from '../../util/event-registry';
 import { Timer } from '../../util/timer';
 import { SysmonCommand } from '../sysmon-args';
 import { getIntuitiveByteString, getIntuitiveTimeString } from '../../util/format-util';
 import { MONITOR_OUT_DATA_DIR_PATH } from '../../../constants';
-import { getDebugDateTimeStr, getLexicalDateTimeStr } from '../../util/datetime-util';
+import { getDateFileStr, getDebugDateTimeStr, getLexicalDateTimeStr } from '../../util/datetime-util';
 import { mkdirIfNotExist } from '../../util/files';
 import { MonitorCmdOpts, getMonitorOpts } from './monitor-cmd-opts';
 import { MonitorEventData, MonitorReturnValue } from '../../models/monitor/monitor-cmd-types';
-import { MemUsageSample, ProcUsageMonResult, getProcUsageMon } from './sysmon-proc-usage-mon';
+import { ProcUsageMonResult, getProcUsageMon } from './sysmon-proc-usage-mon';
 import { getDebugInfoMon, getDrawCount } from './debug-info-mon';
 import { getCpuMon } from './cpu-mon';
-import { DllNode } from '../../models/lists/dll-node';
+import { ProcUsageService } from './proc-usage-service';
+import { MemUsageAggregate } from '../../models/monitor/mem-usage-aggregate';
 
 let monitorDeregisterCb: () => void = () => undefined;
 let stopMonitorLoopCb: () => void = () => undefined;
 let elapsedMs = 0;
 let _memUsage = process.memoryUsage();
 
-// const SAMPLE_INTERVAL_MS = 1e3;
-// const SAMPLE_INTERVAL_MS = 500;
-// const SAMPLE_INTERVAL_MS = 100;
-// const SAMPLE_INTERVAL_MS = 25;
-// const SAMPLE_INTERVAL_MS = 10;
-// const SAMPLE_INTERVAL_MS = 5;
-// const SAMPLE_INTERVAL_MS = 0;
+let csvWs: WriteStream;
+let csvStringifier: csv.stringifier.Stringifier;
 
 const DRAW_INTERVAL_MS = 200;
 // const DRAW_INTERVAL_MS = 1000;
@@ -39,6 +36,12 @@ const DEBUG_MON_FILE_NAME = `${getLexicalDateTimeStr(startDate)}_debugmon.txt`;
 const DEBUG_MON_FILE_PATH  = [
   MONITOR_OUT_DATA_DIR_PATH,
   DEBUG_MON_FILE_NAME,
+].join(path.sep);
+
+const CSV_MEM_FILE_NAME = `${getDateFileStr(startDate)}_mem.csv`;
+const CSV_MEM_FILE_PATH = [
+  MONITOR_OUT_DATA_DIR_PATH,
+  CSV_MEM_FILE_NAME,
 ].join(path.sep);
 
 let debugMonWs: WriteStream | undefined;
@@ -60,6 +63,21 @@ export async function monitorCmdMain(cmd: SysmonCommand) {
 function initMon() {
   setMonitorProcName();
   mkdirIfNotExist(MONITOR_OUT_DATA_DIR_PATH);
+
+  csvWs = fs.createWriteStream(CSV_MEM_FILE_PATH);
+  csvStringifier = csv.stringify({
+    header: true,
+    columns: [
+      'timestamp',
+      'rss',
+      'heapTotal',
+      'heapUsed',
+      'external',
+      'arrayBuffers',
+    ]
+  });
+  csvStringifier.pipe(csvWs);
+
   debugMonWs = fs.createWriteStream(DEBUG_MON_FILE_PATH, {
     flags: 'a',
   });
@@ -99,11 +117,8 @@ function getMonMain(cmdOpts: MonitorCmdOpts) {
   let procUsageMon: (evt: MonitorEventData) => ProcUsageMonResult;
 
   let lastMemUsageTimestamp: number;
-  let rssAvg = 0;
-  let rssMin = Infinity;
-  let rssMax = -Infinity;
 
-  let totalMemSampleCount = 0;
+  let memUsageAgg = MemUsageAggregate.init();
   let logSampleIntervalMs = 1e3;
 
   lastMemUsageTimestamp = Date.now();
@@ -125,6 +140,35 @@ function getMonMain(cmdOpts: MonitorCmdOpts) {
     let cpuMonRes = cpuMon(evt);
     let procUsageMonRes = procUsageMon(evt);
 
+    if(logSampleTimer.currentMs() >= logSampleIntervalMs) {
+      logSampleTimer.reset();
+      let memSamples = procUsageMonRes.getMemUsageSamples(lastMemUsageTimestamp);
+
+      if(
+        (memSamples.first === undefined)
+        || (memSamples.last === undefined)
+      ) {
+        throw new Error('Attempt to get samples from empty list');
+      }
+      let nowTimestamp: number = memSamples.last.val.timestamp;
+
+      // memSampleAgg = getMemUsageSampleAggregate(memSamples);
+      memUsageAgg = ProcUsageService.getMemUsageAggregate(memSamples);
+
+      let csvRowVals = [
+        new Date(nowTimestamp).toISOString(),
+        memUsageAgg.rss.avg,
+        memUsageAgg.heapTotal.avg,
+        memUsageAgg.heapUsed.avg,
+        memUsageAgg.external.avg,
+        memUsageAgg.arrayBuffers.avg,
+      ];
+
+      csvStringifier.write(csvRowVals);
+      _memUsage = memSamples.last.val.memUsage;
+      // memSamples.$destroy();
+    }
+
     if(logTimer.currentMs() > DRAW_INTERVAL_MS) {
       console.clear();
       console.log({ logTimerMs: logTimer.currentMs() });
@@ -134,40 +178,29 @@ function getMonMain(cmdOpts: MonitorCmdOpts) {
       cpuMonRes.logCb();
       procUsageMonRes.logCb();
 
-      console.log(`rssAvg: ${getIntuitiveByteString(rssAvg)}`);
-      console.log(`rssMin: ${getIntuitiveByteString(rssMin)}`);
-      console.log(`rssMax: ${getIntuitiveByteString(rssMax)}`);
-      // console.log({ totalMemSampleCount });
-    }
+      let rssStr = [
+        `avg: ${getIntuitiveByteString(memUsageAgg.rss.avg)}`,
+        `min: ${getIntuitiveByteString(memUsageAgg.rss.min)}`,
+        `max: ${getIntuitiveByteString(memUsageAgg.rss.max)}`,
+      ].join(', ');
+      let heapTotalStr = [
+        `avg: ${getIntuitiveByteString(memUsageAgg.heapTotal.avg)}`,
+        `min: ${getIntuitiveByteString(memUsageAgg.heapTotal.min)}`,
+        `max: ${getIntuitiveByteString(memUsageAgg.heapTotal.max)}`,
+      ].join(', ');
+      let heapUsedStr = [
+        `avg: ${getIntuitiveByteString(memUsageAgg.heapUsed.avg)}`,
+        `min: ${getIntuitiveByteString(memUsageAgg.heapUsed.min)}`,
+        `max: ${getIntuitiveByteString(memUsageAgg.heapUsed.max)}`,
+      ].join(', ');
+      console.log(`rss:       ${rssStr}`);
+      console.log(`heapTotal: ${heapTotalStr}`);
+      console.log(`heapUsed:  ${heapUsedStr}`);
 
-    if(logSampleTimer.currentMs() >= logSampleIntervalMs) {
-      logSampleTimer.reset();
-      let memSamples = procUsageMonRes.getMemUsageSamples(lastMemUsageTimestamp);
-      let maxTimestamp = -Infinity;
-      let rssSum = 0;
-      if(
-        (memSamples.first === undefined)
-        || (memSamples.last === undefined)
-      ) {
-        throw new Error('Attempt to get samples from empty list');
-      }
-      let currNode: DllNode<MemUsageSample> | undefined;
-      currNode = memSamples.first;
-      while(currNode !== undefined) {
-        let currMemSample = currNode.val;
-        totalMemSampleCount++;
-        rssSum += currMemSample.memUsage.rss;
-        rssMin = Math.min(rssMin, currMemSample.memUsage.rss);
-        rssMax = Math.max(rssMax, currMemSample.memUsage.rss);
-        maxTimestamp = Math.max(maxTimestamp, currMemSample.timestamp);
-        currNode = currNode.next;
-      }
-      rssAvg = rssSum / memSamples.length;
-      lastMemUsageTimestamp = memSamples.last.val.timestamp;
-      if(lastMemUsageTimestamp !== maxTimestamp) {
-        throw new Error('asdaasd');
-      }
-      // memSamples.$destroy();
+      // console.log(`rssAvg: ${getIntuitiveByteString(rssAvg)}`);
+      // console.log(`rssMin: ${getIntuitiveByteString(rssMin)}`);
+      // console.log(`rssMax: ${getIntuitiveByteString(rssMax)}`);
+      // console.log({ totalMemSampleCount });
     }
 
     if(debugTimer.currentMs() > DEBUG_TIMER_INTERVAL_MS) {
