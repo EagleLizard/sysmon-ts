@@ -1,7 +1,7 @@
 
 import { MonitorEventData, MonitorReturnValue } from '../../models/monitor/monitor-cmd-types';
 import { Dll } from '../../models/lists/dll';
-import { getIntuitiveByteString, getIntuitiveTimeString } from '../../util/format-util';
+import { getIntuitiveByteString } from '../../util/format-util';
 import { Timer } from '../../util/timer';
 import { DllNode } from '../../models/lists/dll-node';
 import { MonitorCmdOpts } from './monitor-cmd-opts';
@@ -60,22 +60,15 @@ export function getProcUsageMon(opts: ProcCpuUsageMonOpts) {
       let rss: number;
       let heapTotal: number;
       let heapUsed: number;
-      let lookbackMs: number;
-
-      lookbackMs = 1e3;
 
       rss = currMemUsage.rss;
       heapTotal = currMemUsage.heapTotal;
       heapUsed = currMemUsage.heapUsed;
 
-      // console.log({ totalMsOutVal });
       console.log({ memUsageSampleCount: memUsageSamples.length });
-      // console.log(`rss (${getIntuitiveTimeString(lookbackMs)} avg): ${getIntuitiveByteString(avgMemSample.memUsage.rss)}`);
       console.log(`rss: ${getIntuitiveByteString(rss)}`);
-      // console.log(`heapTotal: ${getIntuitiveByteString(heapTotal)}`);
-      // console.log(`heapUsed: ${getIntuitiveByteString(heapUsed)}`);
-
-      // console.log(`cpu total usage: ${totalMsOutVal} ms`);
+      console.log(`heapTotal: ${getIntuitiveByteString(heapTotal)}`);
+      console.log(`heapUsed: ${getIntuitiveByteString(heapUsed)}`);
     };
 
     const getMemUsageSamples = (start: number) => {
