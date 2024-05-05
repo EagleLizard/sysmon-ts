@@ -115,55 +115,6 @@ function _getGetMemUsageSamples(samples: Dll<MemUsageSample>, start: number) {
 
 }
 
-/*
-  get the average over the last N milliseconds
-*/
-function getAvgMemSample(samples: Dll<MemUsageSample>, startMs: number): MemUsageSample {
-  let outSample: MemUsageSample;
-  let lookbackMs: number;
-  let currNode: DllNode<MemUsageSample> | undefined;
-
-  let nSamples: number;
-
-  lookbackMs = Date.now() - startMs;
-  currNode = samples.last;
-
-  outSample = {
-    timestamp: currNode?.val.timestamp ?? -1,
-    memUsage: {
-      rss: 0,
-      heapTotal: 0,
-      heapUsed: 0,
-      external: 0,
-      arrayBuffers: 0,
-    },
-  };
-
-  nSamples = 0;
-  while(
-    (currNode?.prev !== undefined)
-    && (currNode.prev.val.timestamp > lookbackMs)
-  ) {
-    ++nSamples;
-
-    outSample.memUsage.rss += currNode.val.memUsage.rss;
-    outSample.memUsage.heapTotal += currNode.val.memUsage.heapTotal;
-    outSample.memUsage.heapUsed += currNode.val.memUsage.heapUsed;
-    outSample.memUsage.external += currNode.val.memUsage.external;
-    outSample.memUsage.arrayBuffers += currNode.val.memUsage.arrayBuffers;
-
-    currNode = currNode.prev;
-  }
-
-  outSample.memUsage.rss = outSample.memUsage.rss / nSamples;
-  outSample.memUsage.heapTotal = outSample.memUsage.heapTotal / nSamples;
-  outSample.memUsage.heapUsed = outSample.memUsage.heapUsed / nSamples;
-  outSample.memUsage.external = outSample.memUsage.external / nSamples;
-  outSample.memUsage.arrayBuffers = outSample.memUsage.arrayBuffers / nSamples;
-
-  return outSample;
-}
-
 function pruneMemUsageSamples(samples: Dll<MemUsageSample>) {
   /*
     prune the oldest half of the whole interval

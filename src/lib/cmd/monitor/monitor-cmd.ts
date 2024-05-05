@@ -178,29 +178,7 @@ function getMonMain(cmdOpts: MonitorCmdOpts) {
       cpuMonRes.logCb();
       procUsageMonRes.logCb();
 
-      let rssStr = [
-        `avg: ${getIntuitiveByteString(memUsageAgg.rss.avg)}`,
-        `min: ${getIntuitiveByteString(memUsageAgg.rss.min)}`,
-        `max: ${getIntuitiveByteString(memUsageAgg.rss.max)}`,
-      ].join(', ');
-      let heapTotalStr = [
-        `avg: ${getIntuitiveByteString(memUsageAgg.heapTotal.avg)}`,
-        `min: ${getIntuitiveByteString(memUsageAgg.heapTotal.min)}`,
-        `max: ${getIntuitiveByteString(memUsageAgg.heapTotal.max)}`,
-      ].join(', ');
-      let heapUsedStr = [
-        `avg: ${getIntuitiveByteString(memUsageAgg.heapUsed.avg)}`,
-        `min: ${getIntuitiveByteString(memUsageAgg.heapUsed.min)}`,
-        `max: ${getIntuitiveByteString(memUsageAgg.heapUsed.max)}`,
-      ].join(', ');
-      console.log(`rss:       ${rssStr}`);
-      console.log(`heapTotal: ${heapTotalStr}`);
-      console.log(`heapUsed:  ${heapUsedStr}`);
-
-      // console.log(`rssAvg: ${getIntuitiveByteString(rssAvg)}`);
-      // console.log(`rssMin: ${getIntuitiveByteString(rssMin)}`);
-      // console.log(`rssMax: ${getIntuitiveByteString(rssMax)}`);
-      // console.log({ totalMemSampleCount });
+      printMemUsageAgg(memUsageAgg);
     }
 
     if(debugTimer.currentMs() > DEBUG_TIMER_INTERVAL_MS) {
@@ -208,6 +186,27 @@ function getMonMain(cmdOpts: MonitorCmdOpts) {
       logDebugInfo();
     }
   };
+}
+
+function printMemUsageAgg(memUsageAgg: MemUsageAggregate) {
+  let rssStr = [
+    `avg: ${getIntuitiveByteString(memUsageAgg.rss.avg)}`,
+    `min: ${getIntuitiveByteString(memUsageAgg.rss.min)}`,
+    `max: ${getIntuitiveByteString(memUsageAgg.rss.max)}`,
+  ].join(', ');
+  let heapTotalStr = [
+    `avg: ${getIntuitiveByteString(memUsageAgg.heapTotal.avg)}`,
+    `min: ${getIntuitiveByteString(memUsageAgg.heapTotal.min)}`,
+    `max: ${getIntuitiveByteString(memUsageAgg.heapTotal.max)}`,
+  ].join(', ');
+  let heapUsedStr = [
+    `avg: ${getIntuitiveByteString(memUsageAgg.heapUsed.avg)}`,
+    `min: ${getIntuitiveByteString(memUsageAgg.heapUsed.min)}`,
+    `max: ${getIntuitiveByteString(memUsageAgg.heapUsed.max)}`,
+  ].join(', ');
+  console.log(`rss:       ${rssStr}`);
+  console.log(`heapTotal: ${heapTotalStr}`);
+  console.log(`heapUsed:  ${heapUsedStr}`);
 }
 
 function debugLine(data: string | Buffer | Uint8Array) {
