@@ -39,7 +39,7 @@ async function shutdown(sig: string) {
   killActivePingProc();
   killRunningMonitor();
   setImmediate(() => {
-    console.clear();
+    // console.clear();
     process.exitCode = 0;
   });
 }

@@ -1,123 +1,44 @@
-import path from 'path';
 
-import { OUT_DATA_DIR_PATH, SCANDIR_OUT_DATA_DIR_PATH } from '../../../constants';
-import { mkdirIfNotExist } from '../../util/files';
-import { getIntuitiveTimeString } from '../../util/format-util';
-import { Timer } from '../../util/timer';
-import {
-  Dirent,
-  Stats,
-  createWriteStream,
-  lstatSync,
-  readdirSync,
-  writeFileSync
-} from 'fs';
+import { Dirent, Stats, WriteStream, lstatSync, readdirSync } from 'fs';
+
 import { isObject, isString } from '../../util/validate-primitives';
-import { FIND_DUPLICATES_FLAG_CMD, SCANDIR_CMD_FLAGS, SysmonCommand } from '../sysmon-args';
 import { logger } from '../../logger';
-import { getDateFileStr } from '../../util/datetime-util';
-import { findDuplicateFiles } from './find-duplicate-files';
+import { joinPath } from '../../util/files';
 
-export async function scanDirMain(cmd: SysmonCommand) {
-  let files: string[];
-  let dirs: string[];
-  let timer: Timer;
-  let scanMs: number;
-  let findDuplicatesMs: number;
-  let dirPaths: string[];
-  let nowDate: Date;
-
-  nowDate = new Date;
-
-  if(cmd.args === undefined) {
-    throw new Error(`at least 1 positional argument required for command '${cmd.command}'`);
-  }
-  dirPaths = cmd.args;
-  files = [];
-  dirs = [];
-  const scanDirCb = (params: ScanDirCbParams) => {
-    // console.log(scanDirCbParams.fullPath);
-    if(params.isDir) {
-      dirs.push(params.fullPath);
-      let skipDir = (
-        (cmd.opts?.[SCANDIR_CMD_FLAGS.FIND_DIRS.flag] !== undefined)
-        && cmd.opts[SCANDIR_CMD_FLAGS.FIND_DIRS.flag].value.some(findDirPath => {
-          return params.fullPath.includes(findDirPath);
-        })
-      );
-      if(
-        skipDir
-      ) {
-        return {
-          skip: true,
-        };
-      }
-    } else {
-      files.push(params.fullPath);
-    }
-  };
-
-  console.log(`Scanning: ${dirPaths}`);
-  timer = Timer.start();
-  scanDir(dirPaths, scanDirCb);
-  scanMs = timer.stop();
-  console.log(`files: ${files.length}`);
-  console.log(`dirs: ${dirs.length}`);
-  console.log(`Scan took: ${getIntuitiveTimeString(scanMs)}`);
-
-  mkdirIfNotExist(OUT_DATA_DIR_PATH);
-  mkdirIfNotExist(SCANDIR_OUT_DATA_DIR_PATH);
-
-  const dirsDataFileName = `${getDateFileStr(nowDate)}_dirs.txt`;
-  const dirsDataFilePath = [
-    SCANDIR_OUT_DATA_DIR_PATH,
-    dirsDataFileName,
-  ].join(path.sep);
-  const filesDataDirName = `${getDateFileStr(nowDate)}_files.txt`;
-  const filesDataFilePath = [
-    SCANDIR_OUT_DATA_DIR_PATH,
-    filesDataDirName,
-  ].join(path.sep);
-  writeFileSync(dirsDataFilePath, dirs.join('\n'));
-  let ws = createWriteStream(filesDataFilePath);
-  files.forEach(filePath => {
-    ws.write(`${filePath}\n`);
-  });
-  ws.close();
-
-  if(cmd.opts?.[FIND_DUPLICATES_FLAG_CMD.flag] === undefined) {
-    return;
-  }
-  timer = Timer.start();
-  const duplicateFiles = await findDuplicateFiles(files, nowDate);
-  console.log({ duplicateFiles });
-  findDuplicatesMs = timer.stop();
-  console.log(`findDuplicates took: ${getIntuitiveTimeString(findDuplicatesMs)}`);
-
-}
-
-type ScanDirCbParams = {
+export type ScanDirCbParams = {
   isDir: boolean;
   fullPath: string;
+};
+
+type ScanDirOutStream = {
+  write: WriteStream['write'];
+};
+
+export type ScanDirOpts = {
+  dirPaths: string[];
+  scanDirCb: (scanDirCbParams: ScanDirCbParams) => ScanDirCbResult;
+  outStream?: ScanDirOutStream;
+  progressMod?: number;
 };
 
 type ScanDirCbResult = {
   skip?: boolean,
 } | void;
 
-function scanDir(
-  dirPaths: string[],
-  scanDirCb: (scanDirCbParams: ScanDirCbParams) => ScanDirCbResult
-) {
-
+export function scanDir(opts: ScanDirOpts) {
+  let outStream: ScanDirOutStream;
+  let progressMod: number;
   let currDirents: Dirent[];
   let dirQueue: string[];
   let currDirPath: string;
 
   let pathCount: number;
 
+  outStream = opts.outStream ?? process.stdout;
+  progressMod = opts.progressMod ?? 1e4;
+
   dirQueue = [
-    ...dirPaths,
+    ...opts.dirPaths,
   ];
 
   pathCount = 0;
@@ -141,7 +62,7 @@ function scanDir(
         throw e;
       }
     }
-    scanDirCbResult = scanDirCb({
+    scanDirCbResult = opts.scanDirCb({
       isDir: rootDirent?.isDirectory() ?? false,
       fullPath: currDirPath,
     });
@@ -165,23 +86,20 @@ function scanDir(
         }
       }
       currDirents.forEach(currDirent => {
-        // dirQueue.push([
-        //   currDirent.path,
-        //   currDirent.name,
-        // ].join(path.sep));
-        dirQueue.unshift([
-          currDirent.path,
-          currDirent.name,
-        ].join(path.sep));
+        dirQueue.unshift(
+          joinPath([
+            currDirent.path,
+            currDirent.name,
+          ])
+        );
       });
       pathCount++;
     } else {
       pathCount++;
     }
-    if((pathCount % 1e4) === 0) {
-      process.stdout.write('.');
+    if((pathCount % progressMod) === 0) {
+      outStream.write('.');
     }
   }
-  process.stdout.write('\n');
+  outStream.write('\n');
 }
-

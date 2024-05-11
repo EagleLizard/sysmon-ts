@@ -36,3 +36,7 @@ export function mkdirIfNotExist(dirPath: string) {
     mkdirSync(dirPath);
   }
 }
+
+export function joinPath(pathParts: string[]): string {
+  return pathParts.join(path.sep);
+}

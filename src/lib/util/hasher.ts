@@ -1,5 +1,6 @@
 
 import { createHash, Hash } from 'crypto';
+import { createReadStream, ReadStream } from 'fs';
 
 // const alg = 'sha256';
 // const alg = 'md5';
@@ -35,4 +36,32 @@ export function hashSync(data: string) {
   hasher = getHasher();
   hasher.update(data);
   return hasher.digest();
+}
+
+export type HashFileResult = {
+  hasher: Hasher,
+  fileReadPromise: Promise<void>;
+};
+
+export function hashFile(filePath: string): HashFileResult {
+  let hasher: Hasher;
+  let rs: ReadStream;
+  let readPromise: Promise<void>;
+  hasher = getHasher();
+  rs = createReadStream(filePath);
+  
+  const chunkCb = (chunk: string | Buffer) => {
+    hasher.update(chunk);
+  };
+
+  readPromise = new Promise((resolve, reject) => {
+    rs.on('error', reject);
+    rs.on('close', resolve);
+    rs.on('data', chunkCb);
+  });
+
+  return {
+    hasher,
+    fileReadPromise: readPromise,
+  };
 }

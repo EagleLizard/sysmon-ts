@@ -1,7 +1,7 @@
 
 import { SYSMON_COMMAND_ENUM, parseSysmonArgs } from './cmd/sysmon-args';
 import { isString } from './util/validate-primitives';
-import { scanDirMain } from './cmd/scan-dir/scan-dir';
+import { scanDirCmdMain } from './cmd/scan-dir/scan-dir-cmd';
 import { pingMain } from './cmd/ping/ping';
 import { adminMain } from './cmd/admin/admin-cmd';
 import { speedtestMain } from './cmd/speedtest/speedtest';
@@ -28,7 +28,7 @@ export async function sysmonMain() {
       if(!cmd.args.every(arg => isString(arg))) {
         throw new Error(`Unexpected ${cmd.command} dir arg type: expected 'string[]', found ${cmd.args.map(arg => typeof arg)}`);
       }
-      await scanDirMain(cmd);
+      await scanDirCmdMain(cmd);
       break;
     case SYSMON_COMMAND_ENUM.PING:
       await pingMain(cmd);
