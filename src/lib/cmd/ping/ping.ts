@@ -1,7 +1,7 @@
 
 import { ChildProcess } from 'child_process';
 
-import { ipProc } from '../net/ip';
+import { ipProc } from '../net/ip-proc';
 import { logger } from '../../logger';
 import { Timer } from '../../util/timer';
 import { SysmonCommand } from '../sysmon-args';

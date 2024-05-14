@@ -1,15 +1,16 @@
 
-import { config } from '../../../config';
+import os from 'os';
+
 import { spawnProc } from '../proc';
 
 export async function ipProc(): Promise<string> {
-  switch(config.platform) {
+  switch(os.platform()) {
     case 'darwin':
       return ipProcMac();
     case 'linux':
       return ipProcLinux();
     default:
-      throw new Error(`ip proc: unhandled platform: ${config.platform}`);
+      throw new Error(`ip proc: unhandled platform: ${os.platform()}`);
   }
 }
 
@@ -121,9 +122,6 @@ async function getDefaultLinuxIface(): Promise<string> {
 
   let procRes = spawnProc(routeCmd, routeArgs);
   routeResStr = await procRes.promise;
-  console.log({
-    routeResStr
-  });
 
   routeResStr.split('\n').some((line) => {
     if(!line.trim().startsWith(routeAddr)) {

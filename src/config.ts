@@ -1,5 +1,4 @@
 
-import os from 'os';
 import dotenv from 'dotenv';
 import { isString } from './lib/util/validate-primitives';
 
@@ -7,7 +6,6 @@ dotenv.config();
 
 const config = {
   ENVIRONMENT: getEnvironment(),
-  platform: os.platform(),
   POSTGRES_PORT: getPostgresPort(),
   POSTGRES_USER: process.env.POSTGRES_USER,
   POSTGRES_PASSWORD: process.env.POSTGRES_PASSWORD,
