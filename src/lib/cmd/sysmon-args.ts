@@ -214,11 +214,11 @@ const SCANDIR_CMD_FLAG_KEYS: SCANDIR_CMD_FLAG_ENUM[] = [
 
 export const FIND_DUPLICATES_FLAG = 'find-duplicates';
 
-export function parseSysmonArgs(): SysmonCommand {
+export function parseSysmonArgs(argv: string[]): SysmonCommand {
   let cmdStr: string;
   let restPositionals: string[];
   let parsedArgv: ParsedArgv;
-  parsedArgv = parseArgv(process.argv);
+  parsedArgv = parseArgv(argv);
   console.log({
     parsedArgv,
   });

@@ -4,7 +4,7 @@ import { StartParam, TIME_UNIT_TO_TIME_BUCKET_MAP, isStartParam, parseStartParam
 import { isString } from '../../util/validate-primitives';
 import { ArgvOpt, PING_STAT_CMD_FLAG_MAP, SysmonCommand } from '../sysmon-args';
 
-const DEFAULT_NUM_STD_DEVIATIONS = 1;
+export const DEFAULT_NUM_STD_DEVIATIONS = 1;
 
 export type BucketOpt = {
   bucketVal: number | undefined;
@@ -66,6 +66,8 @@ function getBucketOpt(cmd: SysmonCommand): BucketOpt {
         throw new Error(`Invalid bucket option unit: ${rawBucketUnit}`);
       }
       bucketUnit = rawBucketUnit;
+    } else {
+      throw new Error(`Too many arguments passed to --bucket, args: [${bucketOpt.value.join(', ')}]`)
     }
   }
   bucketOpt = {
@@ -131,6 +133,8 @@ function getStdDevOpt(cmd: SysmonCommand): number {
       && !isNaN(+stdDevOpt.value[0])
     ) {
       numStdDeviations = +stdDevOpt.value[0];
+    } else {
+      throw new Error(`Invalid stddev option: ${stdDevOpt.value[0]}`)
     }
   }
   return numStdDeviations;

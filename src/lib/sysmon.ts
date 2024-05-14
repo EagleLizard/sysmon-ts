@@ -11,7 +11,7 @@ import { monitorCmdMain } from './cmd/monitor/monitor-cmd';
 import { runPingStat } from './cmd/ping/ping-stats';
 
 export async function sysmonMain() {
-  const cmd = parseSysmonArgs();
+  const cmd = parseSysmonArgs(process.argv);
   console.log('cmd:');
   console.log(cmd);
   console.log('cmd.opts:');
