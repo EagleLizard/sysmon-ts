@@ -87,10 +87,7 @@ describe('ping-proc tests', () => {
       addr: mockPingAddr,
       pingCb: pingCbMock,
     });
-    /*
-    PING google.com (142.250.72.14): 56 data bytes
-    64 bytes from 142.250.72.14: icmp_seq=0 ttl=117 time=29.418 ms
-    */
+
     spawnProcOpts?.onData?.(Buffer.from(mockPingFirstLine));
     spawnProcOpts?.onData?.(Buffer.from(mockPingLine));
     expect(pingCbMock).toBeCalledWith({
@@ -114,10 +111,7 @@ describe('ping-proc tests', () => {
       I: mockIfaceOpt,
       pingCb: pingCbMock,
     });
-    /*
-    PING google.com (142.250.72.14): 56 data bytes
-    64 bytes from 142.250.72.14: icmp_seq=0 ttl=117 time=29.418 ms
-    */
+
     expect(spawnProcArgs).toEqual([
       mockPingAddr,
       '-c', `${mockCountOpt}`,

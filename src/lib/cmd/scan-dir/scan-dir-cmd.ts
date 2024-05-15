@@ -30,7 +30,6 @@ export async function scanDirCmdMain(cmd: SysmonCommand) {
   files = [];
   dirs = [];
   const scanDirCb = (params: ScanDirCbParams) => {
-    // console.log(scanDirCbParams.fullPath);
     if(params.isDir) {
       dirs.push(params.fullPath);
       let skipDir = (
