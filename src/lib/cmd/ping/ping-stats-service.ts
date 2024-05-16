@@ -18,7 +18,7 @@ export type AggregatePingStats = {
 
 const PRINT_STATS_SCALE = 50;
 
-export class PingStats {
+export class PingStatsService {
 
   static async getPingStats(opts: PingStatOpts): Promise<PingStatDto[]> {
     let pingStats: PingStatDto[] | undefined;

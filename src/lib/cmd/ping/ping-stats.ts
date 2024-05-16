@@ -9,7 +9,7 @@ import { Timer } from '../../util/timer';
 import { getIntuitiveTimeString } from '../../util/format-util';
 import { OUT_DATA_DIR_PATH } from '../../../constants';
 import { PingStatOpts, getPingStatOpts } from './ping-stat-opts';
-import { PingStats } from './ping-stats-service';
+import { PingStatsService } from './ping-stats-service';
 
 type AggregatePingStats = {
   minAvg: number;
@@ -24,6 +24,10 @@ type RunPingStatOpts = {
   pingStats: PingStatDto[];
   ws: WriteStream;
 } & PingStatOpts;
+
+export const LOCAL_PING_STATS_OUTFILE_NAME = 'out_local.txt';
+export const GLOBAL_PING_STATS_OUTFILE_NAME = 'out_global.txt';
+export const DEFAULT_PING_STATS_OUTFILE_NAME = 'out.txt';
 
 export async function pingStatsMain(cmd: SysmonCommand) {
   let opts: PingStatOpts;
@@ -42,7 +46,7 @@ export async function pingStatsMain(cmd: SysmonCommand) {
   ws.write(`${(new Date).toISOString()}\n`);
 
   timer = Timer.start();
-  pingStats = await PingStats.getPingStats(opts);
+  pingStats = await PingStatsService.getPingStats(opts);
   getStatsMs = timer.stop();
 
   ws.write(`get stats took: ${getIntuitiveTimeString(getStatsMs)}\n\n`);
@@ -61,7 +65,7 @@ async function runPingStats(opts: RunPingStatOpts) {
   let devPings: PingStatDto[];
   let sortedDevPings: PingStatDto[];
 
-  aggStats = PingStats.getAggregateStats(opts.pingStats);
+  aggStats = PingStatsService.getAggregateStats(opts.pingStats);
   // printStats(pingStats, minAvg, maxAvg, scale);
 
   devPings = opts.pingStats.filter(pingStat => {
@@ -71,7 +75,7 @@ async function runPingStats(opts: RunPingStatOpts) {
     // return Math.abs(pingStat.avg - totalAvg) > (stdDev * numStdDeviations);
   });
 
-  sortedDevPings = PingStats.sortPingStats(devPings);
+  sortedDevPings = PingStatsService.sortPingStats(devPings);
 
   if(opts.network !== undefined) {
     opts.ws.write(JSON.stringify({
@@ -80,7 +84,7 @@ async function runPingStats(opts: RunPingStatOpts) {
     opts.ws.write('\n');
   }
 
-  PingStats.printStats(sortedDevPings, aggStats, opts.ws);
+  PingStatsService.printStats(sortedDevPings, aggStats, opts.ws);
 }
 
 function getOutFilePath(opts: PingStatOpts): string {
@@ -88,13 +92,13 @@ function getOutFilePath(opts: PingStatOpts): string {
   let outFilePath: string;
   switch(opts.network) {
     case ADDR_TYPE_ENUM.LOCAL:
-      outFileName = 'out_local.txt';
+      outFileName = LOCAL_PING_STATS_OUTFILE_NAME;
       break;
     case ADDR_TYPE_ENUM.GLOBAL:
-      outFileName = 'out_global.txt';
+      outFileName = GLOBAL_PING_STATS_OUTFILE_NAME;
       break;
     default:
-      outFileName = 'out.txt';
+      outFileName = DEFAULT_PING_STATS_OUTFILE_NAME;
   }
   outFilePath = [
     OUT_DATA_DIR_PATH,
