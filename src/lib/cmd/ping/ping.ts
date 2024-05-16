@@ -35,14 +35,14 @@ export async function pingMain(cmd: SysmonCommand) {
     addr = cmd.args[0];
     resolvedAddr = await NetService.dnsLookup(addr);
   }
-  waitStr = cmd.opts?.['i']?.value[0];
+  waitStr = cmd.opts?.wait?.value[0];
   if(
     waitStr !== undefined
     && !isNaN(+waitStr)
   ) {
     wait = +waitStr;
   }
-  countStr = cmd.opts?.['c']?.value[0];
+  countStr = cmd.opts?.count?.value[0];
   if(
     (countStr !== undefined)
     && !isNaN(+countStr)
@@ -50,7 +50,7 @@ export async function pingMain(cmd: SysmonCommand) {
     count = +countStr;
   }
 
-  iface = cmd.opts?.['I']?.value[0] ?? undefined;
+  iface = cmd.opts?.iface?.value[0] ?? undefined;
 
   const srcAddr = await ipProc();
 
@@ -93,6 +93,7 @@ export async function pingMain(cmd: SysmonCommand) {
     addr: resolvedAddr,
     pingCb,
   };
+
   if(wait !== undefined) {
     pingProcOpts.wait = wait;
   }
@@ -102,7 +103,7 @@ export async function pingMain(cmd: SysmonCommand) {
   if(iface !== undefined) {
     pingProcOpts.I = iface;
   }
-  console.log(pingProcOpts);
+
   pingTimer = Timer.start();
   const [ pingProc, pingProcPromise ] = spawnPingProc(pingProcOpts);
 
