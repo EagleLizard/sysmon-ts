@@ -70,7 +70,7 @@ describe('proc tests', () => {
       }
     });
     stdoutOnMock.mockImplementation((evt: string, cb: (data?: any) => void) => {
-      if (evt === 'data') {
+      if(evt === 'data') {
         stdoutOnDataFn = cb;
       }
     });
@@ -118,13 +118,12 @@ describe('proc tests', () => {
   });
 
   it('tests that the opts.onData() function is called with data', () => {
-    let spawnProcRes: SpawnProcResult;
     let onDataMock: Mock;
 
     const mockData = 'mock_data';
     onDataMock = vi.fn();
 
-    spawnProcRes = spawnProc('testcmd', undefined, {
+    spawnProc('testcmd', undefined, {
       onData: onDataMock,
     });
     stdoutOnDataFn(mockData);
@@ -133,13 +132,12 @@ describe('proc tests', () => {
   });
 
   it('tests that the opts.onErrorData() function is called with data', () => {
-    let spawnProcRes: SpawnProcResult;
     let onErrMock: Mock;
 
     const mockData = 'mock_error_data';
     onErrMock = vi.fn();
 
-    spawnProcRes = spawnProc('testcmd', undefined, {
+    spawnProc('testcmd', undefined, {
       onErrorData: onErrMock,
     });
     stderrOnDataFn(mockData);
@@ -148,11 +146,9 @@ describe('proc tests', () => {
   });
 
   it('tests that logger.error() function is called with error data when opts.onErrorData() is not defined', () => {
-    let spawnProcRes: SpawnProcResult;
-
     const mockData = 'mock_error_data';
 
-    spawnProcRes = spawnProc('testcmd', undefined);
+    spawnProc('testcmd', undefined);
     stderrOnDataFn(mockData);
     closeFn();
     expect(procMocks.loggerError).toBeCalledWith(mockData);

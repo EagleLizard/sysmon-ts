@@ -1,7 +1,7 @@
 
-import { describe, it, expect, vi, beforeEach} from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SpawnProcOpts } from '../proc';
-import { PingProcOpts, PingResult, spawnPingProc } from './ping-proc';
+import { PingProcOpts, spawnPingProc } from './ping-proc';
 
 const pingProcMocs = vi.hoisted(() => {
   return {

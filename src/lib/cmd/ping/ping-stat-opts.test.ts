@@ -84,7 +84,7 @@ describe('ping-stat-opts tests', () => {
     ]);
     cmdMock = parseSysmonArgs(testArgv);
     pingStatOpts = getPingStatOpts(cmdMock);
-    
+
     expect(pingStatOpts.bucket).toEqual(expectedBucket);
   });
 
@@ -92,7 +92,7 @@ describe('ping-stat-opts tests', () => {
     let mockBucketVal: number;
     let mockBucketUnit: TimeBucketUnit;
     if(cmdMock.opts === undefined) {
-      throw new Error('cmdMock.opts is undefined.');;
+      throw new Error('cmdMock.opts is undefined.');
     }
 
     mockBucketVal = 15;
@@ -119,7 +119,7 @@ describe('ping-stat-opts tests', () => {
 
     cmdMock = parseSysmonArgs(testArgv);
     pingStatOpts = getPingStatOpts(cmdMock);
-    
+
     expect(pingStatOpts.start).toEqual(startArgMock);
   });
 
@@ -156,7 +156,7 @@ describe('ping-stat-opts tests', () => {
     let mockBucketVal: number;
     let mockBucketUnit: TimeBucketUnit;
     if(cmdMock.opts === undefined) {
-      throw new Error('cmdMock.opts is undefined.');;
+      throw new Error('cmdMock.opts is undefined.');
     }
     mockBucketVal = NaN;
     mockBucketUnit = 'min';
@@ -178,11 +178,11 @@ describe('ping-stat-opts tests', () => {
     let mockBucketUnit: TimeBucketUnit;
     let invalidBucketVal: string;
     if(cmdMock.opts === undefined) {
-      throw new Error('cmdMock.opts is undefined.');;
+      throw new Error('cmdMock.opts is undefined.');
     }
     mockBucketVal = 15;
     mockBucketUnit = 'min';
-    invalidBucketVal = 'invalid_bucket_val'
+    invalidBucketVal = 'invalid_bucket_val';
     cmdMock.opts[PING_STAT_CMD_FLAG_MAP.BUCKET.flag] = {
       flag: PING_STAT_CMD_FLAG_MAP.BUCKET.flag,
       value: [
@@ -201,7 +201,7 @@ describe('ping-stat-opts tests', () => {
     let mockBucketVal: number;
     let invalidBucketUnit: string;
     if(cmdMock.opts === undefined) {
-      throw new Error('cmdMock.opts is undefined.');;
+      throw new Error('cmdMock.opts is undefined.');
     }
     mockBucketVal = 1e6;
     invalidBucketUnit = 'μ';
@@ -228,7 +228,7 @@ describe('ping-stat-opts tests', () => {
       getPingStatOpts(cmdMock);
     }).toThrowError();
   });
-  
+
   it('tests opts.start throws an error when the value is invalid', () => {
     let startArgMock: string;
     startArgMock = '1μ';
@@ -247,7 +247,7 @@ describe('ping-stat-opts tests', () => {
     let startArgMock: string;
     let invalidStartArgMock: string;
     startArgMock = '1';
-    invalidStartArgMock = 'min'
+    invalidStartArgMock = 'min';
     testArgv = testArgv.concat([
       '--start',
       startArgMock,

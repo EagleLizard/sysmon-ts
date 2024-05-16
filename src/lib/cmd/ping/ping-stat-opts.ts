@@ -67,7 +67,7 @@ function getBucketOpt(cmd: SysmonCommand): BucketOpt {
       }
       bucketUnit = rawBucketUnit;
     } else {
-      throw new Error(`Too many arguments passed to --bucket, args: [${bucketOpt.value.join(', ')}]`)
+      throw new Error(`Too many arguments passed to --bucket, args: [${bucketOpt.value.join(', ')}]`);
     }
   }
   bucketOpt = {
@@ -134,7 +134,7 @@ function getStdDevOpt(cmd: SysmonCommand): number {
     ) {
       numStdDeviations = +stdDevOpt.value[0];
     } else {
-      throw new Error(`Invalid stddev option: ${stdDevOpt.value[0]}`)
+      throw new Error(`Invalid stddev option: ${stdDevOpt.value[0]}`);
     }
   }
   return numStdDeviations;
