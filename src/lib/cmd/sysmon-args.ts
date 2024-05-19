@@ -11,6 +11,7 @@ export enum SYSMON_COMMAND_ENUM {
   SPEEDTEST = 'SPEEDTEST',
   T_NINE = 'T_NINE',
   NLP = 'NLP',
+  ENCODE = 'ENCODE',
 }
 
 export type SysmonCommand = {
@@ -73,6 +74,11 @@ const SYSMON_COMMANDS: Record<SYSMON_COMMAND_ENUM, SysmonCommand> = {
     command: 'nlp',
     short: 'n',
   },
+  [SYSMON_COMMAND_ENUM.ENCODE]: {
+    kind: SYSMON_COMMAND_ENUM.ENCODE,
+    command: 'encode',
+    short: 'e',
+  },
 };
 
 const SYSMON_CMD_KEYS: SYSMON_COMMAND_ENUM[] = [
@@ -84,6 +90,7 @@ const SYSMON_CMD_KEYS: SYSMON_COMMAND_ENUM[] = [
   SYSMON_COMMAND_ENUM.SPEEDTEST,
   SYSMON_COMMAND_ENUM.T_NINE,
   SYSMON_COMMAND_ENUM.NLP,
+  SYSMON_COMMAND_ENUM.ENCODE,
 ];
 
 enum SCANDIR_CMD_FLAG_ENUM {
@@ -273,6 +280,10 @@ export function parseSysmonArgs(argv: string[]): SysmonCommand {
       cmd.opts = {};
       break;
     case SYSMON_COMMAND_ENUM.NLP:
+      cmd.args = restPositionals;
+      cmd.opts = {};
+      break;
+    case SYSMON_COMMAND_ENUM.ENCODE:
       cmd.args = restPositionals;
       cmd.opts = {};
       break;

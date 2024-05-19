@@ -9,6 +9,7 @@ import { tNineMain } from './cmd/t-nine/t-nine';
 import { nlpMain } from './cmd/nlp/nlp-cmd';
 import { monitorCmdMain } from './cmd/monitor/monitor-cmd';
 import { pingStatsMain } from './cmd/ping/ping-stats';
+import { encodeMain } from './cmd/encode/encode-cmd';
 
 export async function sysmonMain() {
   const cmd = parseSysmonArgs(process.argv);
@@ -47,6 +48,9 @@ export async function sysmonMain() {
       break;
     case SYSMON_COMMAND_ENUM.NLP:
       await nlpMain(cmd);
+      break;
+    case SYSMON_COMMAND_ENUM.ENCODE:
+      await encodeMain(cmd);
       break;
     default:
       throw new Error(`unhandled command kind: ${cmd.kind}`);
