@@ -13,6 +13,7 @@ data
 build
 
 logs
+test_data
 out_data
 
 _ezd-test_

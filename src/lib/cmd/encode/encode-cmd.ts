@@ -1,6 +1,9 @@
 
-import assert from 'assert';
+import fs from 'fs';
+import { isString } from '../../util/validate-primitives';
 import { SysmonCommand } from '../sysmon-args';
+import { Timer } from '../../util/timer';
+import { getIntuitiveTimeString } from '../../util/format-util';
 
 class FreqNode {
   left: FreqNode | undefined;
@@ -18,51 +21,118 @@ export async function encodeMain(cmd: SysmonCommand) {
   const testStr = 'A llama likely lolls lazily about.';
   let rootFreq: FreqNode;
   let codeLookupMap: Map<string, (0 | 1)[]>;
-  let encodedBitArr: (0 | 1)[];
+
   rootFreq = getHuffTree(testStr);
   codeLookupMap = new Map();
-  // console.log(rootFreq);
+
   traverseHuffTree(rootFreq, (val, code) => {
-    console.log(`${val}: ${code.join('')}`);
+    // console.log(`${val}: ${code.join('')}`);
     codeLookupMap.set(val, code);
   });
-  encodedBitArr = [];
-  for(let i = 0; i < testStr.length; ++i) {
-    let currChar = testStr[i];
+
+  let huffStr = getHuffStr(testStr, codeLookupMap);
+  let decodedHuffStr = decodeHuffStr(huffStr, rootFreq);
+  console.log(`input string len: ${testStr.length}`);
+  console.log(`encoded string len: ${huffStr.val.length}`);
+  console.log(testStr);
+  console.log(decodedHuffStr);
+
+  let filePath: string | undefined;
+  filePath = cmd.args?.[0];
+  if(isString(filePath)) {
+    let fileData: Buffer;
+    let fileDataStr: string;
+    let encodedFileHuffStr: HuffStr;
+
+    let huffTimer: Timer;
+
+    let buildTreeMs: number;
+    let traverseMs: number;
+    let huffStrMs: number;
+
+    fileData = fs.readFileSync(filePath);
+    fileDataStr = fileData.toString();
+
+    huffTimer = Timer.start();
+    rootFreq = getHuffTree(fileDataStr);
+    buildTreeMs = huffTimer.stop();
+
+    console.log(`getHuffTree() took: ${getIntuitiveTimeString(buildTreeMs)}`);
+
+    codeLookupMap = new Map();
+
+    huffTimer.reset();
+    traverseHuffTree(rootFreq, (val, code) => {
+      // console.log(`${val}: ${code.join('')}`);
+      codeLookupMap.set(val, code);
+    });
+    traverseMs = huffTimer.stop();
+    console.log(`traverseHuffTree() took: ${getIntuitiveTimeString(traverseMs)}`);
+
+    huffTimer.reset();
+    encodedFileHuffStr = getHuffStr(fileDataStr, codeLookupMap);
+    huffStrMs = huffTimer.stop();
+    console.log(`getHuffStr() took: ${getIntuitiveTimeString(huffStrMs)}`);
+
+    console.log(`fileData.length: ${fileData.length.toLocaleString()}`);
+    console.log(`encodedFileData.length: ${encodedFileHuffStr.val.length.toLocaleString()}`);
+  }
+
+}
+
+type HuffStr = {
+  val: string;
+  pad: number;
+};
+
+function decodeHuffStr(huffStr: HuffStr, rootFreq: FreqNode): string {
+  let uint8Arr: Uint8Array;
+  let bitArr: (0 | 1)[];
+  let decodedStr: string;
+  uint8Arr = new Uint8Array(Buffer.from(huffStr.val, 'binary'));
+  bitArr = uint8ArrToBitArray(uint8Arr);
+  bitArr.splice(0, huffStr.pad);
+  decodedStr = decodeHuff(rootFreq, bitArr);
+  return decodedStr;
+}
+
+function getHuffStr(
+  str: string,
+  codeLookupMap: Map<string, (0 | 1)[]>
+): HuffStr {
+  let huffStr: HuffStr;
+  let resStr: string;
+  let pad: number;
+  let bitArr: (0 | 1)[];
+  let byteArr: (0 | 1)[][];
+  let lastByte: (0 | 1)[];
+  let uint8Arr: Uint8Array;
+  bitArr = [];
+  pad = 0;
+  for(let i = 0; i < str.length; ++i) {
+    let currChar = str[i];
     let currCode = codeLookupMap.get(currChar);
     if(currCode === undefined) {
       throw new Error(`No code exists for char: '${currChar}'`);
     }
-    encodedBitArr = encodedBitArr.concat(currCode);
+    bitArr = bitArr.concat(currCode);
   }
-  
-  let uint8Arr = bitArrToUint8Arr(encodedBitArr);
-  let uint8Str = Buffer.from(uint8Arr.buffer).toString('binary');
-  let decodedUint8Str = new Uint8Array(Buffer.from(uint8Str, 'binary'));
-  console.log(`input string len: ${testStr.length}`);
-  console.log(`encoded string len: ${uint8Str.length}`);
-  let decodedBitArr = uint8ArrToBitArray(decodedUint8Str);
-  let decodedHuffStr = decodeHuff(rootFreq, decodedBitArr);
-  console.log(encodedBitArr.join(''));
-  console.log(decodedBitArr.join(''));
-  // assert.strict.equal(decodedHuffStr, testStr);
-  let encodedByteArr = bitArrToByteArr(encodedBitArr);
-  console.log(encodedByteArr.map((currByte) => {
-    return currByte.join('');
-  }).join(' '));
-  let decodedByteArr = uint8ArrToByteArray(decodedUint8Str);
-  console.log(decodedByteArr.map((currByte) => {
-    return currByte.join('');
-  }).join(' '));
-}
 
-function bitArrToByteArr(bitArr: (0 | 1)[]): (0 | 1)[][] {
-  let byteArr: (0 | 1)[][];
-  let currByte: (0 | 1)[];
-  let bitChunks: (0 | 1)[][];
-  bitChunks = chunk(bitArr, 8);
-
-  return bitChunks;
+  byteArr  = chunk(bitArr, 8);
+  lastByte = byteArr[byteArr.length - 1];
+  if(lastByte.length < 8) {
+    pad = 8 - lastByte.length;
+    for(let i = 0; i < pad; ++i) {
+      bitArr.unshift(0);
+    }
+  }
+  uint8Arr = bitArrToUint8Arr(bitArr);
+  resStr = Buffer.from(uint8Arr.buffer).toString('binary');
+  huffStr = {
+    val: resStr,
+    pad,
+  };
+  return huffStr;
 }
 
 function decodeHuff(rootFreq: FreqNode, bitArr: (0 | 1)[]): string {
@@ -95,29 +165,6 @@ function decodeHuff(rootFreq: FreqNode, bitArr: (0 | 1)[]): string {
   return decodedStr;
 }
 
-function uint8ArrToByteArray(uint8Arr: Uint8Array): (0 | 1)[][] {
-  let byteArr: (0 | 1)[][];
-  byteArr = [];
-  for(let i = 0; i < uint8Arr.length; ++i) {
-    let currByte: (0 | 1)[];
-    let currInt = uint8Arr[i];
-    let currBitStr = currInt.toString(2);
-    currByte = [];
-    for(let k = 0; k < currBitStr.length; ++k) {
-      let currBit = +currBitStr[k];
-      if(currBit !== 0 && currBit !== 1) {
-        throw new Error(`Unexpected bit: ${currBitStr[k]}`);
-      }
-      currByte.push(currBit);
-    }
-    while(currByte.length < 8) {
-      currByte.unshift(0);
-    }
-    byteArr.push(currByte);
-  }
-  return byteArr;
-}
-
 function uint8ArrToBitArray(uint8Arr: Uint8Array): (0 | 1)[] {
   let bitArr: (0 | 1)[];
   let currByte: (0 | 1)[];
@@ -127,9 +174,11 @@ function uint8ArrToBitArray(uint8Arr: Uint8Array): (0 | 1)[] {
     let currInt = uint8Arr[i];
     // console.log(currInt);
     let currBitStr = currInt.toString(2);
-    // if(currBitStr.length < 8) {
-    //   currBitStr = `${'0'.repeat(8 - currBitStr.length)}${currBitStr}`;
-    // }
+    let leftPad: number;
+    leftPad = 8 - currBitStr.length;
+    while(leftPad--) {
+      currByte.push(0);
+    }
     for(let k = 0; k < currBitStr.length; ++k) {
       let currBit = +currBitStr[k];
       if(currBit !== 0 && currBit !== 1) {
@@ -137,26 +186,10 @@ function uint8ArrToBitArray(uint8Arr: Uint8Array): (0 | 1)[] {
       }
       currByte.push(currBit);
     }
-    if((i !== (uint8Arr.length - 1))) {
-      while(currByte.length < 8) {
-        currByte.unshift(0);
-      }
-    }
     bitArr = bitArr.concat(currByte);
     currByte.length = 0;
   }
   return bitArr;
-}
-
-function bitArrToByteArr(bitArr: (0 | 1)[]): (0 | 1)[][] {
-  let byteArr: (0 | 1)[][];
-  let currByte: (0 | 1)[];
-  let bitChunks: (0 | 1)[][];
-  byteArr = [];
-  currByte = [];
-  bitChunks = chunk(bitArr, 8);
-
-  return bitChunks;
 }
 
 function bitArrToUint8Arr(bitArr: (0 | 1)[]): Uint8Array {
@@ -225,7 +258,7 @@ function getHuffTree(str: string): FreqNode {
   freqs = getFreqs(str);
   for(let i = 0; i < freqs.length; ++i) {
     let currFreq = freqs[i];
-    console.log(`${currFreq.val}: ${currFreq.freq}`);
+    // console.log(`${currFreq.val}: ${currFreq.freq}`);
   }
   while(freqs.length > 1) {
     let leftFreq: FreqNode | undefined;
@@ -287,15 +320,6 @@ function getFreqs(str: string): FreqNode[] {
     return new FreqNode(freqTuple[1], freqTuple[0]);
   });
   freqs.sort(freqComparator);
-  // freqs.sort((a, b) => {
-  //   if(a[1] > b[1]) {
-  //     return 1;
-  //   } else if(a[1] < b[1]) {
-  //     return -1;
-  //   } else {
-  //     return a[0].localeCompare(b[0]);
-  //   }
-  // });
 
   return freqs;
 }

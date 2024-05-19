@@ -219,7 +219,21 @@ const SCANDIR_CMD_FLAG_KEYS: SCANDIR_CMD_FLAG_ENUM[] = [
   SCANDIR_CMD_FLAG_ENUM.FIND_DIRS,
 ];
 
-export const FIND_DUPLICATES_FLAG = 'find-duplicates';
+enum ENCODE_CMD_FLAG_ENUM {
+  DECODE = 'DECODE',
+}
+
+export const ENCODE_CMD_FLAG_MAP: Record<ENCODE_CMD_FLAG_ENUM, SysmonCommandFlag<ENCODE_CMD_FLAG_ENUM>> = {
+  [ENCODE_CMD_FLAG_ENUM.DECODE]: {
+    kind: ENCODE_CMD_FLAG_ENUM.DECODE,
+    flag: 'decode',
+    short: 'd',
+  },
+};
+
+const ENCODE_CMD_FLAG_KEYS: ENCODE_CMD_FLAG_ENUM[] = [
+  ENCODE_CMD_FLAG_ENUM.DECODE,
+];
 
 export function parseSysmonArgs(argv: string[]): SysmonCommand {
   let cmdStr: string;
@@ -285,7 +299,7 @@ export function parseSysmonArgs(argv: string[]): SysmonCommand {
       break;
     case SYSMON_COMMAND_ENUM.ENCODE:
       cmd.args = restPositionals;
-      cmd.opts = {};
+      cmd.opts = getCmdFlagOpts(ENCODE_CMD_FLAG_KEYS, ENCODE_CMD_FLAG_MAP, parsedArgv);
       break;
     default:
       throw new Error(`unhandled command kind: ${cmd.kind}`);
