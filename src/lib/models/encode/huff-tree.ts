@@ -1,4 +1,7 @@
-import { HuffStr } from '../../cmd/encode/huff';
+import { HuffStr, getHuffStr } from '../../cmd/encode/huff';
+
+const HUFF_HEADER_DELIM = ':';
+const HUFF_STR_START_DELIM = '-';
 
 export type Bit = (0 | 1);
 
@@ -43,6 +46,26 @@ export class HuffTree {
     treeStrParts.push('0');
     treeStr = treeStrParts.join('');
     return treeStr;
+  }
+
+  getHuffHeader(): string {
+    let treeStr: string;
+    let huffHeader: string;
+    treeStr = this.getTreeStr();
+    huffHeader = `${treeStr.length}${HUFF_HEADER_DELIM}${treeStr}`;
+    return huffHeader;
+  }
+
+  encode(str: string): string {
+    let codeLookupMap: Map<string, Bit[]>;
+    let huffStr: HuffStr;
+    let headerStr: string;
+    let encodedStr: string;
+    codeLookupMap = this.getLookupMap();
+    headerStr = this.getHuffHeader();
+    huffStr = getHuffStr(str, codeLookupMap);
+    encodedStr = `${headerStr}${HUFF_STR_START_DELIM}${huffStr}`;
+    return encodedStr;
   }
 
   static init(str: string): HuffTree {

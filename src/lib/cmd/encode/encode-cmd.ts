@@ -1,6 +1,5 @@
 
 import fs from 'fs';
-import { isString } from '../../util/validate-primitives';
 import { SysmonCommand } from '../sysmon-args';
 import { HuffTree } from '../../models/encode/huff-tree';
 import { HuffStr, decodeHuffStr, getHuffStr } from './huff';
@@ -12,55 +11,46 @@ import { ENCODE_OUT_DATA_DIR_PATH } from '../../../constants';
   huffman encoding
 */
 export async function encodeMain(cmd: SysmonCommand) {
-  const testStr = 'A llama likely lolls lazily about.';
+  let decodedHuffStr: string;
   let huffTree: HuffTree;
   let codeLookupMap: Map<string, (0 | 1)[]>;
+  let filePath: string | undefined;
+  let fileData: Buffer;
+  let fileDataStr: string;
+  let encodedFileHuffStr: HuffStr;
 
   mkdirIfNotExist(ENCODE_OUT_DATA_DIR_PATH);
 
-  huffTree = HuffTree.init(testStr);
+  if(cmd.args?.[0] === undefined) {
+    throw new Error('encode expects at least 1 argument');
+  }
+  filePath = cmd.args[0];
+
+  fileData = fs.readFileSync(filePath);
+  fileDataStr = fileData.toString();
+
+  huffTree = HuffTree.init(fileDataStr);
+
   codeLookupMap = huffTree.getLookupMap();
 
-  let huffStr = getHuffStr(testStr, codeLookupMap);
-  let decodedHuffStr = decodeHuffStr(huffStr, huffTree);
-  console.log(`input string len: ${testStr.length}`);
-  console.log(`encoded string len: ${huffStr.length}`);
-  console.log(`decoded string len: ${decodedHuffStr.length}`);
-  console.log(testStr);
-  console.log(decodedHuffStr);
+  encodedFileHuffStr = getHuffStr(fileDataStr, codeLookupMap);
+  decodedHuffStr = decodeHuffStr(encodedFileHuffStr, huffTree);
 
-  let filePath: string | undefined;
-  filePath = cmd.args?.[0];
-  if(isString(filePath)) {
-    let fileData: Buffer;
-    let fileDataStr: string;
-    let encodedFileHuffStr: HuffStr;
-
-    fileData = fs.readFileSync(filePath);
-    fileDataStr = fileData.toString();
-
-    huffTree = HuffTree.init(fileDataStr);
-
-    codeLookupMap = huffTree.getLookupMap();
-
-    encodedFileHuffStr = getHuffStr(fileDataStr, codeLookupMap);
-    decodedHuffStr = decodeHuffStr(encodedFileHuffStr, huffTree);
-    let huffTreeStr: string;
-    let huffTreeHeader: string;
-    huffTreeStr = huffTree.getTreeStr();
-    huffTreeHeader = `${huffTreeStr.length}:${huffTreeStr}`;
-    console.log('huffTreeHeader:');
-    console.log(huffTreeHeader);
-
-    console.log(`fileDataStr.length: ${fileDataStr.length.toLocaleString()}`);
-    console.log(`encodedFileData.length: ${encodedFileHuffStr.length.toLocaleString()}`);
-    console.log(`decoded string len: ${decodedHuffStr.length.toLocaleString()}`);
-    let outFileName = `decoded_${path.basename(filePath)}`;
-    let outFilePath = joinPath([
-      ENCODE_OUT_DATA_DIR_PATH,
-      outFileName,
-    ]);
-    fs.writeFileSync(outFilePath, decodedHuffStr);
-  }
+  console.log(`fileDataStr.length: ${fileDataStr.length.toLocaleString()}`);
+  console.log(`encodedFileData.length: ${encodedFileHuffStr.length.toLocaleString()}`);
+  console.log(`decoded string len: ${decodedHuffStr.length.toLocaleString()}`);
+  let encodedFileDataStr = huffTree.encode(fileDataStr);
+  let encodedOutFileName = `encoded_${path.basename(filePath)}`;
+  let encodedOutFilePath = joinPath([
+    ENCODE_OUT_DATA_DIR_PATH,
+    encodedOutFileName,
+  ]);
+  fs.writeFileSync(encodedOutFilePath, encodedFileDataStr);
+  let decodedOutFileName = `decoded_${path.basename(filePath)}`;
+  let decodedOutFilePath = joinPath([
+    ENCODE_OUT_DATA_DIR_PATH,
+    decodedOutFileName,
+  ]);
+  fs.writeFileSync(decodedOutFilePath, decodedHuffStr);
 
 }
