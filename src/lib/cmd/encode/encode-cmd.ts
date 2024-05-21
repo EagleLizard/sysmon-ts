@@ -23,12 +23,7 @@ export async function encodeMain(cmd: SysmonCommand) {
   let codeLookupMap: Map<string, (0 | 1)[]>;
 
   rootFreq = getHuffTree(testStr);
-  codeLookupMap = new Map();
-
-  traverseHuffTree(rootFreq, (val, code) => {
-    // console.log(`${val}: ${code.join('')}`);
-    codeLookupMap.set(val, code);
-  });
+  codeLookupMap = getHuffLookupMap(rootFreq);
 
   let huffStr = getHuffStr(testStr, codeLookupMap);
   let decodedHuffStr = decodeHuffStr(huffStr, rootFreq);
@@ -44,35 +39,32 @@ export async function encodeMain(cmd: SysmonCommand) {
     let fileDataStr: string;
     let encodedFileHuffStr: HuffStr;
 
-    let huffTimer: Timer;
-
-    let buildTreeMs: number;
-    let traverseMs: number;
-    let huffStrMs: number;
-
     fileData = fs.readFileSync(filePath);
     fileDataStr = fileData.toString();
 
-    huffTimer = Timer.start();
     rootFreq = getHuffTree(fileDataStr);
-    buildTreeMs = huffTimer.stop();
 
-    console.log(`getHuffTree() took: ${getIntuitiveTimeString(buildTreeMs)}`);
+    codeLookupMap = getHuffLookupMap(rootFreq);
 
-    codeLookupMap = new Map();
-
-    huffTimer.reset();
-    traverseHuffTree(rootFreq, (val, code) => {
-      // console.log(`${val}: ${code.join('')}`);
-      codeLookupMap.set(val, code);
-    });
-    traverseMs = huffTimer.stop();
-    console.log(`traverseHuffTree() took: ${getIntuitiveTimeString(traverseMs)}`);
-
-    huffTimer.reset();
     encodedFileHuffStr = getHuffStr(fileDataStr, codeLookupMap);
-    huffStrMs = huffTimer.stop();
-    console.log(`getHuffStr() took: ${getIntuitiveTimeString(huffStrMs)}`);
+    let huffTreeStrParts: string[];
+    let huffTreeStr: string;
+    let huffTreeHeader: string;
+    huffTreeStrParts = [];
+    huffTreePostOrder(rootFreq, (freqNode) => {
+      let isLeaf: boolean;
+      isLeaf = freqNode.val !== undefined;
+      if(isLeaf) {
+        huffTreeStrParts.push(`1${freqNode.val}`);
+      } else {
+        huffTreeStrParts.push('0');
+      }
+    });
+    huffTreeStrParts.push('0');
+    huffTreeStr = huffTreeStrParts.join('');
+    huffTreeHeader = `${huffTreeStr.length}:${huffTreeStr}`;
+    console.log('huffTreeHeader:');
+    console.log(huffTreeHeader);
 
     console.log(`fileData.length: ${fileData.length.toLocaleString()}`);
     console.log(`encodedFileData.length: ${encodedFileHuffStr.val.length.toLocaleString()}`);
@@ -115,7 +107,9 @@ function getHuffStr(
     if(currCode === undefined) {
       throw new Error(`No code exists for char: '${currChar}'`);
     }
-    bitArr = bitArr.concat(currCode);
+    for(let k = 0; k < currCode.length; ++k) {
+      bitArr.push(currCode[k]);
+    }
   }
 
   byteArr  = chunk(bitArr, 8);
@@ -172,7 +166,6 @@ function uint8ArrToBitArray(uint8Arr: Uint8Array): (0 | 1)[] {
   currByte = [];
   for(let i = 0; i < uint8Arr.length; ++i) {
     let currInt = uint8Arr[i];
-    // console.log(currInt);
     let currBitStr = currInt.toString(2);
     let leftPad: number;
     leftPad = 8 - currBitStr.length;
@@ -186,7 +179,9 @@ function uint8ArrToBitArray(uint8Arr: Uint8Array): (0 | 1)[] {
       }
       currByte.push(currBit);
     }
-    bitArr = bitArr.concat(currByte);
+    for(let k = 0; k < currByte.length; ++k) {
+      bitArr.push(currByte[k]);
+    }
     currByte.length = 0;
   }
   return bitArr;
@@ -197,7 +192,6 @@ function bitArrToUint8Arr(bitArr: (0 | 1)[]): Uint8Array {
   let intArr: number[];
   let uint8Arr: Uint8Array;
   bytes = chunk(bitArr, 8);
-  // console.log(bytes);
   intArr = [];
   for(let i = 0; i < bytes.length; ++i) {
     let currByte = bytes[i];
@@ -215,8 +209,8 @@ function chunk<T>(arr: T[], chunkSize: number): T[][] {
   currChunk = [];
   for(let i = 0; i < arr.length; ++i) {
     if(currChunk.length >= chunkSize) {
-      chunks.push(currChunk.slice());
-      currChunk.length = 0;
+      chunks.push(currChunk);
+      currChunk = [];
     }
     currChunk.push(arr[i]);
   }
@@ -226,7 +220,29 @@ function chunk<T>(arr: T[], chunkSize: number): T[][] {
   return chunks;
 }
 
-function traverseHuffTree(
+function getHuffLookupMap(rootFreq: FreqNode): Map<string, (0 | 1)[]> {
+  let lookupMap: Map<string, (0 | 1)[]>;
+  lookupMap = new Map();
+  huffTreePreOrder(rootFreq, (val, code) => {
+    lookupMap.set(val, code);
+  });
+  return lookupMap;
+}
+
+function huffTreePostOrder(
+  rootFreq: FreqNode,
+  visitCb: (freqNode: FreqNode) => void,
+) {
+  if(rootFreq.left !== undefined) {
+    huffTreePostOrder(rootFreq.left, visitCb);
+  }
+  if(rootFreq.right !== undefined) {
+    huffTreePostOrder(rootFreq.right, visitCb);
+  }
+  visitCb(rootFreq);
+}
+
+function huffTreePreOrder(
   rootFreq: FreqNode,
   visitCb: (val: string, code: (0 | 1)[]) => void,
   soFar?: (0 | 1)[]
@@ -242,12 +258,12 @@ function traverseHuffTree(
   }
   if(rootFreq.left !== undefined) {
     soFar.push(0);
-    traverseHuffTree(rootFreq.left, visitCb, soFar);
+    huffTreePreOrder(rootFreq.left, visitCb, soFar);
     soFar.pop();
   }
   if(rootFreq.right !== undefined) {
     soFar.push(1);
-    traverseHuffTree(rootFreq.right, visitCb, soFar);
+    huffTreePreOrder(rootFreq.right, visitCb, soFar);
     soFar.pop();
   }
 }
