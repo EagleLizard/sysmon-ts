@@ -1,11 +1,10 @@
 
-import { Bit } from '../../models/encode/huff-tree';
+import { Bit, FreqNode, HuffTree } from '../../models/encode/huff-tree';
 import { chunk } from '../../util/chunk';
 
-export type HuffStr = {
-  val: string;
-  pad: number;
-};
+const HUFF_STR_DELIM = '_';
+
+export type HuffStr = string;
 
 export function getHuffStr(
   str: string,
@@ -41,11 +40,66 @@ export function getHuffStr(
   }
   uint8Arr = bitArrToUint8Arr(bitArr);
   resStr = Buffer.from(uint8Arr.buffer).toString('binary');
-  huffStr = {
-    val: resStr,
-    pad,
-  };
+  huffStr = `${pad}${HUFF_STR_DELIM}${resStr}`;
   return huffStr;
+}
+
+export function decodeHuffStr(huffStr: HuffStr, huffTree: HuffTree): string {
+  let uint8Arr: Uint8Array;
+  let bitArr: Bit[];
+  let decodedStr: string;
+
+  let huffVal: string;
+  let pad: number;
+  let padChars: string[];
+  let pos: number;
+  let currChar: string;
+  pos = 0;
+  padChars = [];
+  while((currChar = huffStr[pos++]) !== HUFF_STR_DELIM) {
+    if(!/[0-9]/.test(currChar)) {
+      throw new Error(`Unexpected digit in huffStr pad: ${currChar}`);
+    }
+    padChars.push(currChar);
+  }
+  huffVal = huffStr.substring(pos);
+  pad = +padChars.join('');
+
+  uint8Arr = new Uint8Array(Buffer.from(huffVal, 'binary'));
+  bitArr = uint8ArrToBitArray(uint8Arr);
+  bitArr.splice(0, pad);
+  decodedStr = decodeHuff(huffTree, bitArr);
+  return decodedStr;
+}
+
+function decodeHuff(huffTree: HuffTree, bitArr: (0 | 1)[]): string {
+  let chars: string[];
+  let currNode: FreqNode;
+  let decodedStr: string;
+  chars = [];
+  currNode = huffTree.root;
+  for(let i = 0; i < bitArr.length; ++i) {
+    let currBit = bitArr[i];
+    if(currBit === 0) {
+      if(currNode.left === undefined) {
+        console.error(currNode);
+        throw new Error('unexpected undefined left node');
+      }
+      currNode = currNode.left;
+    } else {
+      if(currNode.right === undefined) {
+        console.error(currNode);
+        throw new Error('unexpected undefined right node');
+      }
+      currNode = currNode.right;
+    }
+    if(currNode.val !== undefined) {
+      chars.push(currNode.val);
+      currNode = huffTree.root;
+    }
+  }
+  decodedStr = chars.join('');
+  return decodedStr;
 }
 
 function bitArrToUint8Arr(bitArr: Bit[]): Uint8Array {
@@ -62,3 +116,32 @@ function bitArrToUint8Arr(bitArr: Bit[]): Uint8Array {
   uint8Arr = new Uint8Array(intArr);
   return uint8Arr;
 }
+
+function uint8ArrToBitArray(uint8Arr: Uint8Array): (0 | 1)[] {
+  let bitArr: (0 | 1)[];
+  let currByte: (0 | 1)[];
+  bitArr = [];
+  currByte = [];
+  for(let i = 0; i < uint8Arr.length; ++i) {
+    let currInt = uint8Arr[i];
+    let currBitStr = currInt.toString(2);
+    let leftPad: number;
+    leftPad = 8 - currBitStr.length;
+    while(leftPad--) {
+      currByte.push(0);
+    }
+    for(let k = 0; k < currBitStr.length; ++k) {
+      let currBit = +currBitStr[k];
+      if(currBit !== 0 && currBit !== 1) {
+        throw new Error(`Unexpected bit: ${currBitStr[k]}`);
+      }
+      currByte.push(currBit);
+    }
+    for(let k = 0; k < currByte.length; ++k) {
+      bitArr.push(currByte[k]);
+    }
+    currByte.length = 0;
+  }
+  return bitArr;
+}
+
