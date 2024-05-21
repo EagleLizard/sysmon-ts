@@ -1,9 +1,15 @@
-import { HuffStr, getHuffStr } from '../../cmd/encode/huff';
+import { HuffStr, getHuffStr, uint8ArrToBitArray } from '../../cmd/encode/huff';
 
 const HUFF_HEADER_DELIM = ':';
 const HUFF_STR_START_DELIM = '-';
+const HUFF_STR_DELIM = '_';
 
 export type Bit = (0 | 1);
+
+export type HuffHeader = {
+  header: string;
+  pos: number;
+};
 
 export class FreqNode {
   left: FreqNode | undefined;
@@ -23,8 +29,10 @@ export class HuffTree {
   getLookupMap(): Map<string, Bit[]> {
     let lookupMap: Map<string, Bit[]>;
     lookupMap = new Map();
-    huffTreePreOrder(this.root, (val, code) => {
-      lookupMap.set(val, code);
+    huffTreePreOrder(this.root, (freq, code) => {
+      if(freq.val !== undefined) {
+        lookupMap.set(freq.val, code);
+      }
     });
     return lookupMap;
   }
@@ -66,6 +74,124 @@ export class HuffTree {
     huffStr = getHuffStr(str, codeLookupMap);
     encodedStr = `${headerStr}${HUFF_STR_START_DELIM}${huffStr}`;
     return encodedStr;
+  }
+
+  decodeHuffStr(huffStr: HuffStr): string {
+    let uint8Arr: Uint8Array;
+    let bitArr: Bit[];
+    let decodedStr: string;
+
+    let huffVal: string;
+    let pad: number;
+    let padChars: string[];
+    let pos: number;
+    let currChar: string;
+    pos = 0;
+    padChars = [];
+    while((currChar = huffStr[pos++]) !== HUFF_STR_DELIM) {
+      if(!/[0-9]/.test(currChar)) {
+        throw new Error(`Unexpected digit in huffStr pad: ${currChar}`);
+      }
+      padChars.push(currChar);
+    }
+    huffVal = huffStr.substring(pos);
+    pad = +padChars.join('');
+
+    uint8Arr = new Uint8Array(Buffer.from(huffVal, 'binary'));
+    bitArr = uint8ArrToBitArray(uint8Arr);
+    bitArr.splice(0, pad);
+    decodedStr = this.decodeHuffBits(bitArr);
+    return decodedStr;
+  }
+
+  private decodeHuffBits(bitArr: (0 | 1)[]): string {
+    let chars: string[];
+    let currNode: FreqNode;
+    let decodedStr: string;
+    chars = [];
+    currNode = this.root;
+    for(let i = 0; i < bitArr.length; ++i) {
+      let currBit = bitArr[i];
+      if(currBit === 0) {
+        if(currNode.left === undefined) {
+          console.error(currNode);
+          throw new Error('unexpected undefined left node');
+        }
+        currNode = currNode.left;
+      } else {
+        if(currNode.right === undefined) {
+          console.error(currNode);
+          throw new Error('unexpected undefined right node');
+        }
+        currNode = currNode.right;
+      }
+      if(currNode.val !== undefined) {
+        chars.push(currNode.val);
+        currNode = this.root;
+      }
+    }
+    decodedStr = chars.join('');
+    return decodedStr;
+  }
+
+  static parseHeader(str: string): HuffHeader {
+    let pos: number;
+    let currChar: string;
+    let header: string;
+    let headerLenStr: string;
+    let headerLen: number;
+    headerLenStr = '';
+    pos = 0;
+    while((currChar = str[pos++]) !== HUFF_HEADER_DELIM) {
+      if(!/[0-9]/.test(currChar)) {
+        throw new Error(`unexpected header length digit: ${currChar}`);
+      }
+      headerLenStr += currChar;
+    }
+
+    headerLen = +headerLenStr;
+    let headerPos = 0;
+    header = '';
+    while(headerPos < headerLen) {
+      currChar = str[pos + headerPos++];
+      header += currChar;
+    }
+    if(str[pos + headerPos] !== HUFF_STR_START_DELIM) {
+      throw new Error(`Unexpect HuffStr start delimiter: ${str[pos + headerPos]}`);
+    }
+    headerPos++;
+
+    return {
+      header,
+      pos: pos + headerPos,
+    };
+  }
+
+  static fromHeader(headerStr: string): HuffTree {
+    let charStack: FreqNode[];
+    let pos: number;
+    charStack = [];
+    pos = 0;
+    while(pos < headerStr.length) {
+      let currChar = headerStr[pos++];
+      switch(currChar) {
+        case '1':
+          charStack.push(new FreqNode(-1, headerStr[pos++]));
+          break;
+        case '0':
+          let freq: FreqNode;
+          if(charStack.length > 1) {
+            freq = new FreqNode(-1);
+            freq.right = charStack.pop();
+            freq.left = charStack.pop();
+            charStack.push(freq);
+          }
+          break;
+        default:
+          throw new Error(`Unexpected char at header postion ${pos}: ${currChar}`);
+      }
+    }
+    return new HuffTree(charStack[0]);
   }
 
   static init(str: string): HuffTree {
@@ -111,20 +237,15 @@ function huffTreePostOrder(
   visitCb(rootFreq);
 }
 
-function huffTreePreOrder(
+export function huffTreePreOrder(
   rootFreq: FreqNode,
-  visitCb: (val: string, code: (0 | 1)[]) => void,
+  visitCb: (freqNode: FreqNode, code: (0 | 1)[]) => void,
   soFar?: (0 | 1)[]
 ) {
   if(soFar === undefined) {
     soFar = [];
   }
-  if(rootFreq.val !== undefined) {
-    /*
-      leaf node
-    */
-    visitCb(rootFreq.val, soFar.slice());
-  }
+  visitCb(rootFreq, soFar.slice());
   if(rootFreq.left !== undefined) {
     soFar.push(0);
     huffTreePreOrder(rootFreq.left, visitCb, soFar);
@@ -146,7 +267,7 @@ function freqComparator(a: FreqNode, b: FreqNode): number {
     if(b.val === undefined) {
       return 1;
     } else if(a.val === undefined) {
-      return 1;
+      return -1;
     } else {
       return a.val.localeCompare(b.val);
     }

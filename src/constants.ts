@@ -43,3 +43,9 @@ export const MONITOR_OUT_DATA_DIR_PATH = [
   OUT_DATA_DIR_PATH,
   MONITOR_OUT_DATA_DIR_NAME,
 ].join(path.sep);
+
+const ENCODE_OUT_DATA_DIR_NAME = 'encode';
+export const ENCODE_OUT_DATA_DIR_PATH = [
+  OUT_DATA_DIR_PATH,
+  ENCODE_OUT_DATA_DIR_NAME,
+].join(path.sep);
