@@ -6,7 +6,6 @@ describe('huff-tree tests', () => {
   let strMock: string;
   beforeEach(() => {
     strMock = 'aaabbcdefaaabbcdefaaabbcdef';
-    console.log(strMock);
   });
 
   it('tests HuffTree.init()', () => {

@@ -148,7 +148,6 @@ async function getStoredTokenOrExchange(cfg: SysmonCliConfig): Promise<string | 
   let nextToken: string;
   if(cfg.token !== undefined) {
     jwtPayload = getJwtPayload(cfg.token);
-    console.log({ jwtPayload });
     tokenValid = checkTokenExpired(jwtPayload);
     if(tokenValid) {
       tokenWillExpire = checkTokenWillExpire(jwtPayload);
