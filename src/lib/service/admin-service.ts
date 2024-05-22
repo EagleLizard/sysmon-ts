@@ -68,7 +68,7 @@ export class AdminService {
     return user;
   }
 
-  static async getToken(opts: GetTokenOpts) {
+  static async getToken(opts?: GetTokenOpts) {
     let token: string;
     let url: string;
     let resp: Response;
