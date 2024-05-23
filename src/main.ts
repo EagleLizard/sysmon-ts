@@ -6,6 +6,9 @@ import { sysmonMain } from './lib/sysmon';
 import { logger } from './lib/logger';
 import { killActivePingProc } from './lib/cmd/ping/ping';
 import { killRunningMonitor } from './lib/cmd/monitor/monitor-cmd';
+import { getIntuitiveTimeString } from './lib/util/format-util';
+
+const SHUTDOWN_TIMEOUT_MS = 1e3;
 
 (async () => {
   try {
@@ -41,6 +44,10 @@ async function shutdown(sig: string) {
   setImmediate(() => {
     // console.clear();
     process.exitCode = 0;
+    setTimeout(() => {
+      console.error(`Process didn't quit after ${getIntuitiveTimeString(SHUTDOWN_TIMEOUT_MS)}. Shutting down now.`);
+      process.exit();
+    }, SHUTDOWN_TIMEOUT_MS);
   });
 }
 

@@ -24,15 +24,6 @@ vi.mock('./cli-config-service', (importOriginal) => {
   };
 });
 
-// vi.mock('../../config', async (importOriginal) => {
-//   const original = await importOriginal<typeof import('../../config')>();
-//   return {
-//     config: {
-//       ...original,
-//       EZD_JWT_SECRET: 'mock_jwt_secret',
-//     },
-//   };
-// });
 const EZD_JWT_SECRET_MOCK = 'mock_jwt_secret';
 
 const MINUTES_MS = 1000 * 60;
