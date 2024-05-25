@@ -159,7 +159,7 @@ function *getArgvParser(argv: string[]): Generator<ArgvToken> {
 }
 
 function isFlagArg(argStr: string): boolean {
-  return /^-{1,2}[a-zA-Z][a-zA-Z-]*/.test(argStr);
+  return /^-{1,2}[a-zA-Z0-9][a-zA-Z0-9-]*/.test(argStr);
 }
 
 function isCmdStr(cmdStr: string): boolean {

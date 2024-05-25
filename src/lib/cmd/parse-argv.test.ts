@@ -54,13 +54,47 @@ describe('parse-argv tests', () => {
     expect(parsedArgv.opts[0][1]).toEqual([]);
   });
 
+  it('tests parseArgv() parses correct command with a long boolean flag', () => {
+    let parsedArgv: ParsedArgv2;
+    let cmd: string;
+    let flag: string;
+    cmd = 'test';
+    flag = '--boolean';
+    argvMock = [
+      ...argvMock,
+      cmd,
+      flag,
+    ];
+    parsedArgv = parseArgv2(argvMock);
+    expect(parsedArgv.opts[0]).toBeDefined;
+    expect(parsedArgv.opts[0][1]).toEqual([]);
+  });
+
   it('tests parseArgv() parses correct command with a flag that has an arg', () => {
     let parsedArgv: ParsedArgv2;
     let cmd: string;
     let flag: string;
     let flagArg: string;
     cmd = 'test';
-    flag = '-b';
+    flag = '-n';
+    flagArg = '1';
+    argvMock = [
+      ...argvMock,
+      cmd,
+      flag, flagArg,
+    ];
+    parsedArgv = parseArgv2(argvMock);
+    expect(parsedArgv.opts[0]).toBeDefined;
+    expect(parsedArgv.opts[0][1]).toEqual([ flagArg ]);
+  });
+
+  it('tests parseArgv() parses correct command with a long flag that has an arg', () => {
+    let parsedArgv: ParsedArgv2;
+    let cmd: string;
+    let flag: string;
+    let flagArg: string;
+    cmd = 'test';
+    flag = '--number';
     flagArg = '1';
     argvMock = [
       ...argvMock,
