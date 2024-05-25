@@ -1,37 +1,28 @@
 
-import { SYSMON_COMMAND_ENUM } from './sysmon-args';
-
-enum SCAN_DIR_FLAG_ENUM {
-  FIND_DUPLICATES = 'FIND_DUPLICATES',
-}
-
-enum ENCODE_FLAG_ENUM {
-  DECODE = 'DECODE',
-}
-
-enum MONITOR_FLAG_ENUM {
-  SAMPLE_INTERVAL = 'SAMPLE_INTERVAL',
-  SAMPLE_MAX = 'SAMPLE_MAX',
-}
-
-export function parseSysmonArgs2(argv: string[]) {
-  let parsedArgv = parseArgv2(argv);
-  return parsedArgv;
-}
-
-enum PARSE_ARG_MODE {
-  INIT,
-  CMD,
-  CMD_ARGS,
-  FLAG,
-  FLAG_ARGS,
-}
-
 export type ParsedArgv2 = {
   cmd: string;
   args: string[];
   opts: Map<string, string[]>;
 };
+
+type ArgvToken = {
+  kind: ArgvTokenEnum;
+  val: string;
+}
+
+enum ArgvTokenEnum {
+  CMD = 'CMD',
+  FLAG = 'FLAG',
+  ARG = 'ARG',
+  END = 'END',
+}
+
+enum ArgvParserState {
+  INIT = 'INIT',
+  CMD = 'CMD',
+  FLAG = 'FLAG',
+  ARG = 'ARG',
+}
 
 export function parseArgv2(argv: string[]): ParsedArgv2 {
   let parsedArgv: ParsedArgv2;
@@ -125,25 +116,6 @@ export function parseArgv2(argv: string[]): ParsedArgv2 {
       flags.set(token.val, flagOpts);
     }
   }
-}
-
-enum ArgvTokenEnum {
-  CMD = 'CMD',
-  FLAG = 'FLAG',
-  ARG = 'ARG',
-  END = 'END',
-}
-
-type ArgvToken = {
-  kind: ArgvTokenEnum;
-  val: string;
-}
-
-enum ArgvParserState {
-  INIT = 'INIT',
-  CMD = 'CMD',
-  FLAG = 'FLAG',
-  ARG = 'ARG',
 }
 
 function *getArgvParser(argv: string[]): Generator<ArgvToken> {
