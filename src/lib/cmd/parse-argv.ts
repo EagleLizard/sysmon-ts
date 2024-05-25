@@ -2,7 +2,7 @@
 export type ParsedArgv2 = {
   cmd: string;
   args: string[];
-  opts: Map<string, string[]>;
+  opts: [string, string[]][];
 };
 
 type ArgvToken = {
@@ -28,22 +28,21 @@ export function parseArgv2(argv: string[]): ParsedArgv2 {
   let parsedArgv: ParsedArgv2;
   let cmd: string | undefined;
   let cmdArgs: string[];
-  let flags: Map<string, string[]>;
+  let flags: [string, string[]][];
 
   let argvParser: Generator<ArgvToken>;
   let iterRes: IteratorResult<ArgvToken>;
-  let currToken: ArgvToken;
   let tokenStack: ArgvToken[];
 
   argv = argv.slice(2);
   cmdArgs = [];
-  flags = new Map();
+  flags = [];
 
   argvParser = getArgvParser(argv);
   tokenStack = [];
 
   while(!(iterRes = argvParser.next()).done) {
-    currToken = iterRes.value;
+    let currToken = iterRes.value;
     /*
       CMD and FLAG token types are terminal. We'll consume the current token stack, and
         validate the results
@@ -73,29 +72,21 @@ export function parseArgv2(argv: string[]): ParsedArgv2 {
   return parsedArgv;
 
   function consumeCmdOrFlag() {
-    if(tokenStack.length < 1) {
-      return;
-    }
     let token: ArgvToken | undefined;
     let argTokens: ArgvToken[];
     let argToken: ArgvToken | undefined;
     argTokens = [];
-    while(
-      ((token = tokenStack.pop()) !== undefined)
-      && (token.kind === ArgvTokenEnum.ARG)
-    ) {
-      argTokens.push(token);
+    while(tokenStack.length > 0) {
+      token = tokenStack.pop();
+      if(token?.kind === ArgvTokenEnum.ARG) {
+        argTokens.push(token);
+      }
+    }
+    if(token === undefined) {
+      return;
     }
     // last token should be set to FLAG only
-    if(
-      (token === undefined)
-      || (
-        token.kind !== ArgvTokenEnum.FLAG
-        && token.kind !== ArgvTokenEnum.CMD
-      )
-    ) {
-      throw new Error(`Unexpected Token: expected CMD or FLAG, popped: ${token?.kind}`);
-    }
+
     if(token.kind === ArgvTokenEnum.CMD) {
       if(cmd !== undefined) {
         throw new Error(`Unexpected Token: attempt to set cmd to ${token.val}, but cmd already set to ${cmd}`);
@@ -106,14 +97,14 @@ export function parseArgv2(argv: string[]): ParsedArgv2 {
       }
     } else {
       let flagOpts: string[] | undefined;
-      if((flagOpts = flags.get(token.val)) !== undefined) {
-        throw new Error(`Unexpected Token: Attempt to set flag '${token.val}', but flag already set.`);
+      if(cmd === undefined) {
+        throw new Error(`Unexpected Token: command not set. Expected ${ArgvTokenEnum.CMD}, reveived: ${token.kind}`);
       }
       flagOpts = [];
       while((argToken = argTokens.pop()) !== undefined) {
         flagOpts.push(argToken.val);
       }
-      flags.set(token.val, flagOpts);
+      flags.push([ token.val, flagOpts ]);
     }
   }
 }
@@ -127,7 +118,7 @@ function *getArgvParser(argv: string[]): Generator<ArgvToken> {
     let currArg = argv[pos];
     switch(parseState) {
       case ArgvParserState.INIT:
-        if(pos === 0) {
+        if((pos === 0) && isCmdStr(currArg)) {
           parseState = ArgvParserState.CMD;
         } else if(isFlagArg(currArg)) {
           parseState = ArgvParserState.FLAG;
@@ -136,9 +127,6 @@ function *getArgvParser(argv: string[]): Generator<ArgvToken> {
         }
         break;
       case ArgvParserState.CMD:
-        if(!isCmdStr(currArg)) {
-          throw new Error(`Parse Error: invalid cmd: '${currArg}'`);
-        }
         yield {
           kind: ArgvTokenEnum.CMD,
           val: currArg,
