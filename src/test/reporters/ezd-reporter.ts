@@ -6,8 +6,10 @@ import path, { ParsedPath } from 'path';
 import { Arrayable, Awaitable, ErrorWithDiff, File, Reporter, Task, TaskResultPack, Vitest, suite } from 'vitest';
 import stripAnsi from 'strip-ansi';
 import chalk, { ChalkInstance } from 'chalk';
+import { highlight } from 'cli-highlight';
 
 import { readFileByLine } from '../../lib/util/files';
+import { TaskUtil } from './task-util';
 
 /*
 interface Reporter {
@@ -39,25 +41,32 @@ type ColorConfig = {
   heapUsage: Formatter;
   serverRestart: Formatter;
   syntax: {
-    callExpression: Formatter;
+    function: Formatter;
+    string: Formatter,
+    literal: Formatter,
+    number: Formatter;
   }
 }
 
 const chartreuse = chalk.rgb(127, 255, 0);
 // const chartreuse_light = chalk.rgb(213, 255, 171);
-const chartreuse_light = chalk.rgb(231, 252, 210);
+// const chartreuse_light = chalk.rgb(231, 252, 210);
+const chartreuse_light = chalk.rgb(190, 255, 125);
 const pink = chalk.rgb(255, 135, 185);
 const hot_pink = chalk.bold.rgb(255, 0, 179);
 // const pastel_orange = chalk.rgb(255, 221, 173);
 const pastel_orange = chalk.rgb(255, 203, 89);
 // const teal = chalk.rgb(0, 255, 183);
 // const teal = chalk.rgb(0, 255, 221);
-// const teal = chalk.rgb(0, 125, 125);
+const teal = chalk.rgb(0, 125, 125);
 const gray = chalk.gray;
 const gray_light = chalk.rgb(122, 122, 122);
 // const coral = chalk.rgb(255, 127, 80);
 const coral = chalk.rgb(255, 156, 120);
 const yellow_yellow = chalk.rgb(255, 255, 0);
+const aqua = chalk.rgb(96, 226, 182);
+const purple_light = chalk.rgb(213, 167, 250);
+
 const purpleRgb = {
   r: 199,
   g: 131,
@@ -78,7 +87,6 @@ const orange_lightRgb = {
 // const orange_light = chalk.rgb(255, 210, 263);
 const orange_light = chalk.rgb(orange_lightRgb.r, orange_lightRgb.g, orange_lightRgb.b);
 
-const aqua = chalk.rgb(96, 226, 182);
 const colorCfg: ColorConfig = {
   // pass: pc.green,
   pass: chartreuse,
@@ -98,7 +106,10 @@ const colorCfg: ColorConfig = {
   heapUsage: coral,
   serverRestart: chalk.bold.magenta,
   syntax: {
-    callExpression: aqua,
+    function: pink,
+    string: chartreuse_light.italic,
+    literal: pastel_orange,
+    number: aqua
   }
 };
 
@@ -194,8 +205,8 @@ async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintE
   let failedTests: Task[];
   let failedTotal: number;
 
-  suites = getSuites(files);
-  tests = getTests(files);
+  suites = TaskUtil.getSuites(files);
+  tests = TaskUtil.getTests(files);
   failedTotal = 0;
 
   failedSuites = [];
@@ -262,7 +273,7 @@ async function printErrors(tasks: Task[], opts: PrintErrorSummayOpts) {
           return projName === currProjName;
         });
       }
-      console.log(error);
+      // console.log(error);
       if(errorItem !== undefined) {
         errorItem[1].push(task);
       } else {
@@ -285,7 +296,7 @@ async function printErrors(tasks: Task[], opts: PrintErrorSummayOpts) {
           filePath =  currTask.projectName ?? currTask.file?.projectName;
           projName = currTask.projectName ?? currTask.file?.projectName;
         }
-        taskName = getFullName(currTask, colorCfg.dim(' > '));
+        taskName = TaskUtil.getFullName(currTask, colorCfg.dim(' > '));
         if(filePath !== undefined && filePath.length > 0) {
           taskName += ` ${colorCfg.dim()} ${path.relative(opts.config.root, filePath)}`;
         }
@@ -375,22 +386,26 @@ async function printErrors(tasks: Task[], opts: PrintErrorSummayOpts) {
         await readFileByLine(codePathStr, {
           lineCb,
         });
+        fileStr = fileLines.join('\n');
+        let highlighted = highlight(fileStr, {
+          language: 'typescript',
+          theme: {
+            string: colorCfg.syntax.string,
+            function: colorCfg.syntax.function,
+            literal: colorCfg.syntax.literal,
+            number: colorCfg.syntax.number,
+          }
+        });
+        let highlightedLines = highlighted.split('\n');
 
         if(errorLineIdx !== undefined) {
           let ptrLine: string;
           ptrLine = colorCfg.fail(`${' '.repeat(codeCol - 1)}${F_ARROW_UP}`);
-          // fileLines.splice(errorLineIdx, 0, ptrLine);
+          highlightedLines.splice(errorLineIdx, 0, ptrLine);
         }
-        fileStr = fileLines.join('\n');
-        console.log(fileStr);
-        console.log(errorLineIdx);
 
-        // const outLines = fileLines.slice(codeLine - 3, codeLine + 2);
-        // console.log(opts.logger.highlight(codePathStr, fileLines.join('\n')));
-        // console.log(outLines.join('\n'));
-        // codeFrames.forEach(codeFrame => {
-        //   console.log(`~~ ${codeFrame}`);
-        // });
+        let highlightedStr = highlightedLines.join('\n');
+        opts.logger.log(highlightedStr);
       }
 
       opts.logger.error(colorCfg.dim(getDivider(`[${k + 1}/${errorsQueue.length}]`)));
@@ -496,7 +511,7 @@ function formatResult(task: Task, opts: PrintResultsOpts): string {
 
   prefix += taskSymbol;
   if(task.type === 'suite') {
-    testCount = getTests(task).length;
+    testCount = TaskUtil.getTests(task).length;
     suffix += ` ${colorCfg.count(`(${testCount})`)}`;
   }
   if(task.mode === 'skip') {
@@ -554,109 +569,6 @@ function getStateSymbol(task: Task) {
     default:
       return ' ';
   }
-}
-/*
-  see:
-    https://github.com/vitest-dev/vitest/blob/b7438b9be28f551cf8d82162e352510a8cbc7b92/packages/runner/src/utils/tasks.ts
-*/
-function getTests(task: Arrayable<Task>): Task[] {
-  let tests: Task[];
-  let suites: Task[];
-  tests = [];
-  suites = Array.isArray(task)
-    ? task
-    : [ task ]
-  ;
-  for(let i = 0; i < suites.length; ++i) {
-    let currSuite = suites[i];
-    if(isAtomTest(currSuite)) {
-      tests.push(currSuite);
-    // } else if(Array.isArray(currSuite.suite?.tasks)) {
-    } else if(currSuite.type === 'suite') {
-      for(let k = 0; k < currSuite.tasks.length; ++k) {
-        let currTask = currSuite.tasks[k];
-        if(isAtomTest(currTask)) {
-          tests.push(currTask);
-        } else {
-          // console.log(currTask.filepath);
-          let taskTests = getTests(currTask);
-          for(let j = 0; j < taskTests.length; ++j) {
-            let currTest = taskTests[j];
-            tests.push(currTest);
-          }
-        }
-      }
-    }
-  }
-  return tests;
-}
-/*
-  see: https://github.com/vitest-dev/vitest/blob/b7438b9be28f551cf8d82162e352510a8cbc7b92/packages/runner/src/utils/tasks.ts#L35
-*/
-function getSuites(srcTasks: Arrayable<Task>): Task[] {
-  let tasks: Task[];
-  let resTasks: Task[];
-  tasks = Array.isArray(srcTasks)
-    ? srcTasks
-    : [ srcTasks ]
-  ;
-  resTasks = [];
-  for(let i = 0; i < tasks.length; ++i) {
-    let task = tasks[i];
-    if(task.type === 'suite') {
-      let suiteTasks: Task[];
-      resTasks.push(task);
-      suiteTasks = getSuites(task.tasks);
-      for(let k = 0; k < suiteTasks.length; ++k) {
-        let suiteTask = suiteTasks[k];
-        resTasks.push(suiteTask);
-      }
-    }
-  }
-  return resTasks;
-}
-
-/*
-  see: https://github.com/vitest-dev/vitest/blob/0766b7f72ef4d8b5357fc002b562ff7721963616/packages/vitest/src/utils/tasks.ts#L18
-*/
-
-function getFullName(task: Task, separator = ' > '): string {
-  let fullName: string;
-  fullName = getNames(task).join(separator);
-  return fullName;
-}
-
-/*
-  see: https://github.com/vitest-dev/vitest/blob/0766b7f72ef4d8b5357fc002b562ff7721963616/packages/runner/src/utils/tasks.ts#L47
-*/
-
-function getNames(task: Task): string[] {
-  let names: string[];
-  let currTask: Task | undefined;
-  names = [ task.name ];
-  currTask = task;
-  while(currTask?.suite !== undefined) {
-    currTask = currTask.suite;
-    if(currTask.name !== undefined) {
-      names.push(currTask.name);
-    }
-  }
-
-  if(
-    (task.file !== undefined)
-    && (currTask !== task.file)
-  ) {
-    names.push(task.file.name);
-  }
-  names.reverse();
-  return names;
-}
-
-function isAtomTest(task: Task): boolean {
-  return (
-    (task.type === 'test')
-    || (task.type === 'custom')
-  );
 }
 
 function taskComparator<T extends Task>(a: T, b: T) {
