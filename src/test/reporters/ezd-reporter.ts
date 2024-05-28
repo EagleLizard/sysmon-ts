@@ -1,9 +1,13 @@
 
+import sourceMapSupport from 'source-map-support';
+sourceMapSupport.install();
+
 import path, { ParsedPath } from 'path';
-import { WriteStream } from 'fs';
-import { Awaitable, File, Reporter, Task, TaskResultPack, Vitest, suite } from 'vitest';
-import pc from 'picocolors';
-import chalk from 'chalk';
+import { Arrayable, Awaitable, ErrorWithDiff, File, Reporter, Task, TaskResultPack, Vitest, suite } from 'vitest';
+import stripAnsi from 'strip-ansi';
+import chalk, { ChalkInstance } from 'chalk';
+
+import { readFileByLine } from '../../lib/util/files';
 
 /*
 interface Reporter {
@@ -21,17 +25,22 @@ interface Reporter {
 }
 */
 
-type Formatter = (input: string | number | null | undefined) => string;
+// type Formatter = (input: string | number | null | undefined) => string;
+type Formatter = ChalkInstance;
 
 type ColorConfig = {
   pass: Formatter;
   fail: Formatter;
+  failComplement: Formatter;
   suite: Formatter;
   dim: Formatter;
   dimmer: Formatter;
   count: Formatter;
   heapUsage: Formatter;
   serverRestart: Formatter;
+  syntax: {
+    callExpression: Formatter;
+  }
 }
 
 const chartreuse = chalk.rgb(127, 255, 0);
@@ -48,21 +57,56 @@ const gray = chalk.gray;
 const gray_light = chalk.rgb(122, 122, 122);
 // const coral = chalk.rgb(255, 127, 80);
 const coral = chalk.rgb(255, 156, 120);
+const yellow_yellow = chalk.rgb(255, 255, 0);
+const purpleRgb = {
+  r: 199,
+  g: 131,
+  b: 255,
+};
+const purple = chalk.rgb(purpleRgb.r, purpleRgb.g, purpleRgb.b);
+const magentaRgb = {
+  r: 216,
+  g: 27,
+  b: 96,
+};
+const magenta = chalk.rgb(magentaRgb.r, magentaRgb.g, magentaRgb.b);
+const orange_lightRgb = {
+  r: 255,
+  g: 210,
+  b: 253,
+};
+// const orange_light = chalk.rgb(255, 210, 263);
+const orange_light = chalk.rgb(orange_lightRgb.r, orange_lightRgb.g, orange_lightRgb.b);
 
+const aqua = chalk.rgb(96, 226, 182);
 const colorCfg: ColorConfig = {
   // pass: pc.green,
   pass: chartreuse,
   // fail: pc.red,
-  fail: hot_pink,
+  // fail: hot_pink,
+  // fail: magenta.bold,
+  fail: purple,
+  failComplement: orange_light,
   // suite: pc.yellow,
-  suite: pastel_orange,
-  dim: pc.dim,
-  dimmer: (input) => pc.dim(pc.gray(input)),
-  count: (input) => gray_light(input),
+  // suite: pastel_orange,
+  // suite: coral,
+  suite: yellow_yellow,
+  dim: chalk.dim,
+  dimmer: chalk.gray.dim,
+  count: gray_light,
   // heapUsage: pc.magenta,
   heapUsage: coral,
-  serverRestart: (input) => pc.bold(pc.magenta(input)),
+  serverRestart: chalk.bold.magenta,
+  syntax: {
+    callExpression: aqua,
+  }
 };
+
+const F_LONG_DASH = '⎯';
+const F_ARROW_UP = '^';
+
+const ERR_STACK_CODE_FRAME_START_STR = '    at ';
+const DEFAULT_CODE_LINES_TO_INCLUDE = 3;
 
 export default class EzdReporter implements Reporter {
   ctx: Vitest = undefined!;
@@ -79,44 +123,20 @@ export default class EzdReporter implements Reporter {
   // onTaskUpdate?: ((packs: TaskResultPack[]) => Awaitable<void>) | undefined;
   onTaskUpdate(packs: TaskResultPack[]): Awaitable<void> | undefined {
     // logHook('onTaskUpdate()');
-    let lastTask: Task | undefined;
     for(let i = 0; i < packs.length; ++i) {
       let pack = packs[i];
       let task = this.ctx.state.idMap.get(pack[0]);
       // console.log(task?.name);
       if(
         (task !== undefined)
-        // && (task.file === undefined) // means the task won't have circular refs
-        && ('filepath' in task) // means the task won't have circular refs
+        && (task.file === undefined) // means the task won't have circular refs
+        // && ('filepath' in task) // means the task won't have circular refs
         && (task.result?.state !== 'run')
       ) {
-        let tests: Task[];
-        try {
-          tests = getTests(task);
-        } catch(e) {
-          console.error(e);
-          throw e;
-        }
-        console.log(tests.length);
-        // this.ctx.logger.log(formatResult(task, {
-        //   logger: this.ctx.logger,
-        //   config: this.ctx.config,
-        // }));
         printResults([ task ], {
           logger: this.ctx.logger,
           config: this.ctx.config,
         });
-        // let tests: Task[];
-        // let testSymbol: string;
-        // // testSymbol = getStateSymbol(task);
-        // // // console.log(`${testSymbol} ${task.name}`);
-        // // // console.log(task.suite?.tasks);
-        // tests = getTests(task);
-        // // console.log(tests);
-        // for(let k = 0; k < tests.length; ++k) {
-        //   let test = tests[k];
-        //   // console.log(test.name);
-        // }
       }
     }
   }
@@ -137,22 +157,265 @@ export default class EzdReporter implements Reporter {
 
   // onFinished?: ((files?: File[] | undefined, errors?: unknown[] | undefined) => Awaitable<void>) | undefined;
   onFinished(): Awaitable<void> {
-    logHook('onFinished()');
-    let files: File[];
-    let errors: unknown[];
-    files = this.ctx.state.getFiles();
-    errors = this.ctx.state.getUnhandledErrors();
-    printResults(files, {
-      logger: this.ctx.logger,
-      config: this.ctx.config,
-    });
+    return (async () => {
+      logHook('onFinished()');
+      let files: File[];
+      let errors: unknown[];
+      files = this.ctx.state.getFiles();
+      errors = this.ctx.state.getUnhandledErrors();
+      printResults(files, {
+        logger: this.ctx.logger,
+        config: this.ctx.config,
+        onlyFailed: true,
+      });
+      await printErrorsSummary(files, errors, {
+        logger: this.ctx.logger,
+        config: this.ctx.config,
+        ctx: this.ctx,
+      });
+    })();
   }
 }
 
 type PrintResultsOpts = {
   logger: Vitest['logger'];
   config: Vitest['config'];
+  onlyFailed?: boolean,
 };
+
+type PrintErrorSummayOpts = PrintResultsOpts & {
+  ctx: Vitest;
+};
+
+async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintErrorSummayOpts) {
+  let suites: Task[];
+  let tests: Task[];
+  let failedSuites: Task[];
+  let failedTests: Task[];
+  let failedTotal: number;
+
+  suites = getSuites(files);
+  tests = getTests(files);
+  failedTotal = 0;
+
+  failedSuites = [];
+  for(let i = 0; i < suites.length; ++i) {
+    let suite = suites[i];
+    if(suite.result?.errors !== undefined) {
+      failedTotal += suite.result.errors.length || 0;
+      failedSuites.push(suite);
+    }
+  }
+  failedTests = [];
+  for(let i = 0; i < tests.length; ++i) {
+    let test = tests[i];
+    if(test.result?.state === 'fail') {
+      failedTotal += test.result.errors?.length || 0;
+      failedTests.push(test);
+    }
+  }
+
+  // error divider
+  let suiteErrorLabel: string;
+  let testErrorLabel: string;
+  if(failedSuites.length > 0) {
+    suiteErrorLabel = colorCfg.fail.inverse.bold(` Failed Suites: ${failedSuites.length} `);
+    opts.logger.error(getDivider(suiteErrorLabel));
+    await printErrors(failedSuites, opts);
+  }
+  if(failedTests.length > 0) {
+    testErrorLabel = colorCfg.fail.inverse.bold(` Failed Tests: ${failedTests.length} `);
+    opts.logger.error(getDivider(testErrorLabel));
+    await printErrors(failedTests, opts);
+  }
+}
+
+async function printErrors(tasks: Task[], opts: PrintErrorSummayOpts) {
+  let errorsQueue: [ErrorWithDiff | undefined, Task[]][];
+  errorsQueue = [];
+  for(let i = 0; i < tasks.length; ++i) {
+    let task: Task;
+    let errors: ErrorWithDiff[];
+    task = tasks[i];
+    errors = task.result?.errors ?? [];
+
+    for(let k = 0; k < errors.length; ++k) {
+      let errorItem: [ErrorWithDiff | undefined, Task[]] | undefined;
+      let error: ErrorWithDiff;
+      error = errors[k];
+      // console.log(errorItem);
+      if(error.stackStr !== undefined) {
+        errorItem = errorsQueue.find(errorQueueItem => {
+          let hasStr: boolean;
+          let currProjName: string | undefined;
+          let projName: string | undefined;
+          hasStr = errorQueueItem[0]?.stackStr === error.stackStr;
+          if(!hasStr) {
+            return false;
+          }
+          if(hasStr && (task.type === 'suite')) {
+            currProjName = task.projectName ?? task.file?.projectName;
+          }
+          if(errorQueueItem[1][0].type === 'suite') {
+            projName = errorQueueItem[1][0].projectName ?? errorQueueItem[1][0].file?.projectName;
+          }
+          return projName === currProjName;
+        });
+      }
+      console.log(error);
+      if(errorItem !== undefined) {
+        errorItem[1].push(task);
+      } else {
+        errorsQueue.push([ error, [ task ]]);
+      }
+    }
+
+    for(let k = 0; k < errorsQueue.length; ++k) {
+      let project: ReturnType<PrintErrorSummayOpts['ctx']['getProjectByTaskId']>;
+      let formattedError: ErrorWithDiff;
+      let [ error, currTasks ] = errorsQueue[k];
+
+      for(let j = 0; j < currTasks.length; ++j) {
+        let currTask: Task;
+        let filePath: string | undefined;
+        let projName: string;
+        let taskName: string;
+        currTask = currTasks[j];
+        if(currTask.type === 'suite') {
+          filePath =  currTask.projectName ?? currTask.file?.projectName;
+          projName = currTask.projectName ?? currTask.file?.projectName;
+        }
+        taskName = getFullName(currTask, colorCfg.dim(' > '));
+        if(filePath !== undefined && filePath.length > 0) {
+          taskName += ` ${colorCfg.dim()} ${path.relative(opts.config.root, filePath)}`;
+        }
+        opts.logger.error(`${colorCfg.fail.bold.inverse(' FAIL ')} ${formatResult(currTask, opts)}${taskName}`);
+      }
+      project = opts.ctx.getProjectByTaskId(currTasks[0].id);
+      if(error === undefined) {
+        throw new Error('Undefined error in printErrors()');
+      }
+      formattedError = {
+        ...error,
+        diff: stripAnsi(error.diff ?? ''),
+      };
+      // console.log(formattedError);
+      opts.logger.error(`\n${colorCfg.fail.bold.underline(`${error.name}`)}${colorCfg.fail(`: ${formattedError.message}`)}`);
+      if(error.diff) {
+        opts.logger.error();
+        opts.logger.error(colorCfg.pass('- Expected'));
+        opts.logger.error(colorCfg.fail('- Received'));
+        opts.logger.error();
+        opts.logger.error(colorCfg.pass(`${formattedError.expected}`));
+        opts.logger.error(colorCfg.fail(`${formattedError.actual}`));
+        opts.logger.error();
+      }
+
+      if(error.stack !== undefined) {
+        let codeFrames: string[];
+        let stacks: string[];
+        let currFrame: string | undefined;
+        codeFrames = [];
+        stacks = error.stack.split('\n');
+        // console.log(stacks);
+        // stacks.reverse();
+        while(
+          ((currFrame = stacks.pop()) !== undefined)
+          && currFrame.startsWith(ERR_STACK_CODE_FRAME_START_STR)
+        ) {
+          codeFrames.push(currFrame.substring(ERR_STACK_CODE_FRAME_START_STR.length));
+        }
+        let nearest: string;
+        let codePathStr: string | undefined;
+        let codeLineStr: string | undefined;
+        let codeColStr: string | undefined;
+        let codeLine: number;
+        let codeCol: number;
+        let fileLines: string[];
+        let fileStr: string;
+        let errorLineIdx: number | undefined;
+        let lineCount: number;
+        let firstLineToInclude: number;
+
+        nearest = codeFrames[codeFrames.length - 1];
+        // console.log(nearest);
+        [ codePathStr, codeLineStr, codeColStr ] = nearest.split(':');
+        if(
+          codePathStr === undefined
+          || codeLineStr === undefined
+          || codeColStr === undefined
+        ) {
+          throw new Error(`Error parsing error stack: ${nearest}`);
+        }
+        codeLine = +codeLineStr;
+        codeCol = +codeColStr;
+        if(
+          isNaN(codeLine)
+          || isNaN(codeCol)
+        ) {
+          throw new Error(`Error parsing line and column in error stack: ${nearest}`);
+        }
+        // const fileLines = fs.readFileSync(codePathStr).toString().split('\n');
+        fileLines = [];
+        lineCount = 0;
+
+        firstLineToInclude = Math.max(0, codeLine - DEFAULT_CODE_LINES_TO_INCLUDE);
+        const lineCb = (line: string) => {
+          lineCount++;
+          if(
+            (lineCount >= firstLineToInclude)
+            && (lineCount <= (firstLineToInclude + (DEFAULT_CODE_LINES_TO_INCLUDE * 2)))
+          ) {
+            fileLines.push(line);
+            if(lineCount === codeLine) {
+              errorLineIdx = fileLines.length;
+            }
+          }
+        };
+        await readFileByLine(codePathStr, {
+          lineCb,
+        });
+
+        if(errorLineIdx !== undefined) {
+          let ptrLine: string;
+          ptrLine = colorCfg.fail(`${' '.repeat(codeCol - 1)}${F_ARROW_UP}`);
+          // fileLines.splice(errorLineIdx, 0, ptrLine);
+        }
+        fileStr = fileLines.join('\n');
+        console.log(fileStr);
+        console.log(errorLineIdx);
+
+        // const outLines = fileLines.slice(codeLine - 3, codeLine + 2);
+        // console.log(opts.logger.highlight(codePathStr, fileLines.join('\n')));
+        // console.log(outLines.join('\n'));
+        // codeFrames.forEach(codeFrame => {
+        //   console.log(`~~ ${codeFrame}`);
+        // });
+      }
+
+      opts.logger.error(colorCfg.dim(getDivider(`[${k + 1}/${errorsQueue.length}]`)));
+      opts.logger.error();
+      // opts.logger.printError(formattedError, { project });
+    }
+
+  }
+}
+
+function getDivider(msg: string) {
+  let numCols: number;
+  let msgLen: number;
+  let left: number;
+  let right: number;
+  msgLen = stripAnsi(msg).length;
+  numCols = process.stdout.columns;
+  left = Math.floor((numCols - msgLen) / 2);
+  right = numCols - msgLen - left;
+
+  left = Math.max(0, left);
+  right = Math.max(0, right);
+
+  return colorCfg.fail(`${F_LONG_DASH.repeat(left)}${msg}${F_LONG_DASH.repeat(right)}`);
+}
 
 function printResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: string[], level = 0) {
   let logger: Vitest['logger'];
@@ -165,67 +428,40 @@ function printResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: strin
 
   for(let i = 0; i < tasks.length; ++i) {
     let task = tasks[i];
-    // let tests = getTests(file);
-    let taskSymbol: string;
     if(task !== undefined) {
       let outStr: string;
       let levelPadStr: string;
       let prefix: string;
-      let suffix: string;
-      let taskName: string;
-      let testCount: string;
+      let taskResStr: string;
 
       prefix = '';
-      suffix = '';
 
-      taskSymbol = getStateSymbol(task);
       levelPadStr = '  '.repeat(level);
-
       prefix += levelPadStr;
-      prefix += taskSymbol;
 
-      if(task.type === 'suite') {
-        // suffix += ` ${colorCfg.dim(`(${task.tasks.length})`)}`;
-        suffix += ` ${colorCfg.count(`(${task.tasks.length})`)}`;
+      taskResStr = formatResult(task, opts);
+
+      outStr = `${prefix} ${taskResStr}`;
+      if(!(opts.onlyFailed && (task.result?.state !== 'fail'))) {
+        outputLines.push(outStr);
       }
-      if(task.mode === 'skip') {
-        suffix += ` ${colorCfg.dimmer('[skipped]')}`;
-      }
-      if(opts.config.logHeapUsage && (task.result?.heap !== undefined)) {
-        let heapUsed: number;
-        heapUsed = Math.floor(task.result.heap / 1024 / 1024);
-        suffix += ` ${colorCfg.heapUsage(`${heapUsed} MB heap used`)}`;
-      }
-      taskName = (level === 0)
-        ? formatFilePath(task.name)
-        : task.name
-      ;
-      outStr = `${prefix} ${taskName} ${suffix}`;
-      outputLines.push(outStr);
-      // console.log(outStr);
       if(
         (task.type === 'suite')
         && (task.tasks.length > 0)
+        && (task.result?.state === 'fail')
       ) {
         if(opts.config.hideSkippedTests) {
           let filteredTasks: Task[];
           filteredTasks = [];
           for(let k = 0; k < task.tasks.length; ++k) {
-            if(
-              task.mode !== 'skip'
-              && task.mode !== 'todo'
-            ) {
-              filteredTasks.push(task.tasks[k]);
+            let currTask = task.tasks[k];
+            if(!isSkippedTask(currTask)) {
+              filteredTasks.push(currTask);
             }
           }
           printResults(filteredTasks, opts, outputLines, level + 1);
-        } else {
-          if(
-            (task.mode !== 'skip')
-            && (task.mode !== 'todo')
-          ) {
-            printResults(task.tasks, opts, outputLines, level + 1);
-          }
+        } else if(!isSkippedTask(task)) {
+          printResults(task.tasks, opts, outputLines, level + 1);
         }
       }
     }
@@ -237,8 +473,13 @@ function printResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: strin
       logger.log(outputLine);
     }
   }
-  // outputStr = outputLines.join('\n');
-  // logger.log(outputStr);
+}
+
+function isSkippedTask(task: Task) {
+  return (
+    (task.mode === 'skip')
+    || (task.mode === 'todo')
+  );
 }
 
 function formatResult(task: Task, opts: PrintResultsOpts): string {
@@ -255,11 +496,7 @@ function formatResult(task: Task, opts: PrintResultsOpts): string {
 
   prefix += taskSymbol;
   if(task.type === 'suite') {
-    testCount = (task.file === undefined)
-      ? getTests(task).length
-      : task.tasks.length
-    ;
-    // suffix += ` ${colorCfg.dim(`(${task.tasks.length})`)}`;
+    testCount = getTests(task).length;
     suffix += ` ${colorCfg.count(`(${testCount})`)}`;
   }
   if(task.mode === 'skip') {
@@ -281,13 +518,18 @@ function formatResult(task: Task, opts: PrintResultsOpts): string {
 function formatFilePath(filePath: string): string {
   let parsedPath: ParsedPath;
   let resStr: string;
+  let fileNameParts: string[];
   let fileName: string;
+  let fileExt: string;
   parsedPath = path.parse(filePath);
-  fileName = parsedPath.name;
-  resStr = [
-    colorCfg.dim(parsedPath.dir),
-    `${fileName}${colorCfg.dim(parsedPath.ext)}`,
-  ].join(path.sep);
+  fileNameParts = parsedPath.base.split('.');
+  fileName = fileNameParts.shift() ?? '';
+  fileExt = `.${fileNameParts.join('.')}`;
+  resStr = '';
+  if(parsedPath.dir !== '') {
+    resStr += `${colorCfg.dim(parsedPath.dir)}${colorCfg.dim(path.sep)}`;
+  }
+  resStr += `${fileName}${colorCfg.dim(fileExt)}`;
   return resStr;
 }
 
@@ -317,7 +559,7 @@ function getStateSymbol(task: Task) {
   see:
     https://github.com/vitest-dev/vitest/blob/b7438b9be28f551cf8d82162e352510a8cbc7b92/packages/runner/src/utils/tasks.ts
 */
-function getTests(task: Task): Task[] {
+function getTests(task: Arrayable<Task>): Task[] {
   let tests: Task[];
   let suites: Task[];
   tests = [];
@@ -333,7 +575,6 @@ function getTests(task: Task): Task[] {
     } else if(currSuite.type === 'suite') {
       for(let k = 0; k < currSuite.tasks.length; ++k) {
         let currTask = currSuite.tasks[k];
-        console.log(currTask.name);
         if(isAtomTest(currTask)) {
           tests.push(currTask);
         } else {
@@ -348,6 +589,67 @@ function getTests(task: Task): Task[] {
     }
   }
   return tests;
+}
+/*
+  see: https://github.com/vitest-dev/vitest/blob/b7438b9be28f551cf8d82162e352510a8cbc7b92/packages/runner/src/utils/tasks.ts#L35
+*/
+function getSuites(srcTasks: Arrayable<Task>): Task[] {
+  let tasks: Task[];
+  let resTasks: Task[];
+  tasks = Array.isArray(srcTasks)
+    ? srcTasks
+    : [ srcTasks ]
+  ;
+  resTasks = [];
+  for(let i = 0; i < tasks.length; ++i) {
+    let task = tasks[i];
+    if(task.type === 'suite') {
+      let suiteTasks: Task[];
+      resTasks.push(task);
+      suiteTasks = getSuites(task.tasks);
+      for(let k = 0; k < suiteTasks.length; ++k) {
+        let suiteTask = suiteTasks[k];
+        resTasks.push(suiteTask);
+      }
+    }
+  }
+  return resTasks;
+}
+
+/*
+  see: https://github.com/vitest-dev/vitest/blob/0766b7f72ef4d8b5357fc002b562ff7721963616/packages/vitest/src/utils/tasks.ts#L18
+*/
+
+function getFullName(task: Task, separator = ' > '): string {
+  let fullName: string;
+  fullName = getNames(task).join(separator);
+  return fullName;
+}
+
+/*
+  see: https://github.com/vitest-dev/vitest/blob/0766b7f72ef4d8b5357fc002b562ff7721963616/packages/runner/src/utils/tasks.ts#L47
+*/
+
+function getNames(task: Task): string[] {
+  let names: string[];
+  let currTask: Task | undefined;
+  names = [ task.name ];
+  currTask = task;
+  while(currTask?.suite !== undefined) {
+    currTask = currTask.suite;
+    if(currTask.name !== undefined) {
+      names.push(currTask.name);
+    }
+  }
+
+  if(
+    (task.file !== undefined)
+    && (currTask !== task.file)
+  ) {
+    names.push(task.file.name);
+  }
+  names.reverse();
+  return names;
 }
 
 function isAtomTest(task: Task): boolean {
