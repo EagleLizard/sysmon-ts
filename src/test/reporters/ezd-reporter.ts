@@ -3,13 +3,13 @@ import sourceMapSupport from 'source-map-support';
 sourceMapSupport.install();
 
 import path, { ParsedPath } from 'path';
-import { Arrayable, Awaitable, ErrorWithDiff, File, Reporter, Task, TaskResultPack, Vitest, suite } from 'vitest';
+import { Awaitable, ErrorWithDiff, File, Reporter, Task, TaskResultPack, Vitest } from 'vitest';
 import stripAnsi from 'strip-ansi';
-import chalk, { ChalkInstance } from 'chalk';
 import { highlight } from 'cli-highlight';
 
 import { readFileByLine } from '../../lib/util/files';
 import { TaskUtil } from './task-util';
+import { EzdReporterColors } from './ezd-reporter-colors';
 
 /*
 interface Reporter {
@@ -28,90 +28,8 @@ interface Reporter {
 */
 
 // type Formatter = (input: string | number | null | undefined) => string;
-type Formatter = ChalkInstance;
 
-type ColorConfig = {
-  pass: Formatter;
-  fail: Formatter;
-  failComplement: Formatter;
-  suite: Formatter;
-  dim: Formatter;
-  dimmer: Formatter;
-  count: Formatter;
-  heapUsage: Formatter;
-  serverRestart: Formatter;
-  syntax: {
-    function: Formatter;
-    string: Formatter,
-    literal: Formatter,
-    number: Formatter;
-  }
-}
-
-const chartreuse = chalk.rgb(127, 255, 0);
-// const chartreuse_light = chalk.rgb(213, 255, 171);
-// const chartreuse_light = chalk.rgb(231, 252, 210);
-const chartreuse_light = chalk.rgb(190, 255, 125);
-const pink = chalk.rgb(255, 135, 185);
-const hot_pink = chalk.bold.rgb(255, 0, 179);
-// const pastel_orange = chalk.rgb(255, 221, 173);
-const pastel_orange = chalk.rgb(255, 203, 89);
-// const teal = chalk.rgb(0, 255, 183);
-// const teal = chalk.rgb(0, 255, 221);
-const teal = chalk.rgb(0, 125, 125);
-const gray = chalk.gray;
-const gray_light = chalk.rgb(122, 122, 122);
-// const coral = chalk.rgb(255, 127, 80);
-const coral = chalk.rgb(255, 156, 120);
-const yellow_yellow = chalk.rgb(255, 255, 0);
-const aqua = chalk.rgb(96, 226, 182);
-const purple_light = chalk.rgb(213, 167, 250);
-
-const purpleRgb = {
-  r: 199,
-  g: 131,
-  b: 255,
-};
-const purple = chalk.rgb(purpleRgb.r, purpleRgb.g, purpleRgb.b);
-const magentaRgb = {
-  r: 216,
-  g: 27,
-  b: 96,
-};
-const magenta = chalk.rgb(magentaRgb.r, magentaRgb.g, magentaRgb.b);
-const orange_lightRgb = {
-  r: 255,
-  g: 210,
-  b: 253,
-};
-// const orange_light = chalk.rgb(255, 210, 263);
-const orange_light = chalk.rgb(orange_lightRgb.r, orange_lightRgb.g, orange_lightRgb.b);
-
-const colorCfg: ColorConfig = {
-  // pass: pc.green,
-  pass: chartreuse,
-  // fail: pc.red,
-  // fail: hot_pink,
-  // fail: magenta.bold,
-  fail: purple,
-  failComplement: orange_light,
-  // suite: pc.yellow,
-  // suite: pastel_orange,
-  // suite: coral,
-  suite: yellow_yellow,
-  dim: chalk.dim,
-  dimmer: chalk.gray.dim,
-  count: gray_light,
-  // heapUsage: pc.magenta,
-  heapUsage: coral,
-  serverRestart: chalk.bold.magenta,
-  syntax: {
-    function: pink,
-    string: chartreuse_light.italic,
-    literal: pastel_orange,
-    number: aqua
-  }
-};
+const colorCfg = EzdReporterColors.colorCfg;
 
 const F_LONG_DASH = '⎯';
 const F_ARROW_UP = '^';
@@ -252,12 +170,15 @@ async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintE
   let testErrorLabel: string;
   if(failedSuites.length > 0) {
     suiteErrorLabel = colorCfg.fail.inverse.bold(` Failed Suites: ${failedSuites.length} `);
+    opts.logger.error();
     opts.logger.error(getDivider(suiteErrorLabel));
+    opts.logger.error();
     await printErrors(failedSuites, printErrorsOpts);
   }
   if(failedTests.length > 0) {
     testErrorLabel = colorCfg.fail.inverse.bold(` Failed Tests: ${failedTests.length} `);
     opts.logger.error(getDivider(testErrorLabel));
+    opts.logger.error();
     await printErrors(failedTests, printErrorsOpts);
   }
 }
@@ -362,6 +283,7 @@ async function printErrors(tasks: Task[], opts: PrintErrorsOpts) {
       opts.logger.log(highlightedStr);
     }
 
+    opts.logger.error();
     opts.logger.error(opts.getErrorDivider());
     opts.logger.error();
   }
@@ -453,7 +375,7 @@ async function formatErrorCodeFrame(stackTraceLine: string) {
     let ptrLine: string;
     let ptrLineNumStr: string;
     ptrLineNumStr = `${' '.repeat(lineNumWidth)}|`;
-    ptrLine = `${colorCfg.dim(ptrLineNumStr)}${colorCfg.fail(`${' '.repeat(codeCol - ptrLineNumStr.length)}${F_ARROW_UP}`)}`;
+    ptrLine = `${colorCfg.dim(ptrLineNumStr)}${' '.repeat(codeCol)}${colorCfg.fail(F_ARROW_UP)}`;
     highlightedLines.splice(errorLineIdx, 0, ptrLine);
   }
 
@@ -618,12 +540,14 @@ function getStateSymbol(task: Task) {
       let failSymbol: string;
       failSymbol = (task.type === 'suite')
         ? colorCfg.suite('❯')
-        : colorCfg.fail('🞪')
+        : colorCfg.fail('✗')
       ;
       return failSymbol;
     case 'run':
       return '⏱';
       // return '↻';
+    case 'skip':
+      return colorCfg.dimmer.bold('↓');
     default:
       return ' ';
   }
