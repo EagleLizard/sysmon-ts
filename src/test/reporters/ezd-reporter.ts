@@ -450,12 +450,12 @@ function printResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: strin
           filteredTasks = [];
           for(let k = 0; k < task.tasks.length; ++k) {
             let currTask = task.tasks[k];
-            if(!isSkippedTask(currTask)) {
+            if(!TaskUtil.isSkippedTask(currTask)) {
               filteredTasks.push(currTask);
             }
           }
           printResults(filteredTasks, opts, outputLines, level + 1);
-        } else if(!isSkippedTask(task)) {
+        } else if(!TaskUtil.isSkippedTask(task)) {
           printResults(task.tasks, opts, outputLines, level + 1);
         }
       }
@@ -468,13 +468,6 @@ function printResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: strin
       logger.log(outputLine);
     }
   }
-}
-
-function isSkippedTask(task: Task) {
-  return (
-    (task.mode === 'skip')
-    || (task.mode === 'todo')
-  );
 }
 
 function formatResult(task: Task, opts: PrintResultsOpts): string {

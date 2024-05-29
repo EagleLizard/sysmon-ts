@@ -104,4 +104,16 @@ export class TaskUtil {
     names.reverse();
     return names;
   }
+
+  static isSkippedTask(task: Task) {
+    return (
+      (task.mode === 'skip')
+      || (task.mode === 'todo')
+    );
+  }isSkippedTask(task: Task) {
+    return (
+      (task.mode === 'skip')
+      || (task.mode === 'todo')
+    );
+  }
 }
