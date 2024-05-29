@@ -8,7 +8,7 @@ import stripAnsi from 'strip-ansi';
 
 import { TaskUtil } from './task-util';
 import { EzdReporterColors } from './ezd-reporter-colors';
-import { FormatResultOpts, GetDividerOpts, PrintResultsOpts, ReporterPrintUtil } from './reporter-print-util';
+import { FormatErrorCodeFrameOpts, FormatResultOpts, GetDividerOpts, PrintResultsOpts, ReporterPrintUtil } from './reporter-print-util';
 
 /*
 interface Reporter {
@@ -39,6 +39,16 @@ const formatResultColors: FormatResultOpts['colors'] = {
     suite: colorCfg.suite,
     fail: colorCfg.fail,
     skip: colorCfg.dimmer.bold,
+  }
+};
+const formatErrorCodeFrameColors: FormatErrorCodeFrameOpts['colors'] = {
+  fail: colorCfg.fail,
+  dim: colorCfg.dim,
+  syntax: {
+    string: colorCfg.syntax.string,
+    function: colorCfg.syntax.function,
+    literal: colorCfg.syntax.literal,
+    number: colorCfg.syntax.number,
   }
 };
 
@@ -280,16 +290,7 @@ async function printErrors(tasks: Task[], opts: PrintErrorsOpts) {
     if(error.stack !== undefined) {
       nearestTrace = ReporterPrintUtil.getNearestStackTrace(error.stack);
       highlightedSnippet = await ReporterPrintUtil.formatErrorCodeFrame(nearestTrace, {
-        colors: {
-          fail: colorCfg.fail,
-          dim: colorCfg.dim,
-          syntax: {
-            string: colorCfg.syntax.string,
-            function: colorCfg.syntax.function,
-            literal: colorCfg.syntax.literal,
-            number: colorCfg.syntax.number,
-          }
-        },
+        colors: formatErrorCodeFrameColors,
       });
       opts.logger.log(highlightedSnippet);
     }

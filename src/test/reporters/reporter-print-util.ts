@@ -31,7 +31,7 @@ export type FormatResultOpts = PrintResultsOpts & {
   };
 };
 
-type FormatErrorCodeFrameOpts = {
+export type FormatErrorCodeFrameOpts = {
   colors: {
     fail: Formatter;
     dim: Formatter;
