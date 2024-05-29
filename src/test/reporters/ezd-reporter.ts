@@ -9,6 +9,8 @@ import stripAnsi from 'strip-ansi';
 import { TaskUtil } from './task-util';
 import { EzdReporterColors } from './ezd-reporter-colors';
 import { GetDividerOpts, PrintResultsOpts, ReporterPrintUtil } from './reporter-print-util';
+import { Timer } from '../../lib/util/timer';
+import { getIntuitiveTimeString } from '../../lib/util/format-util';
 
 /*
 interface Reporter {
@@ -33,6 +35,9 @@ const colorCfg = EzdReporterColors.colorCfg;
 export default class EzdReporter implements Reporter {
   ctx: Vitest = undefined!;
   watchFileMap: Map<string, number> = new Map();
+
+  executionTimer: Timer = Timer.start();
+
   // constructor() {}
   onInit(ctx: Vitest) {
     this.ctx = ctx;
@@ -64,17 +69,17 @@ export default class EzdReporter implements Reporter {
   }
   // onWatcherStart?: ((files?: File[] | undefined, errors?: unknown[] | undefined) => Awaitable<void>) | undefined;
   onWatcherStart(): Awaitable<void> | undefined {
-    logHook('onWatcherStart()');
-    let files: File[];
-    let errors: unknown[];
-    files = this.ctx.state.getFiles();
-    errors = this.ctx.state.getUnhandledErrors();
-    for(let i = 0; i < files?.length; ++i) {
-      let file = files[i];
-      let runCount: number | undefined;
-      runCount = this.watchFileMap.get(file.filepath) ?? 0;
-      this.watchFileMap.set(file.filepath, runCount);
-    }
+    // logHook('onWatcherStart()');
+    // let files: File[];
+    // let errors: unknown[];
+    // files = this.ctx.state.getFiles();
+    // errors = this.ctx.state.getUnhandledErrors();
+    // for(let i = 0; i < files?.length; ++i) {
+    //   let file = files[i];
+    //   let runCount: number | undefined;
+    //   runCount = this.watchFileMap.get(file.filepath) ?? 0;
+    //   this.watchFileMap.set(file.filepath, runCount);
+    // }
   }
 
   // onFinished?: ((files?: File[] | undefined, errors?: unknown[] | undefined) => Awaitable<void>) | undefined;
@@ -83,6 +88,10 @@ export default class EzdReporter implements Reporter {
       logHook('onFinished()');
       let files: File[];
       let errors: unknown[];
+      let endTimeMs: number;
+
+      endTimeMs = this.executionTimer.stop();
+
       files = this.ctx.state.getFiles();
       errors = this.ctx.state.getUnhandledErrors();
       printResults(files, {
@@ -95,6 +104,7 @@ export default class EzdReporter implements Reporter {
         config: this.ctx.config,
         ctx: this.ctx,
       });
+      this.ctx.logger.log(`Duration ${getIntuitiveTimeString(endTimeMs)}`);
     })();
   }
 }
@@ -181,8 +191,6 @@ type PrintErrorsOpts = PrintErrorSummayOpts & {
 
 async function printErrors(tasks: Task[], opts: PrintErrorsOpts) {
   let errorsQueue: [ErrorWithDiff | undefined, Task[]][];
-  let nearestTrace: string;
-  let highlightedSnippet: string;
 
   errorsQueue = [];
   for(let i = 0; i < tasks.length; ++i) {
@@ -225,58 +233,70 @@ async function printErrors(tasks: Task[], opts: PrintErrorsOpts) {
   }
 
   for(let i = 0; i < errorsQueue.length; ++i) {
-    let formattedError: ErrorWithDiff;
     let [ error, currTasks ] = errorsQueue[i];
-
-    for(let k = 0; k < currTasks.length; ++k) {
-      let currTask: Task;
-      let filePath: string | undefined;
-      let taskName: string;
-      let formattedResult: string;
-      currTask = currTasks[k];
-      if(currTask.type === 'suite') {
-        filePath =  currTask.projectName ?? currTask.file?.projectName;
-      }
-      taskName = TaskUtil.getFullName(currTask, colorCfg.dim(' > '));
-      if(filePath !== undefined) {
-        taskName += ` ${colorCfg.dim()} ${path.relative(opts.config.root, filePath)}`;
-      }
-      formattedResult = ReporterPrintUtil.formatResult(currTask, {
-        ...opts,
-        colors: EzdReporterColors.formatResultColors,
-      });
-      opts.logger.error(`${colorCfg.fail.bold.inverse(' FAIL ')} ${formattedResult}${taskName}`);
-    }
-    if(error === undefined) {
-      throw new Error('Undefined error in printErrors()');
-    }
-    formattedError = {
-      ...error,
-      diff: stripAnsi(error.diff ?? ''),
-    };
-    opts.logger.error(`\n${colorCfg.fail.bold.underline(`${error.name}`)}${colorCfg.fail(`: ${formattedError.message}`)}`);
-    if(error.diff) {
-      opts.logger.error();
-      opts.logger.error(colorCfg.pass('- Expected'));
-      opts.logger.error(colorCfg.fail('+ Received'));
-      opts.logger.error();
-      opts.logger.error(colorCfg.pass(`- ${formattedError.expected}`));
-      opts.logger.error(colorCfg.fail(`+ ${formattedError.actual}`));
-      opts.logger.error();
-    }
-
-    if(error.stack !== undefined) {
-      nearestTrace = ReporterPrintUtil.getNearestStackTrace(error.stack);
-      highlightedSnippet = await ReporterPrintUtil.formatErrorCodeFrame(nearestTrace, {
-        colors: EzdReporterColors.formatErrorCodeFrameColors,
-      });
-      opts.logger.log(highlightedSnippet);
-    }
-
-    opts.logger.error();
-    opts.logger.error(opts.getErrorDivider());
-    opts.logger.error();
+    let errorResult: string;
+    errorResult = await getErrorResult(error, currTasks, opts);
+    opts.logger.error(errorResult);
   }
+}
+
+async function getErrorResult(
+  error: ErrorWithDiff | undefined,
+  currTasks: Task[],
+  opts: PrintErrorsOpts
+): Promise<string> {
+  let nearestTrace: string;
+  let highlightedSnippet: string;
+  let errorLines: string[];
+
+  errorLines = [];
+
+  for(let i = 0; i < currTasks.length; ++i) {
+    let currTask: Task;
+    let filePath: string | undefined;
+    let taskName: string;
+    let formattedResult: string;
+    currTask = currTasks[i];
+    if(currTask.type === 'suite') {
+      filePath =  currTask.projectName ?? currTask.file?.projectName;
+    }
+    taskName = TaskUtil.getFullName(currTask, colorCfg.dim(' > '));
+    if(filePath !== undefined) {
+      taskName += ` ${colorCfg.dim()} ${path.relative(opts.config.root, filePath)}`;
+    }
+    formattedResult = ReporterPrintUtil.formatResult(currTask, {
+      ...opts,
+      colors: EzdReporterColors.formatResultColors,
+    });
+    errorLines.push(`${colorCfg.fail.bold.inverse(' FAIL ')} ${formattedResult}${taskName}`);
+  }
+  if(error === undefined) {
+    throw new Error('Undefined error in printErrors()');
+  }
+  errorLines.push(`\n${colorCfg.fail.bold.underline(`${error.name}`)}${colorCfg.fail(`: ${error.message}`)}`);
+  if(error.diff) {
+    // errorLines.push(`\n${colorCfg.pass('- Expected')}\n${colorCfg.fail('+ Received')}\n${colorCfg.pass(`- ${formattedError.expected}`)}\n${colorCfg.fail(`+ ${formattedError.actual}`)}\n`);
+    errorLines.push('');
+    errorLines.push(colorCfg.pass('- Expected'));
+    errorLines.push(colorCfg.fail('+ Received'));
+    errorLines.push('');
+    errorLines.push(colorCfg.pass(`- ${error.expected}`));
+    errorLines.push(colorCfg.fail(`+ ${error.actual}`));
+    errorLines.push('');
+  }
+
+  if(error.stack !== undefined) {
+    nearestTrace = ReporterPrintUtil.getNearestStackTrace(error.stack);
+    highlightedSnippet = await ReporterPrintUtil.formatErrorCodeFrame(nearestTrace, {
+      colors: EzdReporterColors.formatErrorCodeFrameColors,
+    });
+    errorLines.push(highlightedSnippet);
+  }
+
+  errorLines.push('');
+  errorLines.push(opts.getErrorDivider());
+  errorLines.push('');
+  return errorLines.join('\n');
 }
 
 function getDivider(msg: string, opts?: GetDividerOpts) {
