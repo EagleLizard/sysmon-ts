@@ -2,7 +2,6 @@
 import fs, { ReadStream, Stats } from 'fs';
 import path from 'path';
 import { isObject } from './validate-primitives';
-import { Deferred } from '../../test/deferred';
 import readline from 'readline';
 
 export function getPathRelativeToCwd(filePath: string) {
@@ -43,14 +42,17 @@ export function joinPath(pathParts: string[]): string {
   return pathParts.join(path.sep);
 }
 
-type ReadFileByLineOpts = {
-  lineCb: (line: string) => void;
+type ReadFileByLineSignal = void | 'finish';
+
+export type ReadFileByLineOpts = {
+  lineCb: (line: string) => ReadFileByLineSignal;
 };
 
 export function readFileByLine(filePath: string, opts: ReadFileByLineOpts): Promise<void> {
   let rs: ReadStream;
   let rl: readline.Interface;
   let readFilePromise: Promise<void>;
+  let readFileSignal: ReadFileByLineSignal;
   rs = fs.createReadStream(filePath);
   rl = readline.createInterface({
     input: rs,
@@ -59,7 +61,13 @@ export function readFileByLine(filePath: string, opts: ReadFileByLineOpts): Prom
     rs.on('error', reject);
     rs.on('close', resolve);
     rl.on('line', (line) => {
-      opts.lineCb(line);
+      readFileSignal = opts.lineCb(line);
+      if(readFileSignal === 'finish') {
+        /*
+          see: https://stackoverflow.com/a/29806007/4677252
+        */
+        rs.destroy();
+      }
     });
   });
   return readFilePromise;

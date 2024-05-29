@@ -4,7 +4,7 @@ import path, { ParsedPath } from 'path';
 import highlight from 'cli-highlight';
 import stripAnsi from 'strip-ansi';
 
-import { readFileByLine } from '../../lib/util/files';
+import { ReadFileByLineOpts, readFileByLine } from '../../lib/util/files';
 import { Formatter } from './ezd-reporter-colors';
 import { ERR_STACK_CODE_FRAME_START_STR, F_ARROW_UP, F_LONG_DASH } from './reporters-constants';
 import { Task, Vitest } from 'vitest';
@@ -164,6 +164,7 @@ export class ReporterPrintUtil {
     let errorLineIdx: number | undefined;
     let lineCount: number;
     let firstLineToInclude: number;
+    let lastLineToInclude: number;
     let highlighted: string;
     let highlightedLines: string[];
     let highlightedStr: string;
@@ -190,12 +191,13 @@ export class ReporterPrintUtil {
     fileLines = [];
     lineCount = 0;
     firstLineToInclude = Math.max(0, codeLine - DEFAULT_CODE_LINES_TO_INCLUDE);
+    lastLineToInclude = firstLineToInclude + (DEFAULT_CODE_LINES_TO_INCLUDE * 2);
     snippetLinNumStart = Infinity;
-    const lineCb = (line: string) => {
+    const lineCb: ReadFileByLineOpts['lineCb'] = (line) => {
       lineCount++;
       if(
         (lineCount >= firstLineToInclude)
-        && (lineCount <= (firstLineToInclude + (DEFAULT_CODE_LINES_TO_INCLUDE * 2)))
+        && (lineCount <= lastLineToInclude)
       ) {
         fileLines.push(line);
         if(lineCount === codeLine) {
@@ -204,6 +206,9 @@ export class ReporterPrintUtil {
         if(lineCount < snippetLinNumStart) {
           snippetLinNumStart = lineCount;
         }
+      }
+      if(lineCount > lastLineToInclude) {
+        return 'finish';
       }
     };
     await readFileByLine(codePathStr, {
