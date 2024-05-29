@@ -1,0 +1,179 @@
+import highlight from 'cli-highlight';
+import stripAnsi from 'strip-ansi';
+
+import { readFileByLine } from '../../lib/util/files';
+import { Formatter } from './ezd-reporter-colors';
+import { ERR_STACK_CODE_FRAME_START_STR, F_ARROW_UP, F_LONG_DASH } from './reporters-constants';
+
+type FormatErrorCodeFrameOpts = {
+  colors: {
+    fail: Formatter;
+    dim: Formatter;
+    syntax: {
+      string: Formatter;
+      function: Formatter;
+      literal: Formatter;
+      number: Formatter;
+    };
+  };
+};
+
+export type GetDividerOpts = {
+  rightPad?: number;
+  color?: Formatter;
+};
+
+const DEFAULT_CODE_LINES_TO_INCLUDE = 3;
+
+export class ReporterPrintUtil {
+
+  static getDivider(msg: string, opts?: GetDividerOpts) {
+    let numCols: number;
+    let msgLen: number;
+    let left: number;
+    let right: number;
+    let leftStr: string;
+    let rightStr: string;
+    let dividerStr: string;
+    if(opts === undefined) {
+      opts = {};
+    }
+
+    msgLen = stripAnsi(msg).length;
+    numCols = process.stdout.columns;
+    if(opts.rightPad !== undefined) {
+      left = numCols - msgLen - opts.rightPad;
+      right = opts.rightPad;
+    } else {
+      left = Math.floor((numCols - msgLen) / 2);
+      right = numCols - msgLen - left;
+    }
+
+    left = Math.max(0, left);
+    right = Math.max(0, right);
+
+    leftStr = F_LONG_DASH.repeat(left);
+    rightStr = F_LONG_DASH.repeat(right);
+
+    if(opts.color !== undefined) {
+      leftStr = opts.color(leftStr);
+      rightStr = opts.color(rightStr);
+    }
+
+    dividerStr = `${leftStr}${msg}${rightStr}`;
+    return dividerStr;
+  }
+
+  static async formatErrorCodeFrame(stackTraceLine: string, opts: FormatErrorCodeFrameOpts) {
+    let codePathStr: string | undefined;
+    let codeLineStr: string | undefined;
+    let codeColStr: string | undefined;
+    let codeLine: number;
+    let codeCol: number;
+    let fileLines: string[];
+    let fileStr: string;
+    let errorLineIdx: number | undefined;
+    let lineCount: number;
+    let firstLineToInclude: number;
+    let highlighted: string;
+    let highlightedLines: string[];
+    let highlightedStr: string;
+
+    let snippetLinNumStart: number;
+    let lineNums: number[];
+    let lineNumWidth: number;
+
+    const colors = opts.colors;
+
+    [ codePathStr, codeLineStr, codeColStr ] = stackTraceLine.split(':');
+    if(
+      codePathStr === undefined
+      || codeLineStr === undefined
+      || codeColStr === undefined
+    ) {
+      throw new Error(`Error parsing error stack: ${stackTraceLine}`);
+    }
+    codeLine = +codeLineStr;
+    codeCol = +codeColStr;
+    if(isNaN(codeLine) || isNaN(codeCol)) {
+      throw new Error(`Error parsing line and column in error stack: ${stackTraceLine}`);
+    }
+    fileLines = [];
+    lineCount = 0;
+    firstLineToInclude = Math.max(0, codeLine - DEFAULT_CODE_LINES_TO_INCLUDE);
+    snippetLinNumStart = Infinity;
+    const lineCb = (line: string) => {
+      lineCount++;
+      if(
+        (lineCount >= firstLineToInclude)
+        && (lineCount <= (firstLineToInclude + (DEFAULT_CODE_LINES_TO_INCLUDE * 2)))
+      ) {
+        fileLines.push(line);
+        if(lineCount === codeLine) {
+          errorLineIdx = fileLines.length;
+        }
+        if(lineCount < snippetLinNumStart) {
+          snippetLinNumStart = lineCount;
+        }
+      }
+    };
+    await readFileByLine(codePathStr, {
+      lineCb,
+    });
+    fileStr = fileLines.join('\n');
+    highlighted = highlight(fileStr, {
+      language: 'typescript',
+      theme: {
+        string: colors.syntax.string,
+        function: colors.syntax.function,
+        literal: colors.syntax.literal,
+        number: colors.syntax.number,
+      }
+    });
+    highlightedLines = highlighted.split('\n');
+
+    lineNums = [];
+    lineNumWidth = -Infinity;
+    for(let i = 0; i < highlightedLines.length; ++i) {
+      let lineNum = snippetLinNumStart + i;
+      lineNums.push(lineNum);
+      lineNumWidth = Math.max(`${lineNum}`.length, lineNumWidth);
+    }
+    for(let i = 0; i < highlightedLines.length; ++i) {
+      let highlightedLine = highlightedLines[i];
+      let lineNumStr = `${lineNums[i]}`;
+      if(lineNumStr.length < lineNumWidth) {
+        lineNumStr = `${' '.repeat(lineNumWidth - lineNumStr.length)}${lineNumStr}`;
+      }
+      highlightedLines[i] = `${colors.dim(`${lineNumStr}|`)} ${highlightedLine}`;
+    }
+
+    if(errorLineIdx !== undefined) {
+      let ptrLine: string;
+      let ptrLineNumStr: string;
+      ptrLineNumStr = `${' '.repeat(lineNumWidth)}|`;
+      ptrLine = `${colors.dim(ptrLineNumStr)}${' '.repeat(codeCol)}${colors.fail(F_ARROW_UP)}`;
+      highlightedLines.splice(errorLineIdx, 0, ptrLine);
+    }
+
+    highlightedStr = highlightedLines.join('\n');
+    return highlightedStr;
+  }
+
+  static getNearestStackTrace(errorStack: string): string {
+    let codeFrames: string[];
+    let stacks: string[];
+    let currFrame: string | undefined;
+    let nearestTrace: string;
+    codeFrames = [];
+    stacks = errorStack.split('\n');
+    while(
+      ((currFrame = stacks.pop()) !== undefined)
+      && currFrame.startsWith(ERR_STACK_CODE_FRAME_START_STR)
+    ) {
+      codeFrames.push(currFrame.substring(ERR_STACK_CODE_FRAME_START_STR.length));
+    }
+    nearestTrace = codeFrames[codeFrames.length - 1];
+    return nearestTrace;
+  }
+}

@@ -110,10 +110,5 @@ export class TaskUtil {
       (task.mode === 'skip')
       || (task.mode === 'todo')
     );
-  }isSkippedTask(task: Task) {
-    return (
-      (task.mode === 'skip')
-      || (task.mode === 'todo')
-    );
   }
 }

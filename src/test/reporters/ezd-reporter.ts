@@ -5,11 +5,10 @@ sourceMapSupport.install();
 import path, { ParsedPath } from 'path';
 import { Awaitable, ErrorWithDiff, File, Reporter, Task, TaskResultPack, Vitest } from 'vitest';
 import stripAnsi from 'strip-ansi';
-import { highlight } from 'cli-highlight';
 
-import { readFileByLine } from '../../lib/util/files';
 import { TaskUtil } from './task-util';
 import { EzdReporterColors } from './ezd-reporter-colors';
+import { GetDividerOpts, ReporterPrintUtil } from './reporter-print-util';
 
 /*
 interface Reporter {
@@ -30,12 +29,6 @@ interface Reporter {
 // type Formatter = (input: string | number | null | undefined) => string;
 
 const colorCfg = EzdReporterColors.colorCfg;
-
-const F_LONG_DASH = '⎯';
-const F_ARROW_UP = '^';
-
-const ERR_STACK_CODE_FRAME_START_STR = '    at ';
-const DEFAULT_CODE_LINES_TO_INCLUDE = 3;
 
 export default class EzdReporter implements Reporter {
   ctx: Vitest = undefined!;
@@ -128,6 +121,9 @@ async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintE
   let errorCount: number;
   let printErrorsOpts: PrintErrorsOpts;
 
+  let failedSuitesLabel: string;
+  let failedTestsLabel: string;
+
   suites = TaskUtil.getSuites(files);
   tests = TaskUtil.getTests(files);
   failedSuitesCount = 0;
@@ -166,18 +162,20 @@ async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintE
   };
 
   // error divider
-  let suiteErrorLabel: string;
-  let testErrorLabel: string;
   if(failedSuites.length > 0) {
-    suiteErrorLabel = colorCfg.fail.inverse.bold(` Failed Suites: ${failedSuites.length} `);
+    failedSuitesLabel = colorCfg.fail.inverse.bold(` Failed Suites: ${failedSuites.length} `);
     opts.logger.error();
-    opts.logger.error(getDivider(suiteErrorLabel));
+    opts.logger.error(getDivider(failedSuitesLabel, {
+      color: colorCfg.fail
+    }));
     opts.logger.error();
     await printErrors(failedSuites, printErrorsOpts);
   }
   if(failedTests.length > 0) {
-    testErrorLabel = colorCfg.fail.inverse.bold(` Failed Tests: ${failedTests.length} `);
-    opts.logger.error(getDivider(testErrorLabel));
+    failedTestsLabel = colorCfg.fail.inverse.bold(` Failed Tests: ${failedTests.length} `);
+    opts.logger.error(getDivider(failedTestsLabel, {
+      color: colorCfg.fail
+    }));
     opts.logger.error();
     await printErrors(failedTests, printErrorsOpts);
   }
@@ -189,6 +187,9 @@ type PrintErrorsOpts = PrintErrorSummayOpts & {
 
 async function printErrors(tasks: Task[], opts: PrintErrorsOpts) {
   let errorsQueue: [ErrorWithDiff | undefined, Task[]][];
+  let nearestTrace: string;
+  let highlightedSnippet: string;
+
   errorsQueue = [];
   for(let i = 0; i < tasks.length; ++i) {
     let task: Task;
@@ -221,7 +222,7 @@ async function printErrors(tasks: Task[], opts: PrintErrorsOpts) {
         return projName === currProjName;
       });
 
-      if(errorItem !== undefined) {
+      if(error.stackStr && errorItem !== undefined) {
         errorItem[1].push(task);
       } else {
         errorsQueue.push([ error, [ task ]]);
@@ -266,21 +267,20 @@ async function printErrors(tasks: Task[], opts: PrintErrorsOpts) {
     }
 
     if(error.stack !== undefined) {
-      let codeFrames: string[];
-      let stacks: string[];
-      let currFrame: string | undefined;
-      codeFrames = [];
-      stacks = error.stack.split('\n');
-      while(
-        ((currFrame = stacks.pop()) !== undefined)
-        && currFrame.startsWith(ERR_STACK_CODE_FRAME_START_STR)
-      ) {
-        codeFrames.push(currFrame.substring(ERR_STACK_CODE_FRAME_START_STR.length));
-      }
-      let nearest: string;
-      nearest = codeFrames[codeFrames.length - 1];
-      let highlightedStr = await formatErrorCodeFrame(nearest);
-      opts.logger.log(highlightedStr);
+      nearestTrace = ReporterPrintUtil.getNearestStackTrace(error.stack);
+      highlightedSnippet = await ReporterPrintUtil.formatErrorCodeFrame(nearestTrace, {
+        colors: {
+          fail: colorCfg.fail,
+          dim: colorCfg.dim,
+          syntax: {
+            string: colorCfg.syntax.string,
+            function: colorCfg.syntax.function,
+            literal: colorCfg.syntax.literal,
+            number: colorCfg.syntax.number,
+          }
+        },
+      });
+      opts.logger.log(highlightedSnippet);
     }
 
     opts.logger.error();
@@ -289,127 +289,10 @@ async function printErrors(tasks: Task[], opts: PrintErrorsOpts) {
   }
 }
 
-async function formatErrorCodeFrame(stackTraceLine: string) {
-  let codePathStr: string | undefined;
-  let codeLineStr: string | undefined;
-  let codeColStr: string | undefined;
-  let codeLine: number;
-  let codeCol: number;
-  let fileLines: string[];
-  let fileStr: string;
-  let errorLineIdx: number | undefined;
-  let lineCount: number;
-  let firstLineToInclude: number;
-  let highlighted: string;
-  let highlightedLines: string[];
-  let highlightedStr: string;
-
-  let snippetLinNumStart: number;
-  let lineNums: number[];
-  let lineNumWidth: number;
-
-  [ codePathStr, codeLineStr, codeColStr ] = stackTraceLine.split(':');
-  if(
-    codePathStr === undefined
-    || codeLineStr === undefined
-    || codeColStr === undefined
-  ) {
-    throw new Error(`Error parsing error stack: ${stackTraceLine}`);
-  }
-  codeLine = +codeLineStr;
-  codeCol = +codeColStr;
-  if(isNaN(codeLine) || isNaN(codeCol)) {
-    throw new Error(`Error parsing line and column in error stack: ${stackTraceLine}`);
-  }
-  fileLines = [];
-  lineCount = 0;
-  firstLineToInclude = Math.max(0, codeLine - DEFAULT_CODE_LINES_TO_INCLUDE);
-  snippetLinNumStart = Infinity;
-  const lineCb = (line: string) => {
-    lineCount++;
-    if(
-      (lineCount >= firstLineToInclude)
-      && (lineCount <= (firstLineToInclude + (DEFAULT_CODE_LINES_TO_INCLUDE * 2)))
-    ) {
-      fileLines.push(line);
-      if(lineCount === codeLine) {
-        errorLineIdx = fileLines.length;
-      }
-      if(lineCount < snippetLinNumStart) {
-        snippetLinNumStart = lineCount;
-      }
-    }
-  };
-  await readFileByLine(codePathStr, {
-    lineCb,
-  });
-  fileStr = fileLines.join('\n');
-  highlighted = highlight(fileStr, {
-    language: 'typescript',
-    theme: {
-      string: colorCfg.syntax.string,
-      function: colorCfg.syntax.function,
-      literal: colorCfg.syntax.literal,
-      number: colorCfg.syntax.number,
-    }
-  });
-  highlightedLines = highlighted.split('\n');
-
-  lineNums = [];
-  lineNumWidth = -Infinity;
-  for(let i = 0; i < highlightedLines.length; ++i) {
-    let lineNum = snippetLinNumStart + i;
-    lineNums.push(lineNum);
-    lineNumWidth = Math.max(`${lineNum}`.length, lineNumWidth);
-  }
-  for(let i = 0; i < highlightedLines.length; ++i) {
-    let highlightedLine = highlightedLines[i];
-    let lineNumStr = `${lineNums[i]}`;
-    if(lineNumStr.length < lineNumWidth) {
-      lineNumStr = `${' '.repeat(lineNumWidth - lineNumStr.length)}${lineNumStr}`;
-    }
-    highlightedLines[i] = `${colorCfg.dim(`${lineNumStr}|`)} ${highlightedLine}`;
-  }
-
-  if(errorLineIdx !== undefined) {
-    let ptrLine: string;
-    let ptrLineNumStr: string;
-    ptrLineNumStr = `${' '.repeat(lineNumWidth)}|`;
-    ptrLine = `${colorCfg.dim(ptrLineNumStr)}${' '.repeat(codeCol)}${colorCfg.fail(F_ARROW_UP)}`;
-    highlightedLines.splice(errorLineIdx, 0, ptrLine);
-  }
-
-  highlightedStr = highlightedLines.join('\n');
-  return highlightedStr;
-}
-
-type GetDividerOpts = {
-  rightPad?: number;
-}
-
 function getDivider(msg: string, opts?: GetDividerOpts) {
-  let numCols: number;
-  let msgLen: number;
-  let left: number;
-  let right: number;
-  if(opts === undefined) {
-    opts = {};
-  }
-
-  msgLen = stripAnsi(msg).length;
-  numCols = process.stdout.columns;
-  if(opts.rightPad !== undefined) {
-    left = numCols - msgLen - opts.rightPad;
-    right = opts.rightPad;
-  } else {
-    left = Math.floor((numCols - msgLen) / 2);
-    right = numCols - msgLen - left;
-  }
-
-  left = Math.max(0, left);
-  right = Math.max(0, right);
-
-  return colorCfg.fail(`${F_LONG_DASH.repeat(left)}${msg}${F_LONG_DASH.repeat(right)}`);
+  let dividerStr: string;
+  dividerStr = ReporterPrintUtil.getDivider(msg, opts);
+  return colorCfg.fail(dividerStr);
 }
 
 function printResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: string[], level = 0) {
