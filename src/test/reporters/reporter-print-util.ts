@@ -1,9 +1,35 @@
+
+import path, { ParsedPath } from 'path';
+
 import highlight from 'cli-highlight';
 import stripAnsi from 'strip-ansi';
 
 import { readFileByLine } from '../../lib/util/files';
 import { Formatter } from './ezd-reporter-colors';
 import { ERR_STACK_CODE_FRAME_START_STR, F_ARROW_UP, F_LONG_DASH } from './reporters-constants';
+import { Task, Vitest } from 'vitest';
+import { GetStatSymbolOpts, TaskUtil } from './task-util';
+
+export type GetDividerOpts = {
+  rightPad?: number;
+  color?: Formatter;
+};
+
+export type PrintResultsOpts = {
+  logger: Vitest['logger'];
+  config: Vitest['config'];
+  onlyFailed?: boolean,
+};
+
+export type FormatResultOpts = PrintResultsOpts & {
+  colors: {
+    dim: Formatter;
+    dimmer: Formatter;
+    count: Formatter;
+    heapUsage: Formatter;
+    getStateSymbolColors: GetStatSymbolOpts['colors'];
+  };
+};
 
 type FormatErrorCodeFrameOpts = {
   colors: {
@@ -18,14 +44,35 @@ type FormatErrorCodeFrameOpts = {
   };
 };
 
-export type GetDividerOpts = {
-  rightPad?: number;
-  color?: Formatter;
-};
+type FormatFilePathOpts = {
+  colors: {
+    dim: Formatter,
+  }
+}
 
 const DEFAULT_CODE_LINES_TO_INCLUDE = 3;
 
 export class ReporterPrintUtil {
+
+  static formatFilePath(filePath: string, opts: FormatFilePathOpts): string {
+    let parsedPath: ParsedPath;
+    let resStr: string;
+    let fileNameParts: string[];
+    let fileName: string;
+    let fileExt: string;
+    const colors = opts.colors;
+
+    parsedPath = path.parse(filePath);
+    fileNameParts = parsedPath.base.split('.');
+    fileName = fileNameParts.shift() ?? '';
+    fileExt = `.${fileNameParts.join('.')}`;
+    resStr = '';
+    if(parsedPath.dir !== '') {
+      resStr += `${colors.dim(parsedPath.dir)}${colors.dim(path.sep)}`;
+    }
+    resStr += `${fileName}${colors.dim(fileExt)}`;
+    return resStr;
+  }
 
   static getDivider(msg: string, opts?: GetDividerOpts) {
     let numCols: number;
@@ -62,6 +109,48 @@ export class ReporterPrintUtil {
 
     dividerStr = `${leftStr}${msg}${rightStr}`;
     return dividerStr;
+  }
+
+  static formatResult(task: Task, opts: FormatResultOpts): string {
+    let resStr: string;
+    let prefix: string;
+    let suffix: string;
+    let taskSymbol: string;
+    let taskName: string;
+    let testCount: number;
+
+    const colors = opts.colors;
+
+    prefix = '';
+    suffix = '';
+
+    taskSymbol = TaskUtil.getStateSymbol(task, {
+      colors: colors.getStateSymbolColors,
+    });
+
+    prefix += taskSymbol;
+    if(task.type === 'suite') {
+      testCount = TaskUtil.getTests(task).length;
+      suffix += ` ${colors.count(`(${testCount})`)}`;
+    }
+    if(task.mode === 'skip') {
+      suffix += ` ${colors.dimmer('[skipped]')}`;
+    }
+    if(opts.config.logHeapUsage && (task.result?.heap !== undefined)) {
+      let heapUsed: number;
+      heapUsed = Math.floor(task.result.heap / 1024 / 1024);
+      suffix += ` ${colors.heapUsage(`${heapUsed} MB heap used`)}`;
+    }
+    taskName = (task.type === 'suite')
+      ? ReporterPrintUtil.formatFilePath(task.name, {
+        colors: {
+          dim: colors.dim,
+        }
+      })
+      : task.name
+    ;
+    resStr = `${prefix} ${taskName} ${suffix}`;
+    return resStr;
   }
 
   static async formatErrorCodeFrame(stackTraceLine: string, opts: FormatErrorCodeFrameOpts) {

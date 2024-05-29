@@ -1,4 +1,14 @@
 import { Arrayable, Task } from 'vitest';
+import { Formatter } from './ezd-reporter-colors';
+
+export type GetStatSymbolOpts = {
+  colors: {
+    pass: Formatter,
+    suite: Formatter,
+    fail: Formatter,
+    skip: Formatter,
+  }
+};
 
 export class TaskUtil {
   /*
@@ -25,6 +35,29 @@ export class TaskUtil {
       }
     }
     return resTasks;
+  }
+
+  static getStateSymbol(task: Task, opts: GetStatSymbolOpts) {
+    const colors = opts.colors;
+    switch(task.result?.state) {
+      case 'pass':
+        return colors.pass('✓');
+      case 'fail':
+        let failSymbol: string;
+        failSymbol = (task.type === 'suite')
+          ? colors.suite('❯')
+          : colors.fail('✗')
+        ;
+        return failSymbol;
+      case 'run':
+        return '⏱';
+        // return '↻';
+      case 'skip':
+        // return colors.dimmer.bold('↓');
+        return colors.skip('↓');
+      default:
+        return ' ';
+    }
   }
 
   /*
@@ -61,6 +94,20 @@ export class TaskUtil {
       }
     }
     return tests;
+  }
+
+  static taskComparator<T extends Task>(a: T, b: T) {
+    let aSkip: boolean;
+    let bSkip: boolean;
+    aSkip = (a.mode === 'skip') || (a.mode === 'todo');
+    bSkip = (b.mode === 'skip') || (b.mode === 'todo');
+    if(aSkip && !bSkip) {
+      return -1;
+    } else if(!aSkip && bSkip) {
+      return 1;
+    } else {
+      return 0;
+    }
   }
 
   static isAtomTest(task: Task): boolean {

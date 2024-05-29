@@ -2,13 +2,13 @@
 import sourceMapSupport from 'source-map-support';
 sourceMapSupport.install();
 
-import path, { ParsedPath } from 'path';
+import path from 'path';
 import { Awaitable, ErrorWithDiff, File, Reporter, Task, TaskResultPack, Vitest } from 'vitest';
 import stripAnsi from 'strip-ansi';
 
 import { TaskUtil } from './task-util';
 import { EzdReporterColors } from './ezd-reporter-colors';
-import { GetDividerOpts, ReporterPrintUtil } from './reporter-print-util';
+import { FormatResultOpts, GetDividerOpts, PrintResultsOpts, ReporterPrintUtil } from './reporter-print-util';
 
 /*
 interface Reporter {
@@ -29,6 +29,18 @@ interface Reporter {
 // type Formatter = (input: string | number | null | undefined) => string;
 
 const colorCfg = EzdReporterColors.colorCfg;
+const formatResultColors: FormatResultOpts['colors'] = {
+  dim: colorCfg.dim,
+  dimmer: colorCfg.dimmer,
+  count: colorCfg.count,
+  heapUsage: colorCfg.heapUsage,
+  getStateSymbolColors: {
+    pass: colorCfg.pass,
+    suite: colorCfg.suite,
+    fail: colorCfg.fail,
+    skip: colorCfg.dimmer.bold,
+  }
+};
 
 export default class EzdReporter implements Reporter {
   ctx: Vitest = undefined!;
@@ -98,12 +110,6 @@ export default class EzdReporter implements Reporter {
     })();
   }
 }
-
-type PrintResultsOpts = {
-  logger: Vitest['logger'];
-  config: Vitest['config'];
-  onlyFailed?: boolean,
-};
 
 type PrintErrorSummayOpts = PrintResultsOpts & {
   ctx: Vitest;
@@ -238,6 +244,7 @@ async function printErrors(tasks: Task[], opts: PrintErrorsOpts) {
       let currTask: Task;
       let filePath: string | undefined;
       let taskName: string;
+      let formattedResult: string;
       currTask = currTasks[k];
       if(currTask.type === 'suite') {
         filePath =  currTask.projectName ?? currTask.file?.projectName;
@@ -246,7 +253,11 @@ async function printErrors(tasks: Task[], opts: PrintErrorsOpts) {
       if(filePath !== undefined) {
         taskName += ` ${colorCfg.dim()} ${path.relative(opts.config.root, filePath)}`;
       }
-      opts.logger.error(`${colorCfg.fail.bold.inverse(' FAIL ')} ${formatResult(currTask, opts)}${taskName}`);
+      formattedResult = ReporterPrintUtil.formatResult(currTask, {
+        ...opts,
+        colors: formatResultColors,
+      });
+      opts.logger.error(`${colorCfg.fail.bold.inverse(' FAIL ')} ${formattedResult}${taskName}`);
     }
     if(error === undefined) {
       throw new Error('Undefined error in printErrors()');
@@ -302,7 +313,7 @@ function printResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: strin
   outputLines = outputLines ?? [];
 
   tasks = tasks.slice();
-  tasks.sort(taskComparator);
+  tasks.sort(TaskUtil.taskComparator);
 
   for(let i = 0; i < tasks.length; ++i) {
     let task = tasks[i];
@@ -317,7 +328,10 @@ function printResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: strin
       levelPadStr = '  '.repeat(level);
       prefix += levelPadStr;
 
-      taskResStr = formatResult(task, opts);
+      taskResStr = ReporterPrintUtil.formatResult(task, {
+        ...opts,
+        colors: formatResultColors,
+      });
 
       outStr = `${prefix} ${taskResStr}`;
       if(!(opts.onlyFailed && (task.result?.state !== 'fail'))) {
@@ -353,92 +367,6 @@ function printResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: strin
   }
 }
 
-function formatResult(task: Task, opts: PrintResultsOpts): string {
-  let resStr: string;
-  let prefix: string;
-  let suffix: string;
-  let taskSymbol: string;
-  let taskName: string;
-  let testCount: number;
-  prefix = '';
-  suffix = '';
-
-  taskSymbol = getStateSymbol(task);
-
-  prefix += taskSymbol;
-  if(task.type === 'suite') {
-    testCount = TaskUtil.getTests(task).length;
-    suffix += ` ${colorCfg.count(`(${testCount})`)}`;
-  }
-  if(task.mode === 'skip') {
-    suffix += ` ${colorCfg.dimmer('[skipped]')}`;
-  }
-  if(opts.config.logHeapUsage && (task.result?.heap !== undefined)) {
-    let heapUsed: number;
-    heapUsed = Math.floor(task.result.heap / 1024 / 1024);
-    suffix += ` ${colorCfg.heapUsage(`${heapUsed} MB heap used`)}`;
-  }
-  taskName = (task.type === 'suite')
-    ? formatFilePath(task.name)
-    : task.name
-  ;
-  resStr = `${prefix} ${taskName} ${suffix}`;
-  return resStr;
-}
-
-function formatFilePath(filePath: string): string {
-  let parsedPath: ParsedPath;
-  let resStr: string;
-  let fileNameParts: string[];
-  let fileName: string;
-  let fileExt: string;
-  parsedPath = path.parse(filePath);
-  fileNameParts = parsedPath.base.split('.');
-  fileName = fileNameParts.shift() ?? '';
-  fileExt = `.${fileNameParts.join('.')}`;
-  resStr = '';
-  if(parsedPath.dir !== '') {
-    resStr += `${colorCfg.dim(parsedPath.dir)}${colorCfg.dim(path.sep)}`;
-  }
-  resStr += `${fileName}${colorCfg.dim(fileExt)}`;
-  return resStr;
-}
-
 function logHook(hookName: string) {
   console.log(`-- ${hookName}`);
-}
-
-function getStateSymbol(task: Task) {
-  switch(task.result?.state) {
-    case 'pass':
-      return colorCfg.pass('✓');
-    case 'fail':
-      let failSymbol: string;
-      failSymbol = (task.type === 'suite')
-        ? colorCfg.suite('❯')
-        : colorCfg.fail('✗')
-      ;
-      return failSymbol;
-    case 'run':
-      return '⏱';
-      // return '↻';
-    case 'skip':
-      return colorCfg.dimmer.bold('↓');
-    default:
-      return ' ';
-  }
-}
-
-function taskComparator<T extends Task>(a: T, b: T) {
-  let aSkip: boolean;
-  let bSkip: boolean;
-  aSkip = (a.mode === 'skip') || (a.mode === 'todo');
-  bSkip = (b.mode === 'skip') || (b.mode === 'todo');
-  if(aSkip && !bSkip) {
-    return -1;
-  } else if(!aSkip && bSkip) {
-    return 1;
-  } else {
-    return 0;
-  }
 }
