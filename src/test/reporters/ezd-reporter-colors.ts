@@ -1,5 +1,6 @@
 
 import chalk, { ChalkInstance } from 'chalk';
+import { FormatErrorCodeFrameOpts, FormatResultOpts } from './reporter-print-util';
 
 export type Formatter = ChalkInstance;
 
@@ -104,8 +105,33 @@ const colorCfg: ColorConfig = {
   }
 };
 
+const formatResultColors: FormatResultOpts['colors'] = {
+  dim: colorCfg.dim,
+  dimmer: colorCfg.dimmer,
+  count: colorCfg.count,
+  heapUsage: colorCfg.heapUsage,
+  getStateSymbolColors: {
+    pass: colorCfg.pass,
+    suite: colorCfg.suite,
+    fail: colorCfg.fail,
+    skip: colorCfg.dimmer.bold,
+  }
+};
+const formatErrorCodeFrameColors: FormatErrorCodeFrameOpts['colors'] = {
+  fail: colorCfg.fail,
+  dim: colorCfg.dim,
+  syntax: {
+    string: colorCfg.syntax.string,
+    function: colorCfg.syntax.function,
+    literal: colorCfg.syntax.literal,
+    number: colorCfg.syntax.number,
+  }
+};
+
 export const EzdReporterColors = {
   ezdColors,
   colorCfg,
+  formatResultColors,
+  formatErrorCodeFrameColors,
 };
 

@@ -8,7 +8,7 @@ import stripAnsi from 'strip-ansi';
 
 import { TaskUtil } from './task-util';
 import { EzdReporterColors } from './ezd-reporter-colors';
-import { FormatErrorCodeFrameOpts, FormatResultOpts, GetDividerOpts, PrintResultsOpts, ReporterPrintUtil } from './reporter-print-util';
+import { GetDividerOpts, PrintResultsOpts, ReporterPrintUtil } from './reporter-print-util';
 
 /*
 interface Reporter {
@@ -29,28 +29,6 @@ interface Reporter {
 // type Formatter = (input: string | number | null | undefined) => string;
 
 const colorCfg = EzdReporterColors.colorCfg;
-const formatResultColors: FormatResultOpts['colors'] = {
-  dim: colorCfg.dim,
-  dimmer: colorCfg.dimmer,
-  count: colorCfg.count,
-  heapUsage: colorCfg.heapUsage,
-  getStateSymbolColors: {
-    pass: colorCfg.pass,
-    suite: colorCfg.suite,
-    fail: colorCfg.fail,
-    skip: colorCfg.dimmer.bold,
-  }
-};
-const formatErrorCodeFrameColors: FormatErrorCodeFrameOpts['colors'] = {
-  fail: colorCfg.fail,
-  dim: colorCfg.dim,
-  syntax: {
-    string: colorCfg.syntax.string,
-    function: colorCfg.syntax.function,
-    literal: colorCfg.syntax.literal,
-    number: colorCfg.syntax.number,
-  }
-};
 
 export default class EzdReporter implements Reporter {
   ctx: Vitest = undefined!;
@@ -265,7 +243,7 @@ async function printErrors(tasks: Task[], opts: PrintErrorsOpts) {
       }
       formattedResult = ReporterPrintUtil.formatResult(currTask, {
         ...opts,
-        colors: formatResultColors,
+        colors: EzdReporterColors.formatResultColors,
       });
       opts.logger.error(`${colorCfg.fail.bold.inverse(' FAIL ')} ${formattedResult}${taskName}`);
     }
@@ -290,7 +268,7 @@ async function printErrors(tasks: Task[], opts: PrintErrorsOpts) {
     if(error.stack !== undefined) {
       nearestTrace = ReporterPrintUtil.getNearestStackTrace(error.stack);
       highlightedSnippet = await ReporterPrintUtil.formatErrorCodeFrame(nearestTrace, {
-        colors: formatErrorCodeFrameColors,
+        colors: EzdReporterColors.formatErrorCodeFrameColors,
       });
       opts.logger.log(highlightedSnippet);
     }
@@ -331,7 +309,7 @@ function printResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: strin
 
       taskResStr = ReporterPrintUtil.formatResult(task, {
         ...opts,
-        colors: formatResultColors,
+        colors: EzdReporterColors.formatResultColors,
       });
 
       outStr = `${prefix} ${taskResStr}`;
