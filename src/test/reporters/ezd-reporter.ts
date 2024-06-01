@@ -3,14 +3,14 @@ import sourceMapSupport from 'source-map-support';
 sourceMapSupport.install();
 
 import path from 'path';
-import { Awaitable, ErrorWithDiff, File, Reporter, Task, TaskResultPack, Vitest } from 'vitest';
-import stripAnsi from 'strip-ansi';
+import { Awaitable, ErrorWithDiff, File, Reporter, Task, TaskResultPack, UserConsoleLog, Vitest } from 'vitest';
 
 import { TaskUtil } from './task-util';
 import { EzdReporterColors } from './ezd-reporter-colors';
-import { GetDividerOpts, PrintResultsOpts, ReporterPrintUtil } from './reporter-print-util';
+import { GetDividerOpts, PrintResultsOpts, ReporterPrintUtil, TaskResultsOutput } from './reporter-print-util';
 import { Timer } from '../../lib/util/timer';
-import { getIntuitiveTimeString } from '../../lib/util/format-util';
+import { getIntuitiveTime } from '../../lib/util/format-util';
+import { Writable } from 'node:stream';
 
 /*
 interface Reporter {
@@ -28,25 +28,29 @@ interface Reporter {
 }
 */
 
-// type Formatter = (input: string | number | null | undefined) => string;
-
 const colorCfg = EzdReporterColors.colorCfg;
+
+/*
+  see: https://github.com/vitest-dev/vitest/blob/7900f9f89c6a37928df9ea1ae473e526883d6d43/packages/vitest/src/runtime/console.ts#L9
+*/
+const UNKNOWN_TEST_ID = '__vitest__unknown_test__';
 
 export default class EzdReporter implements Reporter {
   ctx: Vitest = undefined!;
-  watchFileMap: Map<string, number> = new Map();
+  private watchFiles: string[] = [];
 
   executionTimer: Timer = Timer.start();
 
-  // constructor() {}
   onInit(ctx: Vitest) {
     this.ctx = ctx;
-    // console.log(ctx);
+    this.executionTimer = Timer.start();
   }
+
   // onPathsCollected?: ((paths?: string[] | undefined) => Awaitable<void>) | undefined;
-  onPathsCollected(paths?: string[] | undefined): Awaitable<void> {
-    logHook('onPathsCollected()');
-  }
+  // onPathsCollected(paths?: string[] | undefined): Awaitable<void> {
+  //   logHook('onPathsCollected()');
+  // }
+
   // onTaskUpdate?: ((packs: TaskResultPack[]) => Awaitable<void>) | undefined;
   onTaskUpdate(packs: TaskResultPack[]): Awaitable<void> | undefined {
     // logHook('onTaskUpdate()');
@@ -63,10 +67,19 @@ export default class EzdReporter implements Reporter {
         printResults([ task ], {
           logger: this.ctx.logger,
           config: this.ctx.config,
+          onlyFailed: false,
+          showAllDurations: true,
         });
       }
     }
   }
+  
+  // onCollected?: ((files?: File[] | undefined) => Awaitable<void>) | undefined;
+  onCollected(files?: File[] | undefined): Awaitable<void> {
+    logHook('onCollected()');
+  }
+
+
   // onWatcherStart?: ((files?: File[] | undefined, errors?: unknown[] | undefined) => Awaitable<void>) | undefined;
   onWatcherStart(): Awaitable<void> | undefined {
     // logHook('onWatcherStart()');
@@ -81,31 +94,188 @@ export default class EzdReporter implements Reporter {
     //   this.watchFileMap.set(file.filepath, runCount);
     // }
   }
+  // onWatcherRerun?: ((files: string[], trigger?: string | undefined) => Awaitable<void>) | undefined;
+  onWatcherRerun(files: string[], trigger?: string | undefined): Awaitable<void> | undefined {
+    this.ctx.logger.clearFullScreen('');
+    this.watchFiles = files;
+    this.executionTimer.reset();
+  }
+
+  // onUserConsoleLog?: ((log: UserConsoleLog) => Awaitable<void>) | undefined;
+  onUserConsoleLog(log: UserConsoleLog): Awaitable<void> | undefined {
+    let task: Task | undefined;
+    let taskName: string | undefined;
+    let logWs: {
+      write: (chunk: string) => boolean;
+    };
+    let header: string;
+    if(!this.shouldLog(log)) {
+      return;
+    }
+    task = (log.taskId === undefined)
+      ? undefined
+      : this.ctx.state.idMap.get(log.taskId)
+    ;
+    logWs = (log.type === 'stdout')
+      ? this.ctx.logger.outputStream
+      : this.ctx.logger.errorStream
+    ;
+    // task
+    //   ? getFullName(task, c.dim(' > '))
+    //   : log.taskId !== UNKNOWN_TEST_ID
+    //     ? log.taskId
+    //     : 'unknown test';
+    if(task === undefined) {
+      taskName = (log.taskId === UNKNOWN_TEST_ID)
+        ? 'unknown test'
+        : log.taskId
+      ;
+    } else {
+      taskName = TaskUtil.getFullName(task);
+    }
+    header = colorCfg.user_log(`${log.type}${colorCfg.dim(` | ${taskName}`)}`);
+    // logWs.write(`${header}\n${log.content}\n`);
+  }
+  shouldLog(log: UserConsoleLog) {
+    if(this.ctx.config.silent)
+      return false;
+    const shouldLog = this.ctx.config.onConsoleLog?.(log.content, log.type);
+    if(shouldLog === false)
+      return shouldLog;
+    return true;
+  }
 
   // onFinished?: ((files?: File[] | undefined, errors?: unknown[] | undefined) => Awaitable<void>) | undefined;
-  onFinished(): Awaitable<void> {
+  onFinished(files?: File[] | undefined, errors?: unknown[] | undefined): Awaitable<void> | undefined {
+    let execTimeMs: number;
+    execTimeMs = this.executionTimer.stop();
     return (async () => {
       logHook('onFinished()');
-      let files: File[];
-      let errors: unknown[];
-      let endTimeMs: number;
+      // let files: File[];
+      // let errors: unknown[];
 
-      endTimeMs = this.executionTimer.stop();
-
-      files = this.ctx.state.getFiles();
-      errors = this.ctx.state.getUnhandledErrors();
-      printResults(files, {
-        logger: this.ctx.logger,
-        config: this.ctx.config,
-        onlyFailed: true,
-      });
+      files = files ?? this.ctx.state.getFiles();
+      errors = errors ?? this.ctx.state.getUnhandledErrors();
+      // printResults(files, {
+      //   logger: this.ctx.logger,
+      //   config: this.ctx.config,
+      //   onlyFailed: true,
+      // });
       await printErrorsSummary(files, errors, {
         logger: this.ctx.logger,
         config: this.ctx.config,
         ctx: this.ctx,
       });
-      this.ctx.logger.log(`Duration ${getIntuitiveTimeString(endTimeMs)}`);
+
+      printResultsSummary(files, errors, {
+        execTimeMs,
+        isWatcherRerun: (this.watchFiles.length > 0),
+        projects: this.ctx.projects,
+        logger: this.ctx.logger,
+        config: this.ctx.config,
+      });
     })();
+  }
+}
+
+type PrintResultsSummaryOpts = PrintResultsOpts & {
+  execTimeMs: number;
+  isWatcherRerun: boolean;
+  projects: Vitest['projects'];
+};
+
+function printResultsSummary(files: File[], errors: unknown[], opts: PrintResultsSummaryOpts) {
+  let tests: Task[];
+  let execTimeStr: string;
+  let outputLines: [string, string][];
+  let outputLineLabelLen: number;
+  let testFileResults: TaskResultsOutput;
+  let testFilesResultsStr: string;
+  let testResults: TaskResultsOutput;
+  let testResultsStr: string;
+
+  let transformTimems: number;
+  let threadTime: number;
+
+  let timersStr: string;
+  let durationStr: string;
+
+  outputLines = [];
+  transformTimems = 0;
+  for(let i = 0; i < opts.projects.length; ++i) {
+    /*
+      TODO: vitest PR to remove unecessary flatMap call: https://github.com/vitest-dev/vitest/blob/b84f1721df66aad9685645084b33e8313a5cffd7/packages/vitest/src/node/reporters/base.ts#L240
+    */
+    let projectDuration = opts.projects[i].vitenode.getTotalDuration();
+    transformTimems += projectDuration;
+  }
+  testFileResults = ReporterPrintUtil.getTaskResults(files);
+  threadTime = (
+    testFileResults.collectTime
+    + testFileResults.testsTime
+    + testFileResults.setupTime
+  );
+
+  // opts.logger.log(`${colorCfg.duration_label('Duration:')} ${execTimeStr}`);
+  testFilesResultsStr = ReporterPrintUtil.formatTaskResults(testFileResults);
+  outputLines.push([
+    'Test Files',
+    testFilesResultsStr,
+  ]);
+
+  tests = TaskUtil.getTests(files);
+  testResults = ReporterPrintUtil.getTaskResults(tests);
+  testResultsStr = ReporterPrintUtil.formatTaskResults(testResults);
+  outputLines.push([
+    'Tests',
+    testResultsStr
+  ]);
+
+  const timeFmt = (ms: number): string => {
+    let timeVal: number;
+    let timeUnit: string;
+    let timeStr: string;
+    [ timeVal, timeUnit ] = getIntuitiveTime(ms);
+    timeStr = (ms > 1000)
+      ? `${timeVal.toFixed(2)}`
+      : `${Math.round(timeVal)}`
+    ;
+    return `${timeStr}${timeUnit}`;
+  };
+
+  execTimeStr = timeFmt(opts.execTimeMs);
+  timersStr = [
+    `transform: ${timeFmt(transformTimems)}`,
+    `setup: ${timeFmt(testFileResults.setupTime)}`,
+    `collect: ${timeFmt(testFileResults.collectTime)}`,
+    `tests: ${timeFmt(testFileResults.testsTime)}`,
+    `environment: ${timeFmt(testFileResults.envTime)}`,
+    `prepare: ${timeFmt(testFileResults.prepareTime)}`,
+  ].join(', ');
+
+  durationStr = (opts.isWatcherRerun)
+    ? execTimeStr
+    : `${execTimeStr} ${colorCfg.dim(`(${timersStr})`)}`
+  ;
+  outputLines.push([
+    'Duration',
+    durationStr,
+  ]);
+
+  outputLineLabelLen = -Infinity;
+  for(let i = 0; i < outputLines.length; ++i) {
+    let [ title, ] = outputLines[i];
+    if(title.length > outputLineLabelLen) {
+      outputLineLabelLen = title.length;
+    }
+  }
+  for(let i = 0; i < outputLines.length; ++i) {
+    let title: string;
+    let text: string;
+    let leftPad: number;
+    [ title, text ] = outputLines[i];
+    leftPad = outputLineLabelLen - title.length;
+    opts.logger.log(`${' '.repeat(leftPad)} ${colorCfg.duration_label(title)} ${text}`);
   }
 }
 
@@ -333,7 +503,7 @@ function printResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: strin
       });
 
       outStr = `${prefix} ${taskResStr}`;
-      if(!(opts.onlyFailed && (task.result?.state !== 'fail'))) {
+      if(!opts.onlyFailed || (task.result?.state  === 'fail')) {
         outputLines.push(outStr);
       }
       if(

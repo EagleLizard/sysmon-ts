@@ -5,10 +5,11 @@ import highlight from 'cli-highlight';
 import stripAnsi from 'strip-ansi';
 
 import { ReadFileByLineOpts, readFileByLine } from '../../lib/util/files';
-import { Formatter } from './ezd-reporter-colors';
+import { EzdReporterColors, Formatter } from './ezd-reporter-colors';
 import { ERR_STACK_CODE_FRAME_START_STR, F_ARROW_UP, F_LONG_DASH } from './reporters-constants';
 import { Task, Vitest } from 'vitest';
 import { GetStatSymbolOpts, TaskUtil } from './task-util';
+import { getIntuitiveTime } from '../../lib/util/format-util';
 
 export type GetDividerOpts = {
   rightPad?: number;
@@ -18,15 +19,19 @@ export type GetDividerOpts = {
 export type PrintResultsOpts = {
   logger: Vitest['logger'];
   config: Vitest['config'];
-  onlyFailed?: boolean,
+  onlyFailed?: boolean;
+  showAllDurations?: boolean;
 };
 
 export type FormatResultOpts = PrintResultsOpts & {
   colors: {
     dim: Formatter;
     dimmer: Formatter;
+    italic: Formatter;
     count: Formatter;
     heapUsage: Formatter;
+    duration: Formatter;
+    duration_slow: Formatter;
     getStateSymbolColors: GetStatSymbolOpts['colors'];
   };
 };
@@ -40,6 +45,8 @@ export type FormatErrorCodeFrameOpts = {
       function: Formatter;
       literal: Formatter;
       number: Formatter;
+      keyword: Formatter;
+      built_in: Formatter;
     };
   };
 };
@@ -52,7 +59,108 @@ type FormatFilePathOpts = {
 
 const DEFAULT_CODE_LINES_TO_INCLUDE = 3;
 
+export type TaskResultsOutput = {
+  taskCount: number;
+  failed: number;
+  passed: number;
+  skipped: number;
+  todo: number;
+
+  collectTime: number;
+  setupTime: number;
+  testsTime: number;
+  // transformTime: number;
+  envTime: number;
+  prepareTime: number;
+  // threadTime: number;
+}
+
 export class ReporterPrintUtil {
+
+  /*
+    see: https://github.com/vitest-dev/vitest/blob/a820e7ac6efa89b9944094ccc1a7f11ec2afb7ac/packages/vitest/src/node/reporters/renderers/utils.ts#L98
+  */
+  static getTaskResults(tasks: Task[]): TaskResultsOutput {
+    let taskResults: TaskResultsOutput;
+    taskResults = {
+      taskCount: tasks.length,
+      passed: 0,
+      failed: 0,
+      skipped: 0,
+      todo: 0,
+
+      collectTime: 0,
+      setupTime: 0,
+      testsTime: 0,
+      // transformTime: 0,
+      envTime: 0,
+      prepareTime: 0,
+      // threadTime: 0,
+    };
+    for(let i = 0; i < tasks.length; ++i) {
+      let task = tasks[i];
+      if(task.result?.state === 'pass') {
+        taskResults.passed = taskResults.passed + 1;
+      } else if(task.result?.state === 'fail') {
+        taskResults.failed = taskResults.failed + 1;
+      } else if(task.mode === 'skip') {
+        taskResults.skipped = taskResults.skipped + 1;
+      } else if(task.mode === 'todo') {
+        taskResults.todo = taskResults.todo + 1;
+      }
+
+      if(
+        (task.type === 'suite')
+        && (task.filepath !== undefined)
+      ) {
+        if(((task as any)?.collectDuration ?? 0) > taskResults.collectTime) {
+          taskResults.collectTime += ((task as any)?.collectDuration ?? 0);
+        }
+        if(((task as any)?.setupDuration ?? 0) > taskResults.setupTime) {
+          taskResults.setupTime += (task as any)?.setupDuration ?? 0;
+        }
+        if((task.result?.duration ?? 0) > taskResults.testsTime) {
+          taskResults.testsTime += task.result?.duration ?? 0;
+        }
+        if(((task as any)?.environmentLoad ?? 0) > taskResults.envTime) {
+          taskResults.envTime += (task as any)?.environmentLoad ?? 0;
+        }
+        if(((task as any)?.prepareDuration ?? 0) > taskResults.prepareTime) {
+          taskResults.prepareTime += (task as any)?.prepareDuration ?? 0;
+        }
+      }
+    }
+    return taskResults;
+  }
+
+  static formatTaskResults(taskResults: TaskResultsOutput, name = 'tests', showTotal = true): string {
+    let testResultsStrs: string[];
+    let testResultsStr: string;
+
+    const colorCfg = EzdReporterColors.colorCfg;
+
+    if(taskResults.taskCount === 0) {
+      return colorCfg.dim(`no ${name}`);
+    }
+    testResultsStrs = [];
+    if(taskResults.failed > 0) {
+      testResultsStrs.push(colorCfg.failed_tasks(` ${taskResults.failed} failed`));
+    }
+    if(taskResults.passed > 0) {
+      testResultsStrs.push(colorCfg.pass(` ${taskResults.passed} passed`));
+    }
+    if(taskResults.skipped > 0) {
+      testResultsStrs.push(colorCfg.skipped_tasks(` ${taskResults.skipped} skipped`));
+    }
+    if(taskResults.todo > 0) {
+      testResultsStrs.push(colorCfg.todo_tasks(` ${taskResults.todo} todo`));
+    }
+    testResultsStr = testResultsStrs.join(colorCfg.dim(' | '));
+    if(showTotal) {
+      testResultsStr += ` ${colorCfg.task_result_count(`(${taskResults.taskCount})`)}`;
+    }
+    return `${testResultsStr}`;
+  }
 
   static formatFilePath(filePath: string, opts: FormatFilePathOpts): string {
     let parsedPath: ParsedPath;
@@ -118,6 +226,10 @@ export class ReporterPrintUtil {
     let taskSymbol: string;
     let taskName: string;
     let testCount: number;
+    let durationStr: string;
+
+    let outTimeVal: number;
+    let outTimeUnit: string;
 
     const colors = opts.colors;
 
@@ -149,7 +261,29 @@ export class ReporterPrintUtil {
       })
       : task.name
     ;
-    resStr = `${prefix} ${taskName} ${suffix}`;
+    if(task.result?.duration !== undefined) {
+      let formattedOutTimeVal: string;
+      let formattedOutUnitVal: string;
+      let isSlowTask: boolean;
+      isSlowTask = task.result.duration > opts.config.slowTestThreshold;
+      [ outTimeVal, outTimeUnit ] = getIntuitiveTime(task.result.duration);
+      formattedOutUnitVal = opts.colors.dim(outTimeUnit);
+      if(isSlowTask) {
+        formattedOutTimeVal = ` ${opts.colors.duration_slow(outTimeVal)}`;
+      } else if(opts.showAllDurations) {
+        formattedOutTimeVal = ` ${opts.colors.duration(outTimeVal)}`;
+      } else {
+        formattedOutTimeVal = '';
+        formattedOutUnitVal = '';
+      }
+      durationStr = `${formattedOutTimeVal}${formattedOutUnitVal}`;
+      if(!isSlowTask) {
+        durationStr = opts.colors.italic(durationStr);
+      }
+      suffix += durationStr;
+    }
+
+    resStr = `${prefix} ${taskName}${suffix}`;
     return resStr;
   }
 
@@ -222,6 +356,8 @@ export class ReporterPrintUtil {
         function: colors.syntax.function,
         literal: colors.syntax.literal,
         number: colors.syntax.number,
+        keyword: colors.syntax.keyword,
+        // built_in: colors.syntax.built_in,
       }
     });
     highlightedLines = highlighted.split('\n');
