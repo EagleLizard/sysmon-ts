@@ -243,7 +243,7 @@ function printResultsSummary(files: File[], errors: unknown[], opts: PrintResult
     let projectDuration = opts.projects[i].vitenode.getTotalDuration();
     transformTimems += projectDuration;
   }
-  testFileResults = ReporterPrintUtil.getTaskResults(files);
+  testFileResults = TaskUtil.getTaskResults(files);
   threadTime = (
     testFileResults.collectTime
     + testFileResults.testsTime
@@ -258,7 +258,7 @@ function printResultsSummary(files: File[], errors: unknown[], opts: PrintResult
   ]);
 
   tests = TaskUtil.getTests(files);
-  testResults = ReporterPrintUtil.getTaskResults(tests);
+  testResults = TaskUtil.getTaskResults(tests);
   testResultsStr = ReporterPrintUtil.formatTaskResults(testResults);
   outputLines.push([
     'Tests',
