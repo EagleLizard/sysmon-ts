@@ -45,6 +45,7 @@ const orange_lightRgb = {
 const orange_light = chalk.rgb(orange_lightRgb.r, orange_lightRgb.g, orange_lightRgb.b);
 // const yellow_light = chalk.rgb(255, 255, 117);
 const yellow_light = chalk.yellow;
+const blue_light = chalk.rgb(149, 199, 255);
 
 export type ColorConfig = {
   pass: Formatter;
@@ -93,6 +94,7 @@ const ezdColors = {
   purple,
   magenta,
   orange_light,
+  blue_light,
 };
 
 const colorCfg = {
@@ -121,7 +123,8 @@ const colorCfg = {
   skipped_tasks: ezdColors.pastel_pink,
   todo_tasks: ezdColors.teal,
   task_result_count: ezdColors.gray,
-  user_log: ezdColors.gray,
+  // user_log: ezdColors.gray,
+  user_log: ezdColors.gray_light,
   syntax: {
     function: ezdColors.pink,
     string: ezdColors.chartreuse_light.italic,

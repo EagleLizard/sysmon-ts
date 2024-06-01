@@ -7,10 +7,9 @@ import { Awaitable, ErrorWithDiff, File, Reporter, Task, TaskResultPack, UserCon
 
 import { TaskUtil } from './task-util';
 import { EzdReporterColors } from './ezd-reporter-colors';
-import { GetDividerOpts, PrintResultsOpts, ReporterPrintUtil, TaskResultsOutput } from './reporter-print-util';
+import { FormatUserConsoleLogOpts, GetDividerOpts, PrintResultsOpts, ReporterPrintUtil, TaskResultsOutput } from './reporter-print-util';
 import { Timer } from '../../lib/util/timer';
 import { getIntuitiveTime } from '../../lib/util/format-util';
-import { Writable } from 'node:stream';
 
 /*
 interface Reporter {
@@ -33,11 +32,15 @@ const colorCfg = EzdReporterColors.colorCfg;
 /*
   see: https://github.com/vitest-dev/vitest/blob/7900f9f89c6a37928df9ea1ae473e526883d6d43/packages/vitest/src/runtime/console.ts#L9
 */
-const UNKNOWN_TEST_ID = '__vitest__unknown_test__';
 
 export default class EzdReporter implements Reporter {
   ctx: Vitest = undefined!;
   private watchFiles: string[] = [];
+
+  private collectedFiles: File[] = [];
+  private userConsoleLogs: UserConsoleLog[] = [];
+  private currUserConsoleLogs: UserConsoleLog[] = [];
+  private tasksRan: Task[] = [];
 
   executionTimer: Timer = Timer.start();
 
@@ -58,12 +61,20 @@ export default class EzdReporter implements Reporter {
       let pack = packs[i];
       let task = this.ctx.state.idMap.get(pack[0]);
       // console.log(task?.name);
+      this.printAndCollectLogs();
       if(
         (task !== undefined)
         && (task.file === undefined) // means the task won't have circular refs
         // && ('filepath' in task) // means the task won't have circular refs
         && (task.result?.state !== 'run')
       ) {
+        this.tasksRan.push(task);
+        // printResults(this.tasksRan, {
+        //   logger: this.ctx.logger,
+        //   config: this.ctx.config,
+        //   onlyFailed: false,
+        //   showAllDurations: true,
+        // });
         printResults([ task ], {
           logger: this.ctx.logger,
           config: this.ctx.config,
@@ -73,15 +84,33 @@ export default class EzdReporter implements Reporter {
       }
     }
   }
-  
-  // onCollected?: ((files?: File[] | undefined) => Awaitable<void>) | undefined;
-  onCollected(files?: File[] | undefined): Awaitable<void> {
-    logHook('onCollected()');
+
+  printAndCollectLogs() {
+    for(let i = 0; i < this.currUserConsoleLogs.length; ++i) {
+      let currLog = this.currUserConsoleLogs[i];
+      this.userConsoleLogs.push(currLog);
+      printLog(currLog, {
+        getTask: (taskId: string) => {
+          return this.ctx.state.idMap.get(taskId);
+        },
+        logger: this.ctx.logger,
+      });
+    }
+    this.currUserConsoleLogs.length = 0;
   }
 
+  // onCollected?: ((files?: File[] | undefined) => Awaitable<void>) | undefined;
+  onCollected(files?: File[] | undefined): Awaitable<void> {
+    // logHook('onCollected()');
+    files = files ?? [];
+    for(let i = 0; i < files.length; ++i) {
+      let file = files[i];
+      this.collectedFiles.push(file);
+    }
+  }
 
   // onWatcherStart?: ((files?: File[] | undefined, errors?: unknown[] | undefined) => Awaitable<void>) | undefined;
-  onWatcherStart(): Awaitable<void> | undefined {
+  onWatcherStart(files?: File[] | undefined, errors?: unknown[]): Awaitable<void> | undefined {
     // logHook('onWatcherStart()');
     // let files: File[];
     // let errors: unknown[];
@@ -103,46 +132,21 @@ export default class EzdReporter implements Reporter {
 
   // onUserConsoleLog?: ((log: UserConsoleLog) => Awaitable<void>) | undefined;
   onUserConsoleLog(log: UserConsoleLog): Awaitable<void> | undefined {
-    let task: Task | undefined;
-    let taskName: string | undefined;
-    let logWs: {
-      write: (chunk: string) => boolean;
-    };
-    let header: string;
+    // logHook('onUserConsoleLog()');
     if(!this.shouldLog(log)) {
       return;
     }
-    task = (log.taskId === undefined)
-      ? undefined
-      : this.ctx.state.idMap.get(log.taskId)
-    ;
-    logWs = (log.type === 'stdout')
-      ? this.ctx.logger.outputStream
-      : this.ctx.logger.errorStream
-    ;
-    // task
-    //   ? getFullName(task, c.dim(' > '))
-    //   : log.taskId !== UNKNOWN_TEST_ID
-    //     ? log.taskId
-    //     : 'unknown test';
-    if(task === undefined) {
-      taskName = (log.taskId === UNKNOWN_TEST_ID)
-        ? 'unknown test'
-        : log.taskId
-      ;
-    } else {
-      taskName = TaskUtil.getFullName(task);
-    }
-    header = colorCfg.user_log(`${log.type}${colorCfg.dim(` | ${taskName}`)}`);
-    // logWs.write(`${header}\n${log.content}\n`);
+    this.currUserConsoleLogs.push(log);
   }
+
+  /*
+    see: https://github.com/vitest-dev/vitest/blob/7900f9f89c6a37928df9ea1ae473e526883d6d43/packages/vitest/src/node/reporters/base.ts#L230
+  */
   shouldLog(log: UserConsoleLog) {
-    if(this.ctx.config.silent)
-      return false;
-    const shouldLog = this.ctx.config.onConsoleLog?.(log.content, log.type);
-    if(shouldLog === false)
-      return shouldLog;
-    return true;
+    return (
+      !this.ctx.config.silent
+      || !this.ctx.config.onConsoleLog?.(log.content, log.type)
+    );
   }
 
   // onFinished?: ((files?: File[] | undefined, errors?: unknown[] | undefined) => Awaitable<void>) | undefined;
@@ -156,11 +160,12 @@ export default class EzdReporter implements Reporter {
 
       files = files ?? this.ctx.state.getFiles();
       errors = errors ?? this.ctx.state.getUnhandledErrors();
-      // printResults(files, {
-      //   logger: this.ctx.logger,
-      //   config: this.ctx.config,
-      //   onlyFailed: true,
-      // });
+      printResults(this.tasksRan, {
+        logger: this.ctx.logger,
+        config: this.ctx.config,
+        onlyFailed: false,
+        showAllDurations: true,
+      });
       await printErrorsSummary(files, errors, {
         logger: this.ctx.logger,
         config: this.ctx.config,
@@ -176,6 +181,35 @@ export default class EzdReporter implements Reporter {
       });
     })();
   }
+}
+
+type PrintLogOpts = {
+  getTask: (taskId: string) => Task | undefined;
+  logger: Vitest['logger'];
+};
+
+function printLog(log: UserConsoleLog, opts: PrintLogOpts) {
+  let task: Task | undefined;
+  let logWs: { write: (chunk: string) => boolean; };
+  let logStr: string;
+  task = (log.taskId === undefined)
+    ? undefined
+    : opts.getTask(log.taskId)
+  ;
+
+  logWs = (log.type === 'stdout')
+    ? opts.logger.outputStream
+    : opts.logger.errorStream
+  ;
+
+  logStr = ReporterPrintUtil.formatUserConsoleLog(log, task, {
+    colors: {
+      user_log: colorCfg.user_log,
+      dim: colorCfg.dim,
+    },
+  });
+
+  logWs.write(logStr);
 }
 
 type PrintResultsSummaryOpts = PrintResultsOpts & {

@@ -7,7 +7,7 @@ import stripAnsi from 'strip-ansi';
 import { ReadFileByLineOpts, readFileByLine } from '../../lib/util/files';
 import { EzdReporterColors, Formatter } from './ezd-reporter-colors';
 import { ERR_STACK_CODE_FRAME_START_STR, F_ARROW_UP, F_LONG_DASH } from './reporters-constants';
-import { Task, Vitest } from 'vitest';
+import { Task, UserConsoleLog, Vitest } from 'vitest';
 import { GetStatSymbolOpts, TaskUtil } from './task-util';
 import { getIntuitiveTime } from '../../lib/util/format-util';
 
@@ -57,8 +57,6 @@ type FormatFilePathOpts = {
   }
 }
 
-const DEFAULT_CODE_LINES_TO_INCLUDE = 3;
-
 export type TaskResultsOutput = {
   taskCount: number;
   failed: number;
@@ -73,9 +71,37 @@ export type TaskResultsOutput = {
   envTime: number;
   prepareTime: number;
   // threadTime: number;
-}
+};
+
+export type FormatUserConsoleLogOpts = {
+  colors: {
+    user_log: Formatter;
+    dim: Formatter;
+  };
+};
+
+const DEFAULT_CODE_LINES_TO_INCLUDE = 3;
+const UNKNOWN_TEST_ID = '__vitest__unknown_test__';
 
 export class ReporterPrintUtil {
+
+  static formatUserConsoleLog(log: UserConsoleLog, task: Task | undefined, opts: FormatUserConsoleLogOpts) {
+    let taskName: string | undefined;
+    let header: string;
+    let resStr: string;
+
+    if(task === undefined) {
+      taskName = (log.taskId === UNKNOWN_TEST_ID)
+        ? 'unknown test'
+        : log.taskId
+      ;
+    } else {
+      taskName = TaskUtil.getFullName(task);
+    }
+    header = opts.colors.user_log(`${log.type}${opts.colors.dim(` | ${taskName}`)}`);
+    resStr = `${header}\n${log.content}\n`;
+    return resStr;
+  }
 
   /*
     see: https://github.com/vitest-dev/vitest/blob/a820e7ac6efa89b9944094ccc1a7f11ec2afb7ac/packages/vitest/src/node/reporters/renderers/utils.ts#L98
