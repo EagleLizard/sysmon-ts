@@ -23,7 +23,7 @@ export type TaskResultsOutput = {
   // transformTime: number;
   envTime: number;
   prepareTime: number;
-  // threadTime: number;
+  threadTime: number;
 };
 
 export class TaskUtil {
@@ -46,7 +46,7 @@ export class TaskUtil {
       // transformTime: 0,
       envTime: 0,
       prepareTime: 0,
-      // threadTime: 0,
+      threadTime: 0,
     };
     for(let i = 0; i < tasks.length; ++i) {
       let task = tasks[i];
@@ -81,6 +81,11 @@ export class TaskUtil {
         }
       }
     }
+    taskResults.threadTime = (
+      taskResults.collectTime
+      + taskResults.testsTime
+      + taskResults.setupTime
+    );
     return taskResults;
   }
 

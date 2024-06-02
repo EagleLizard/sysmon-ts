@@ -1,6 +1,7 @@
 
 import chalk, { ChalkInstance } from 'chalk';
-import { FormatErrorCodeFrameOpts, FormatResultOpts } from './reporter-print-util';
+import { FormatErrorCodeFrameOpts } from './error-fmt-util';
+import { FormatResultOpts } from './reporter-fmt-util';
 
 export type Formatter = ChalkInstance;
 
@@ -18,6 +19,7 @@ const pastel_orange = chalk.rgb(255, 203, 89);
 const teal = chalk.rgb(120, 255, 214);
 const gray = chalk.gray;
 const gray_light = chalk.rgb(122, 122, 122);
+const gray_xlight = chalk.rgb(160, 160, 160);
 // const coral = chalk.rgb(255, 127, 80);
 const coral = chalk.rgb(255, 156, 120);
 const yellow_yellow = chalk.rgb(255, 255, 0);
@@ -86,6 +88,7 @@ const ezdColors = {
   teal,
   gray,
   gray_light,
+  gray_xlight,
   coral,
   yellow_yellow,
   yellow_light,
@@ -131,7 +134,7 @@ const colorCfg = {
     literal: ezdColors.pastel_orange,
     number: ezdColors.aqua,
     keyword: ezdColors.coral,
-    built_in: ezdColors.hot_pink,
+    built_in: ezdColors.gray_light.italic,
     operator: ezdColors.yellow_yellow,
   }
 };

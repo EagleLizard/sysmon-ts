@@ -14,6 +14,9 @@ export class Timer {
     return timer;
   }
 
+  startTimeMs(): number {
+    return Number(this.startTime / BigInt(1e3));
+  }
   stop(): number {
     let endTime: bigint, deltaMs: number;
     endTime = process.hrtime.bigint();

@@ -1,4 +1,11 @@
 
+
+// module.exports = {
+//   extends: [
+//     'ezd',
+//   ],
+// };
+
 module.exports = {
   'parserOptions': {
     'ecmaVersion': 2020,

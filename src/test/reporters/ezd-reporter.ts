@@ -5,11 +5,13 @@ sourceMapSupport.install();
 import path from 'path';
 import { Awaitable, ErrorWithDiff, File, Reporter, Task, TaskResultPack, UserConsoleLog, Vitest } from 'vitest';
 
-import { TaskUtil } from './task-util';
+import { TaskResultsOutput, TaskUtil } from './task-util';
 import { EzdReporterColors } from './ezd-reporter-colors';
-import { FormatUserConsoleLogOpts, GetDividerOpts, PrintResultsOpts, ReporterPrintUtil, TaskResultsOutput } from './reporter-print-util';
+import { GetDividerOpts, PrintResultsOpts, ReporterFmtUtil } from './reporter-fmt-util';
 import { Timer } from '../../lib/util/timer';
 import { getIntuitiveTime } from '../../lib/util/format-util';
+import { ErrorFmtUtil, ErrorsSummary, PrintErrorSummayOpts } from './error-fmt-util';
+import { get24HourTimeStr } from '../../lib/util/datetime-util';
 
 /*
 interface Reporter {
@@ -169,10 +171,10 @@ export default class EzdReporter implements Reporter {
       await printErrorsSummary(files, errors, {
         logger: this.ctx.logger,
         config: this.ctx.config,
-        ctx: this.ctx,
       });
 
       printResultsSummary(files, errors, {
+        startTimeMs: this.executionTimer.startTimeMs(),
         execTimeMs,
         isWatcherRerun: (this.watchFiles.length > 0),
         projects: this.ctx.projects,
@@ -202,7 +204,7 @@ function printLog(log: UserConsoleLog, opts: PrintLogOpts) {
     : opts.logger.errorStream
   ;
 
-  logStr = ReporterPrintUtil.formatUserConsoleLog(log, task, {
+  logStr = ReporterFmtUtil.formatUserConsoleLog(log, task, {
     colors: {
       user_log: colorCfg.user_log,
       dim: colorCfg.dim,
@@ -213,6 +215,7 @@ function printLog(log: UserConsoleLog, opts: PrintLogOpts) {
 }
 
 type PrintResultsSummaryOpts = PrintResultsOpts & {
+  startTimeMs: number;
   execTimeMs: number;
   isWatcherRerun: boolean;
   projects: Vitest['projects'];
@@ -228,30 +231,23 @@ function printResultsSummary(files: File[], errors: unknown[], opts: PrintResult
   let testResults: TaskResultsOutput;
   let testResultsStr: string;
 
-  let transformTimems: number;
+  let transformTimeMs: number;
   let threadTime: number;
 
   let timersStr: string;
   let durationStr: string;
 
   outputLines = [];
-  transformTimems = 0;
+  transformTimeMs = 0;
   for(let i = 0; i < opts.projects.length; ++i) {
     /*
       TODO: vitest PR to remove unecessary flatMap call: https://github.com/vitest-dev/vitest/blob/b84f1721df66aad9685645084b33e8313a5cffd7/packages/vitest/src/node/reporters/base.ts#L240
     */
     let projectDuration = opts.projects[i].vitenode.getTotalDuration();
-    transformTimems += projectDuration;
+    transformTimeMs += projectDuration;
   }
   testFileResults = TaskUtil.getTaskResults(files);
-  threadTime = (
-    testFileResults.collectTime
-    + testFileResults.testsTime
-    + testFileResults.setupTime
-  );
-
-  // opts.logger.log(`${colorCfg.duration_label('Duration:')} ${execTimeStr}`);
-  testFilesResultsStr = ReporterPrintUtil.formatTaskResults(testFileResults);
+  testFilesResultsStr = ReporterFmtUtil.formatTaskResults(testFileResults);
   outputLines.push([
     'Test Files',
     testFilesResultsStr,
@@ -259,7 +255,7 @@ function printResultsSummary(files: File[], errors: unknown[], opts: PrintResult
 
   tests = TaskUtil.getTests(files);
   testResults = TaskUtil.getTaskResults(tests);
-  testResultsStr = ReporterPrintUtil.formatTaskResults(testResults);
+  testResultsStr = ReporterFmtUtil.formatTaskResults(testResults);
   outputLines.push([
     'Tests',
     testResultsStr
@@ -279,7 +275,7 @@ function printResultsSummary(files: File[], errors: unknown[], opts: PrintResult
 
   execTimeStr = timeFmt(opts.execTimeMs);
   timersStr = [
-    `transform: ${timeFmt(transformTimems)}`,
+    `transform: ${timeFmt(transformTimeMs)}`,
     `setup: ${timeFmt(testFileResults.setupTime)}`,
     `collect: ${timeFmt(testFileResults.collectTime)}`,
     `tests: ${timeFmt(testFileResults.testsTime)}`,
@@ -292,8 +288,12 @@ function printResultsSummary(files: File[], errors: unknown[], opts: PrintResult
     : `${execTimeStr} ${colorCfg.dim(`(${timersStr})`)}`
   ;
   outputLines.push([
+    'Start at',
+    ` ${get24HourTimeStr(new Date(opts.startTimeMs))}`,
+  ]);
+  outputLines.push([
     'Duration',
-    durationStr,
+    ` ${durationStr}`,
   ]);
 
   outputLineLabelLen = -Infinity;
@@ -313,49 +313,15 @@ function printResultsSummary(files: File[], errors: unknown[], opts: PrintResult
   }
 }
 
-type PrintErrorSummayOpts = PrintResultsOpts & {
-  ctx: Vitest;
-};
-
 async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintErrorSummayOpts) {
-  let suites: Task[];
-  let tests: Task[];
-  let failedSuites: Task[];
-  let failedTests: Task[];
-  let failedSuitesCount: number;
-  let failedTestsCount: number;
+  let errorsSummary: ErrorsSummary;
   let failedTotal: number;
-
   let errorCount: number;
   let printErrorsOpts: PrintErrorsOpts;
 
-  let failedSuitesLabel: string;
-  let failedTestsLabel: string;
+  errorsSummary = await ErrorFmtUtil.getErrorsSummary(files, errors, opts);
 
-  suites = TaskUtil.getSuites(files);
-  tests = TaskUtil.getTests(files);
-  failedSuitesCount = 0;
-  failedTestsCount = 0;
-  failedTotal = 0;
-
-  failedSuites = [];
-  for(let i = 0; i < suites.length; ++i) {
-    let suite = suites[i];
-    if(suite.result?.errors !== undefined) {
-      failedSuitesCount += suite.result.errors.length || 0;
-      failedSuites.push(suite);
-    }
-  }
-  failedTests = [];
-  for(let i = 0; i < tests.length; ++i) {
-    let test = tests[i];
-    if(test.result?.state === 'fail') {
-      failedTestsCount += test.result.errors?.length || 0;
-      failedTests.push(test);
-    }
-  }
-
-  failedTotal = failedSuitesCount + failedTestsCount;
+  failedTotal = errorsSummary.suitesCount + errorsSummary.testsCount;
 
   errorCount = 0;
   const getErrorDivider = () => {
@@ -368,35 +334,30 @@ async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintE
     ...opts,
     getErrorDivider,
   };
-
-  // error divider
-  if(failedSuites.length > 0) {
-    failedSuitesLabel = colorCfg.fail.inverse.bold(` Failed Suites: ${failedSuites.length} `);
-    opts.logger.error();
-    opts.logger.error(getDivider(failedSuitesLabel, {
-      color: colorCfg.fail
-    }));
-    opts.logger.error();
-    await printErrors(failedSuites, printErrorsOpts);
-  }
-  if(failedTests.length > 0) {
-    failedTestsLabel = colorCfg.fail.inverse.bold(` Failed Tests: ${failedTests.length} `);
-    opts.logger.error(getDivider(failedTestsLabel, {
-      color: colorCfg.fail
-    }));
-    opts.logger.error();
-    await printErrors(failedTests, printErrorsOpts);
-  }
+  await printErrors(errorsSummary.suites, 'Suites', printErrorsOpts);
+  await printErrors(errorsSummary.tests, 'Tests', printErrorsOpts);
 }
 
 type PrintErrorsOpts = PrintErrorSummayOpts & {
   getErrorDivider: () => string;
 };
 
-async function printErrors(tasks: Task[], opts: PrintErrorsOpts) {
+async function printErrors(tasks: Task[], label: string, opts: PrintErrorsOpts) {
   let errorsQueue: [ErrorWithDiff | undefined, Task[]][];
+  let failedTasksLabel: string;
+
+  if(tasks.length === 0) {
+    return;
+  }
 
   errorsQueue = [];
+  failedTasksLabel = colorCfg.fail.inverse.bold(` Failed ${label}: ${tasks.length}`);
+  opts.logger.error();
+  opts.logger.error(getDivider(failedTasksLabel, {
+    color: colorCfg.fail,
+  }));
+  opts.logger.error();
+
   for(let i = 0; i < tasks.length; ++i) {
     let task: Task;
     let errors: ErrorWithDiff[];
@@ -468,7 +429,7 @@ async function getErrorResult(
     if(filePath !== undefined) {
       taskName += ` ${colorCfg.dim()} ${path.relative(opts.config.root, filePath)}`;
     }
-    formattedResult = ReporterPrintUtil.formatResult(currTask, {
+    formattedResult = ReporterFmtUtil.formatResult(currTask, {
       ...opts,
       colors: EzdReporterColors.formatResultColors,
     });
@@ -490,10 +451,15 @@ async function getErrorResult(
   }
 
   if(error.stack !== undefined) {
-    nearestTrace = ReporterPrintUtil.getNearestStackTrace(error.stack);
-    highlightedSnippet = await ReporterPrintUtil.formatErrorCodeFrame(nearestTrace, {
-      colors: EzdReporterColors.formatErrorCodeFrameColors,
-    });
+    nearestTrace = ErrorFmtUtil.getNearestStackTrace(error.stack);
+    try {
+      highlightedSnippet = await ErrorFmtUtil.formatErrorCodeFrame(nearestTrace, {
+        colors: EzdReporterColors.formatErrorCodeFrameColors,
+      });
+    } catch(e) {
+      console.error(e);
+      throw e;
+    }
     errorLines.push(highlightedSnippet);
   }
 
@@ -505,19 +471,19 @@ async function getErrorResult(
 
 function getDivider(msg: string, opts?: GetDividerOpts) {
   let dividerStr: string;
-  dividerStr = ReporterPrintUtil.getDivider(msg, opts);
+  dividerStr = ReporterFmtUtil.getDivider(msg, opts);
   return colorCfg.fail(dividerStr);
 }
 
-function printResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: string[], level = 0) {
-  let logger: Vitest['logger'];
-
-  logger = opts.logger;
+function getResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: string[], level = 0): string[] {
+  let maxLevel: number;
   outputLines = outputLines ?? [];
-
+  maxLevel = opts.maxLevel ?? Infinity;
+  if(level > maxLevel) {
+    return [];
+  }
   tasks = tasks.slice();
   tasks.sort(TaskUtil.taskComparator);
-
   for(let i = 0; i < tasks.length; ++i) {
     let task = tasks[i];
     if(task !== undefined) {
@@ -531,7 +497,7 @@ function printResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: strin
       levelPadStr = '  '.repeat(level);
       prefix += levelPadStr;
 
-      taskResStr = ReporterPrintUtil.formatResult(task, {
+      taskResStr = ReporterFmtUtil.formatResult(task, {
         ...opts,
         colors: EzdReporterColors.formatResultColors,
       });
@@ -554,19 +520,26 @@ function printResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: strin
               filteredTasks.push(currTask);
             }
           }
-          printResults(filteredTasks, opts, outputLines, level + 1);
+          getResults(filteredTasks, opts, outputLines, level + 1);
         } else if(!TaskUtil.isSkippedTask(task)) {
-          printResults(task.tasks, opts, outputLines, level + 1);
+          getResults(task.tasks, opts, outputLines, level + 1);
         }
       }
     }
   }
+  return outputLines;
+}
 
-  if(level === 0) {
-    for(let i = 0; i < outputLines.length; ++i) {
-      let outputLine = outputLines[i];
-      logger.log(outputLine);
-    }
+function printResults(tasks: Task[], opts: PrintResultsOpts) {
+  let logger: Vitest['logger'];
+  let outputLines: string[];
+
+  logger = opts.logger;
+  outputLines = getResults(tasks, opts);
+
+  for(let i = 0; i < outputLines.length; ++i) {
+    let outputLine = outputLines[i];
+    logger.log(outputLine);
   }
 }
 

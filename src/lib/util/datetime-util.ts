@@ -1,5 +1,6 @@
 
 import { format } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 
 export function getDateStr(date: Date) {
   /*
@@ -29,4 +30,10 @@ export function getDebugDateTimeStr(date: Date) {
 
 export function getDayStr(date: Date) {
   return format(date, 'E');
+}
+
+export function get24HourTimeStr(date: Date) {
+  let tz: string;
+  tz = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return formatInTimeZone(date, tz, 'HH:mm:ss');
 }
