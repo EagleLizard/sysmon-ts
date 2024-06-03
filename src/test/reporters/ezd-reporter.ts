@@ -43,8 +43,6 @@ export default class EzdReporter implements Reporter {
   private watchFiles: string[] = [];
 
   private collectedFiles: File[] = [];
-  private userConsoleLogs: UserConsoleLog[] = [];
-  private currUserConsoleLogs: UserConsoleLog[] = [];
   private tasksRan: Task[] = [];
 
   executionTimer: Timer = Timer.start();
