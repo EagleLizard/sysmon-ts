@@ -7,6 +7,7 @@ import { Formatter } from './ezd-reporter-colors';
 import { ERR_STACK_CODE_FRAME_START_STR, F_ARROW_UP } from './reporters-constants';
 import { Task, File, Vitest } from 'vitest';
 import { TaskUtil } from './task-util';
+import { LogRenderer } from './log-renderer';
 
 type CodeFrame = {
   fileStr: string;
@@ -32,7 +33,7 @@ export type FormatErrorCodeFrameOpts = {
 };
 
 export type PrintErrorSummayOpts = {
-  logger: Vitest['logger'];
+  logger: LogRenderer;
   config: Vitest['config'];
 };
 

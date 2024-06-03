@@ -12,6 +12,7 @@ import { Timer } from '../../lib/util/timer';
 import { getIntuitiveTime } from '../../lib/util/format-util';
 import { ErrorFmtUtil, ErrorsSummary, PrintErrorSummayOpts } from './error-fmt-util';
 import { get24HourTimeStr } from '../../lib/util/datetime-util';
+import { LogRenderer } from './log-renderer';
 
 /*
 interface Reporter {
@@ -37,6 +38,8 @@ const colorCfg = EzdReporterColors.colorCfg;
 
 export default class EzdReporter implements Reporter {
   ctx: Vitest = undefined!;
+  loggerRenderer: LogRenderer = undefined!;
+
   private watchFiles: string[] = [];
 
   private collectedFiles: File[] = [];
@@ -49,6 +52,9 @@ export default class EzdReporter implements Reporter {
   onInit(ctx: Vitest) {
     this.ctx = ctx;
     this.executionTimer = Timer.start();
+    this.loggerRenderer = LogRenderer.init(this.ctx.logger, {
+      maxLines: process.stdout.rows,
+    });
   }
 
   // onPathsCollected?: ((paths?: string[] | undefined) => Awaitable<void>) | undefined;
@@ -62,8 +68,6 @@ export default class EzdReporter implements Reporter {
     for(let i = 0; i < packs.length; ++i) {
       let pack = packs[i];
       let task = this.ctx.state.idMap.get(pack[0]);
-      // console.log(task?.name);
-      this.printAndCollectLogs();
       if(
         (task !== undefined)
         && (task.file === undefined) // means the task won't have circular refs
@@ -71,34 +75,16 @@ export default class EzdReporter implements Reporter {
         && (task.result?.state !== 'run')
       ) {
         this.tasksRan.push(task);
-        // printResults(this.tasksRan, {
-        //   logger: this.ctx.logger,
-        //   config: this.ctx.config,
-        //   onlyFailed: false,
-        //   showAllDurations: true,
-        // });
+        this.loggerRenderer.clear();
         printResults([ task ], {
-          logger: this.ctx.logger,
+          logger: this.loggerRenderer,
           config: this.ctx.config,
           onlyFailed: false,
           showAllDurations: true,
+          maxLevel: 0,
         });
       }
     }
-  }
-
-  printAndCollectLogs() {
-    for(let i = 0; i < this.currUserConsoleLogs.length; ++i) {
-      let currLog = this.currUserConsoleLogs[i];
-      this.userConsoleLogs.push(currLog);
-      printLog(currLog, {
-        getTask: (taskId: string) => {
-          return this.ctx.state.idMap.get(taskId);
-        },
-        logger: this.ctx.logger,
-      });
-    }
-    this.currUserConsoleLogs.length = 0;
   }
 
   // onCollected?: ((files?: File[] | undefined) => Awaitable<void>) | undefined;
@@ -109,6 +95,14 @@ export default class EzdReporter implements Reporter {
       let file = files[i];
       this.collectedFiles.push(file);
     }
+    this.loggerRenderer.clear();
+    printResults(files, {
+      logger: this.loggerRenderer,
+      config: this.ctx.config,
+      onlyFailed: false,
+      showAllDurations: true,
+      maxLevel: 0,
+    });
   }
 
   // onWatcherStart?: ((files?: File[] | undefined, errors?: unknown[] | undefined) => Awaitable<void>) | undefined;
@@ -127,7 +121,7 @@ export default class EzdReporter implements Reporter {
   }
   // onWatcherRerun?: ((files: string[], trigger?: string | undefined) => Awaitable<void>) | undefined;
   onWatcherRerun(files: string[], trigger?: string | undefined): Awaitable<void> | undefined {
-    this.ctx.logger.clearFullScreen('');
+    // this.loggerRenderer.clearFullScreen('');
     this.watchFiles = files;
     this.executionTimer.reset();
   }
@@ -138,7 +132,14 @@ export default class EzdReporter implements Reporter {
     if(!this.shouldLog(log)) {
       return;
     }
-    this.currUserConsoleLogs.push(log);
+    this.loggerRenderer.clear();
+    printLog(log, {
+      getTask: (taskId: string) => {
+        return this.ctx.state.idMap.get(taskId);
+      },
+      logger: this.loggerRenderer,
+    });
+    // this.currUserConsoleLogs.push(log);
   }
 
   /*
@@ -154,6 +155,7 @@ export default class EzdReporter implements Reporter {
   // onFinished?: ((files?: File[] | undefined, errors?: unknown[] | undefined) => Awaitable<void>) | undefined;
   onFinished(files?: File[] | undefined, errors?: unknown[] | undefined): Awaitable<void> | undefined {
     let execTimeMs: number;
+    // this.loggerRenderer.clear();
     execTimeMs = this.executionTimer.stop();
     return (async () => {
       logHook('onFinished()');
@@ -163,13 +165,14 @@ export default class EzdReporter implements Reporter {
       files = files ?? this.ctx.state.getFiles();
       errors = errors ?? this.ctx.state.getUnhandledErrors();
       printResults(this.tasksRan, {
-        logger: this.ctx.logger,
+        logger: this.loggerRenderer,
         config: this.ctx.config,
         onlyFailed: false,
         showAllDurations: true,
+        maxLevel: 0,
       });
       await printErrorsSummary(files, errors, {
-        logger: this.ctx.logger,
+        logger: this.loggerRenderer,
         config: this.ctx.config,
       });
 
@@ -178,7 +181,7 @@ export default class EzdReporter implements Reporter {
         execTimeMs,
         isWatcherRerun: (this.watchFiles.length > 0),
         projects: this.ctx.projects,
-        logger: this.ctx.logger,
+        logger: this.loggerRenderer,
         config: this.ctx.config,
       });
     })();
@@ -187,7 +190,7 @@ export default class EzdReporter implements Reporter {
 
 type PrintLogOpts = {
   getTask: (taskId: string) => Task | undefined;
-  logger: Vitest['logger'];
+  logger: LogRenderer;
 };
 
 function printLog(log: UserConsoleLog, opts: PrintLogOpts) {
@@ -479,9 +482,6 @@ function getResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: string[
   let maxLevel: number;
   outputLines = outputLines ?? [];
   maxLevel = opts.maxLevel ?? Infinity;
-  if(level > maxLevel) {
-    return [];
-  }
   tasks = tasks.slice();
   tasks.sort(TaskUtil.taskComparator);
   for(let i = 0; i < tasks.length; ++i) {
@@ -509,7 +509,10 @@ function getResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: string[
       if(
         (task.type === 'suite')
         && (task.tasks.length > 0)
-        && (task.result?.state === 'fail')
+        && (
+          (level < maxLevel)
+          || (task.result?.state === 'fail')
+        )
       ) {
         if(opts.config.hideSkippedTests) {
           let filteredTasks: Task[];
@@ -531,7 +534,7 @@ function getResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: string[
 }
 
 function printResults(tasks: Task[], opts: PrintResultsOpts) {
-  let logger: Vitest['logger'];
+  let logger: LogRenderer;
   let outputLines: string[];
 
   logger = opts.logger;

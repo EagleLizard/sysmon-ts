@@ -8,6 +8,7 @@ import { F_LONG_DASH } from './reporters-constants';
 import { Task, UserConsoleLog, Vitest } from 'vitest';
 import { GetStatSymbolOpts, TaskResultsOutput, TaskUtil } from './task-util';
 import { getIntuitiveTime } from '../../lib/util/format-util';
+import { LogRenderer } from './log-renderer';
 
 export type GetDividerOpts = {
   rightPad?: number;
@@ -15,7 +16,7 @@ export type GetDividerOpts = {
 };
 
 export type PrintResultsOpts = {
-  logger: Vitest['logger'];
+  logger: LogRenderer;
   config: Vitest['config'];
   onlyFailed?: boolean;
   showAllDurations?: boolean;
