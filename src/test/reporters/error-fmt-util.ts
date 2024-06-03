@@ -5,9 +5,9 @@ import { ReadFileByLineOpts, readFileByLine } from '../../lib/util/files';
 import { Formatter } from './ezd-reporter-colors';
 
 import { ERR_STACK_CODE_FRAME_START_STR, F_ARROW_UP } from './reporters-constants';
-import { Task, File, Vitest } from 'vitest';
+import { Task, File } from 'vitest';
 import { TaskUtil } from './task-util';
-import { LogRenderer } from './log-renderer';
+import { PrintErrorSummayOpts } from './task-fmt-util';
 
 type CodeFrame = {
   fileStr: string;
@@ -30,11 +30,6 @@ export type FormatErrorCodeFrameOpts = {
       built_in: Formatter;
     };
   };
-};
-
-export type PrintErrorSummayOpts = {
-  logger: LogRenderer;
-  config: Vitest['config'];
 };
 
 export type ErrorsSummary = {

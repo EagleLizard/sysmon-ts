@@ -5,22 +5,14 @@ import stripAnsi from 'strip-ansi';
 
 import { EzdReporterColors, Formatter } from './ezd-reporter-colors';
 import { F_LONG_DASH } from './reporters-constants';
-import { Task, UserConsoleLog, Vitest } from 'vitest';
+import { Task, UserConsoleLog } from 'vitest';
 import { GetStatSymbolOpts, TaskResultsOutput, TaskUtil } from './task-util';
 import { getIntuitiveTime } from '../../lib/util/format-util';
-import { LogRenderer } from './log-renderer';
+import { PrintResultsOpts } from './task-fmt-util';
 
 export type GetDividerOpts = {
   rightPad?: number;
   color?: Formatter;
-};
-
-export type PrintResultsOpts = {
-  logger: LogRenderer;
-  config: Vitest['config'];
-  onlyFailed?: boolean;
-  showAllDurations?: boolean;
-  maxLevel?: number;
 };
 
 export type FormatResultOpts = PrintResultsOpts & {
@@ -69,35 +61,6 @@ export class ReporterFmtUtil {
     header = opts.colors.user_log(`${log.type}${opts.colors.dim(` | ${taskName}`)}`);
     resStr = `${header}\n${log.content}\n`;
     return resStr;
-  }
-
-  static formatTaskResults(taskResults: TaskResultsOutput, name = 'tests', showTotal = true): string {
-    let testResultsStrs: string[];
-    let testResultsStr: string;
-
-    const colorCfg = EzdReporterColors.colorCfg;
-
-    if(taskResults.taskCount === 0) {
-      return colorCfg.dim(`no ${name}`);
-    }
-    testResultsStrs = [];
-    if(taskResults.failed > 0) {
-      testResultsStrs.push(colorCfg.failed_tasks(` ${taskResults.failed} failed`));
-    }
-    if(taskResults.passed > 0) {
-      testResultsStrs.push(colorCfg.pass(` ${taskResults.passed} passed`));
-    }
-    if(taskResults.skipped > 0) {
-      testResultsStrs.push(colorCfg.skipped_tasks(` ${taskResults.skipped} skipped`));
-    }
-    if(taskResults.todo > 0) {
-      testResultsStrs.push(colorCfg.todo_tasks(` ${taskResults.todo} todo`));
-    }
-    testResultsStr = testResultsStrs.join(colorCfg.dim(' | '));
-    if(showTotal) {
-      testResultsStr += ` ${colorCfg.task_result_count(`(${taskResults.taskCount})`)}`;
-    }
-    return `${testResultsStr}`;
   }
 
   static formatFilePath(filePath: string, opts: FormatFilePathOpts): string {

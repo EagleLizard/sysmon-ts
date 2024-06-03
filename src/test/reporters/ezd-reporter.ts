@@ -2,17 +2,18 @@
 import sourceMapSupport from 'source-map-support';
 sourceMapSupport.install();
 
-import path from 'path';
 import { Awaitable, ErrorWithDiff, File, Reporter, Task, TaskResultPack, UserConsoleLog, Vitest } from 'vitest';
 
 import { TaskResultsOutput, TaskUtil } from './task-util';
 import { EzdReporterColors } from './ezd-reporter-colors';
-import { GetDividerOpts, PrintResultsOpts, ReporterFmtUtil } from './reporter-fmt-util';
+import { GetDividerOpts, ReporterFmtUtil } from './reporter-fmt-util';
 import { Timer } from '../../lib/util/timer';
 import { getIntuitiveTime } from '../../lib/util/format-util';
-import { ErrorFmtUtil, ErrorsSummary, PrintErrorSummayOpts } from './error-fmt-util';
+import { ErrorFmtUtil, ErrorsSummary } from './error-fmt-util';
 import { get24HourTimeStr } from '../../lib/util/datetime-util';
 import { LogRenderer } from './log-renderer';
+import { PrintErrorSummayOpts, PrintErrorsOpts, PrintResultsOpts, TaskFmtUtil } from './task-fmt-util';
+import { ResultSummary, ResultSummaryUtil } from './result-summary-util';
 
 /*
 interface Reporter {
@@ -223,75 +224,37 @@ type PrintResultsSummaryOpts = PrintResultsOpts & {
 };
 
 function printResultsSummary(files: File[], errors: unknown[], opts: PrintResultsSummaryOpts) {
-  let tests: Task[];
-  let execTimeStr: string;
   let outputLines: [string, string][];
   let outputLineLabelLen: number;
-  let testFileResults: TaskResultsOutput;
-  let testFilesResultsStr: string;
-  let testResults: TaskResultsOutput;
-  let testResultsStr: string;
-
-  let transformTimeMs: number;
-  let threadTime: number;
-
-  let timersStr: string;
   let durationStr: string;
 
+  let resultSummary: ResultSummary;
+
+  resultSummary = ResultSummaryUtil.getResultSummary(files, {
+    projects: opts.projects,
+    execTimeMs: opts.execTimeMs,
+    colors: EzdReporterColors.resultSummaryColors,
+  });
+
   outputLines = [];
-  transformTimeMs = 0;
-  for(let i = 0; i < opts.projects.length; ++i) {
-    /*
-      TODO: vitest PR to remove unecessary flatMap call: https://github.com/vitest-dev/vitest/blob/b84f1721df66aad9685645084b33e8313a5cffd7/packages/vitest/src/node/reporters/base.ts#L240
-    */
-    let projectDuration = opts.projects[i].vitenode.getTotalDuration();
-    transformTimeMs += projectDuration;
-  }
-  testFileResults = TaskUtil.getTaskResults(files);
-  testFilesResultsStr = ReporterFmtUtil.formatTaskResults(testFileResults);
+
   outputLines.push([
     'Test Files',
-    testFilesResultsStr,
+    resultSummary.testFilesResultStr,
   ]);
-
-  tests = TaskUtil.getTests(files);
-  testResults = TaskUtil.getTaskResults(tests);
-  testResultsStr = ReporterFmtUtil.formatTaskResults(testResults);
   outputLines.push([
     'Tests',
-    testResultsStr
+    resultSummary.testsResultStr
   ]);
-
-  const timeFmt = (ms: number): string => {
-    let timeVal: number;
-    let timeUnit: string;
-    let timeStr: string;
-    [ timeVal, timeUnit ] = getIntuitiveTime(ms);
-    timeStr = (ms > 1000)
-      ? `${timeVal.toFixed(2)}`
-      : `${Math.round(timeVal)}`
-    ;
-    return `${timeStr}${timeUnit}`;
-  };
-
-  execTimeStr = timeFmt(opts.execTimeMs);
-  timersStr = [
-    `transform: ${timeFmt(transformTimeMs)}`,
-    `setup: ${timeFmt(testFileResults.setupTime)}`,
-    `collect: ${timeFmt(testFileResults.collectTime)}`,
-    `tests: ${timeFmt(testFileResults.testsTime)}`,
-    `environment: ${timeFmt(testFileResults.envTime)}`,
-    `prepare: ${timeFmt(testFileResults.prepareTime)}`,
-  ].join(', ');
-
-  durationStr = (opts.isWatcherRerun)
-    ? execTimeStr
-    : `${execTimeStr} ${colorCfg.dim(`(${timersStr})`)}`
-  ;
   outputLines.push([
     'Start at',
     ` ${get24HourTimeStr(new Date(opts.startTimeMs))}`,
   ]);
+
+  durationStr = (opts.isWatcherRerun)
+    ? resultSummary.execTimeStr
+    : `${resultSummary.execTimeStr} ${colorCfg.dim(`(${resultSummary.timersStr})`)}`
+  ;
   outputLines.push([
     'Duration',
     ` ${durationStr}`,
@@ -334,14 +297,16 @@ async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintE
   printErrorsOpts = {
     ...opts,
     getErrorDivider,
+    colors: {
+      dim: colorCfg.dim,
+      pass: colorCfg.pass,
+      fail: colorCfg.fail,
+    },
+    formatResultColors: EzdReporterColors.formatResultColors,
   };
   await printErrors(errorsSummary.suites, 'Suites', printErrorsOpts);
   await printErrors(errorsSummary.tests, 'Tests', printErrorsOpts);
 }
-
-type PrintErrorsOpts = PrintErrorSummayOpts & {
-  getErrorDivider: () => string;
-};
 
 async function printErrors(tasks: Task[], label: string, opts: PrintErrorsOpts) {
   let errorsQueue: [ErrorWithDiff | undefined, Task[]][];
@@ -351,7 +316,6 @@ async function printErrors(tasks: Task[], label: string, opts: PrintErrorsOpts) 
     return;
   }
 
-  errorsQueue = [];
   failedTasksLabel = colorCfg.fail.inverse.bold(` Failed ${label}: ${tasks.length}`);
   opts.logger.error();
   opts.logger.error(getDivider(failedTasksLabel, {
@@ -359,115 +323,17 @@ async function printErrors(tasks: Task[], label: string, opts: PrintErrorsOpts) 
   }));
   opts.logger.error();
 
-  for(let i = 0; i < tasks.length; ++i) {
-    let task: Task;
-    let errors: ErrorWithDiff[];
-    task = tasks[i];
-    errors = task.result?.errors ?? [];
-    /*
-      merge identical errors
-        see: https://github.com/vitest-dev/vitest/blob/d6700bbd895e63776263b206ec73ccbb858a1b94/packages/vitest/src/node/reporters/base.ts#L357
-      TODO: Rewrite this
-    */
-    for(let k = 0; k < errors.length; ++k) {
-      let errorItem: [ErrorWithDiff | undefined, Task[]] | undefined;
-      let error: ErrorWithDiff;
-      error = errors[k];
-      errorItem = errorsQueue.find(errorQueueItem => {
-        let hasStr: boolean;
-        let currProjName: string | undefined;
-        let projName: string | undefined;
-        hasStr = errorQueueItem[0]?.stackStr === error.stackStr;
-        if(!hasStr) {
-          return false;
-        }
-        if(task.type === 'suite') {
-          currProjName = task.projectName ?? task.file?.projectName;
-        }
-        if(errorQueueItem[1][0].type === 'suite') {
-          projName = errorQueueItem[1][0].projectName ?? errorQueueItem[1][0].file?.projectName;
-        }
-        return projName === currProjName;
-      });
-
-      if(error.stackStr && errorItem !== undefined) {
-        errorItem[1].push(task);
-      } else {
-        errorsQueue.push([ error, [ task ]]);
-      }
-    }
-  }
+  errorsQueue = TaskUtil.getErrors(tasks);
 
   for(let i = 0; i < errorsQueue.length; ++i) {
     let [ error, currTasks ] = errorsQueue[i];
-    let errorResult: string;
-    errorResult = await getErrorResult(error, currTasks, opts);
-    opts.logger.error(errorResult);
-  }
-}
-
-async function getErrorResult(
-  error: ErrorWithDiff | undefined,
-  currTasks: Task[],
-  opts: PrintErrorsOpts
-): Promise<string> {
-  let nearestTrace: string;
-  let highlightedSnippet: string;
-  let errorLines: string[];
-
-  errorLines = [];
-
-  for(let i = 0; i < currTasks.length; ++i) {
-    let currTask: Task;
-    let filePath: string | undefined;
-    let taskName: string;
-    let formattedResult: string;
-    currTask = currTasks[i];
-    if(currTask.type === 'suite') {
-      filePath =  currTask.projectName ?? currTask.file?.projectName;
+    let errorResults: string[];
+    errorResults = await TaskFmtUtil.getErrorResults(error, currTasks, opts);
+    for(let i = 0; i < errorResults.length; ++i) {
+      let errorResult = errorResults[i];
+      opts.logger.error(errorResult);
     }
-    taskName = TaskUtil.getFullName(currTask, colorCfg.dim(' > '));
-    if(filePath !== undefined) {
-      taskName += ` ${colorCfg.dim()} ${path.relative(opts.config.root, filePath)}`;
-    }
-    formattedResult = ReporterFmtUtil.formatResult(currTask, {
-      ...opts,
-      colors: EzdReporterColors.formatResultColors,
-    });
-    errorLines.push(`${colorCfg.fail.bold.inverse(' FAIL ')} ${formattedResult}${taskName}`);
   }
-  if(error === undefined) {
-    throw new Error('Undefined error in printErrors()');
-  }
-  errorLines.push(`\n${colorCfg.fail.bold.underline(`${error.name}`)}${colorCfg.fail(`: ${error.message}`)}`);
-  if(error.diff) {
-    // errorLines.push(`\n${colorCfg.pass('- Expected')}\n${colorCfg.fail('+ Received')}\n${colorCfg.pass(`- ${formattedError.expected}`)}\n${colorCfg.fail(`+ ${formattedError.actual}`)}\n`);
-    errorLines.push('');
-    errorLines.push(colorCfg.pass('- Expected'));
-    errorLines.push(colorCfg.fail('+ Received'));
-    errorLines.push('');
-    errorLines.push(colorCfg.pass(`- ${error.expected}`));
-    errorLines.push(colorCfg.fail(`+ ${error.actual}`));
-    errorLines.push('');
-  }
-
-  if(error.stack !== undefined) {
-    nearestTrace = ErrorFmtUtil.getNearestStackTrace(error.stack);
-    try {
-      highlightedSnippet = await ErrorFmtUtil.formatErrorCodeFrame(nearestTrace, {
-        colors: EzdReporterColors.formatErrorCodeFrameColors,
-      });
-    } catch(e) {
-      console.error(e);
-      throw e;
-    }
-    errorLines.push(highlightedSnippet);
-  }
-
-  errorLines.push('');
-  errorLines.push(opts.getErrorDivider());
-  errorLines.push('');
-  return errorLines.join('\n');
 }
 
 function getDivider(msg: string, opts?: GetDividerOpts) {
@@ -476,67 +342,12 @@ function getDivider(msg: string, opts?: GetDividerOpts) {
   return colorCfg.fail(dividerStr);
 }
 
-function getResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: string[], level = 0): string[] {
-  let maxLevel: number;
-  outputLines = outputLines ?? [];
-  maxLevel = opts.maxLevel ?? Infinity;
-  tasks = tasks.slice();
-  tasks.sort(TaskUtil.taskComparator);
-  for(let i = 0; i < tasks.length; ++i) {
-    let task = tasks[i];
-    if(task !== undefined) {
-      let outStr: string;
-      let levelPadStr: string;
-      let prefix: string;
-      let taskResStr: string;
-
-      prefix = '';
-
-      levelPadStr = '  '.repeat(level);
-      prefix += levelPadStr;
-
-      taskResStr = ReporterFmtUtil.formatResult(task, {
-        ...opts,
-        colors: EzdReporterColors.formatResultColors,
-      });
-
-      outStr = `${prefix} ${taskResStr}`;
-      if(!opts.onlyFailed || (task.result?.state  === 'fail')) {
-        outputLines.push(outStr);
-      }
-      if(
-        (task.type === 'suite')
-        && (task.tasks.length > 0)
-        && (
-          (level < maxLevel)
-          || (task.result?.state === 'fail')
-        )
-      ) {
-        if(opts.config.hideSkippedTests) {
-          let filteredTasks: Task[];
-          filteredTasks = [];
-          for(let k = 0; k < task.tasks.length; ++k) {
-            let currTask = task.tasks[k];
-            if(!TaskUtil.isSkippedTask(currTask)) {
-              filteredTasks.push(currTask);
-            }
-          }
-          getResults(filteredTasks, opts, outputLines, level + 1);
-        } else if(!TaskUtil.isSkippedTask(task)) {
-          getResults(task.tasks, opts, outputLines, level + 1);
-        }
-      }
-    }
-  }
-  return outputLines;
-}
-
 function printResults(tasks: Task[], opts: PrintResultsOpts) {
   let logger: LogRenderer;
   let outputLines: string[];
 
   logger = opts.logger;
-  outputLines = getResults(tasks, opts);
+  outputLines = TaskFmtUtil.getResults(tasks, opts);
 
   for(let i = 0; i < outputLines.length; ++i) {
     let outputLine = outputLines[i];

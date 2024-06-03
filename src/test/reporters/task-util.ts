@@ -1,4 +1,4 @@
-import { Arrayable, Task } from 'vitest';
+import { Arrayable, ErrorWithDiff, Task } from 'vitest';
 import { Formatter } from './ezd-reporter-colors';
 
 export type GetStatSymbolOpts = {
@@ -172,6 +172,49 @@ export class TaskUtil {
       }
     }
     return tests;
+  }
+
+  static getErrors(tasks: Task[]): [ErrorWithDiff | undefined, Task[]][] {
+    let errorsQueue: [ErrorWithDiff | undefined, Task[]][];
+    errorsQueue = [];
+    for(let i = 0; i < tasks.length; ++i) {
+      let task: Task;
+      let errors: ErrorWithDiff[];
+      task = tasks[i];
+      errors = task.result?.errors ?? [];
+      /*
+        merge identical errors
+          see: https://github.com/vitest-dev/vitest/blob/d6700bbd895e63776263b206ec73ccbb858a1b94/packages/vitest/src/node/reporters/base.ts#L357
+        TODO: Rewrite this
+      */
+      for(let k = 0; k < errors.length; ++k) {
+        let errorItem: [ErrorWithDiff | undefined, Task[]] | undefined;
+        let error: ErrorWithDiff;
+        error = errors[k];
+        errorItem = errorsQueue.find(errorQueueItem => {
+          let hasStr: boolean;
+          let currProjName: string | undefined;
+          let projName: string | undefined;
+          hasStr = errorQueueItem[0]?.stackStr === error.stackStr;
+          if(!hasStr) {
+            return false;
+          }
+          if(task.type === 'suite') {
+            currProjName = task.projectName ?? task.file?.projectName;
+          }
+          if(errorQueueItem[1][0].type === 'suite') {
+            projName = errorQueueItem[1][0].projectName ?? errorQueueItem[1][0].file?.projectName;
+          }
+          return projName === currProjName;
+        });
+        if(error.stackStr && errorItem !== undefined) {
+          errorItem[1].push(task);
+        } else {
+          errorsQueue.push([ error, [ task ]]);
+        }
+      }
+    }
+    return errorsQueue;
   }
 
   static taskComparator<T extends Task>(a: T, b: T) {
