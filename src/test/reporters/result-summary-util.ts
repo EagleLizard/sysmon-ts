@@ -47,12 +47,12 @@ export class ResultSummaryUtil {
       let projectDuration = opts.projects[i].vitenode.getTotalDuration();
       transformTimeMs += projectDuration;
     }
-    testFileResults = TaskUtil.getTaskResults(files);
+    testFileResults = getTaskResults(files);
     testFilesResultStr = formatTaskResults(testFileResults, {
       colors: opts.colors,
     });
     tests = TaskUtil.getTests(files);
-    testResults = TaskUtil.getTaskResults(tests);
+    testResults = getTaskResults(tests);
     testsResultStr = formatTaskResults(testResults, {
       colors: opts.colors,
     });
@@ -88,10 +88,65 @@ export class ResultSummaryUtil {
   }
 }
 
-type FormatTaskResultsOpts = {
-  colors: GetResultSummaryOpts['colors'];
-  name?: string;
-  showTotal?: boolean;
+/*
+    see: https://github.com/vitest-dev/vitest/blob/a820e7ac6efa89b9944094ccc1a7f11ec2afb7ac/packages/vitest/src/node/reporters/renderers/utils.ts#L98
+  */
+function getTaskResults(tasks: Task[]): TaskResultsOutput {
+  let taskResults: TaskResultsOutput;
+  taskResults = {
+    taskCount: tasks.length,
+    passed: 0,
+    failed: 0,
+    skipped: 0,
+    todo: 0,
+
+    collectTime: 0,
+    setupTime: 0,
+    testsTime: 0,
+    // transformTime: 0,
+    envTime: 0,
+    prepareTime: 0,
+    threadTime: 0,
+  };
+  for(let i = 0; i < tasks.length; ++i) {
+    let task = tasks[i];
+    if(task.result?.state === 'pass') {
+      taskResults.passed = taskResults.passed + 1;
+    } else if(task.result?.state === 'fail') {
+      taskResults.failed = taskResults.failed + 1;
+    } else if(task.mode === 'skip') {
+      taskResults.skipped = taskResults.skipped + 1;
+    } else if(task.mode === 'todo') {
+      taskResults.todo = taskResults.todo + 1;
+    }
+
+    if(
+      (task.type === 'suite')
+      && (task.filepath !== undefined)
+    ) {
+      if(((task as any)?.collectDuration ?? 0) > taskResults.collectTime) {
+        taskResults.collectTime += ((task as any)?.collectDuration ?? 0);
+      }
+      if(((task as any)?.setupDuration ?? 0) > taskResults.setupTime) {
+        taskResults.setupTime += (task as any)?.setupDuration ?? 0;
+      }
+      if((task.result?.duration ?? 0) > taskResults.testsTime) {
+        taskResults.testsTime += task.result?.duration ?? 0;
+      }
+      if(((task as any)?.environmentLoad ?? 0) > taskResults.envTime) {
+        taskResults.envTime += (task as any)?.environmentLoad ?? 0;
+      }
+      if(((task as any)?.prepareDuration ?? 0) > taskResults.prepareTime) {
+        taskResults.prepareTime += (task as any)?.prepareDuration ?? 0;
+      }
+    }
+  }
+  taskResults.threadTime = (
+    taskResults.collectTime
+    + taskResults.testsTime
+    + taskResults.setupTime
+  );
+  return taskResults;
 }
 
 function formatTaskResults(taskResults: TaskResultsOutput, opts: FormatTaskResultsOpts): string {

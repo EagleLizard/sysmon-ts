@@ -53,6 +53,8 @@ export default class EzdReporter implements Reporter {
     this.executionTimer = Timer.start();
     this.loggerRenderer = LogRenderer.init(this.ctx.logger, {
       maxLines: process.stdout.rows,
+      clearScreen: this.ctx.config.clearScreen,
+      // doClear: false,
     });
   }
 
@@ -120,7 +122,10 @@ export default class EzdReporter implements Reporter {
   }
   // onWatcherRerun?: ((files: string[], trigger?: string | undefined) => Awaitable<void>) | undefined;
   onWatcherRerun(files: string[], trigger?: string | undefined): Awaitable<void> | undefined {
+    // logHook('onWatcherRerun()');
     // this.loggerRenderer.clearFullScreen('');
+    // console.log(files);
+    this.loggerRenderer.clearFullScreen();
     this.watchFiles = files;
     this.executionTimer.reset();
   }
@@ -163,7 +168,7 @@ export default class EzdReporter implements Reporter {
 
       files = files ?? this.ctx.state.getFiles();
       errors = errors ?? this.ctx.state.getUnhandledErrors();
-      printResults(this.tasksRan, {
+      printResults(files, {
         logger: this.loggerRenderer,
         config: this.ctx.config,
         onlyFailed: false,
@@ -209,7 +214,8 @@ function printLog(log: UserConsoleLog, opts: PrintLogOpts) {
   logStr = ReporterFmtUtil.formatUserConsoleLog(log, task, {
     colors: {
       user_log: colorCfg.user_log,
-      dim: colorCfg.dim,
+      user_error_log: colorCfg.user_error_log,
+      user_log_task_path: colorCfg.user_log_task_path,
     },
   });
 

@@ -1,10 +1,12 @@
 
-import readline, { moveCursor } from 'readline';
+import readline from 'readline';
 import { Writable } from 'stream';
 import { Vitest } from 'vitest';
 
 type LogRendererOpts = {
   maxLines: number;
+  clearScreen?: boolean;
+  doClear?: boolean;
 };
 
 // const ESC = '\x1B[';
@@ -16,15 +18,21 @@ export class LogRenderer {
   outputStream: NodeJS.WritableStream | Writable;
   errorStream: NodeJS.WritableStream | Writable;
 
+  doClearScreen: boolean;
+  doClear: boolean;
+
   private currLinesLogged: number = 0;
 
   private constructor(
     public logger: Vitest['logger'],
     opts: LogRendererOpts,
   ) {
-    this.maxLines = opts.maxLines;
     this.outputStream = logger.outputStream;
     this.errorStream = logger.errorStream;
+
+    this.maxLines = opts.maxLines;
+    this.doClearScreen = opts.clearScreen ?? true;
+    this.doClear = opts.doClear ?? true;
   }
 
   log(msg?: string) {
@@ -47,7 +55,7 @@ export class LogRenderer {
     // console.log('this.currLinesLogged');
     // console.log(this.currLinesLogged);
     // console.log(this.currLinesLogged);
-    if(this.currLinesLogged < 1) {
+    if(!this.doClear || this.currLinesLogged < 1) {
       return;
     }
     // readline.cursorTo(process.stdout, 0);
@@ -57,6 +65,12 @@ export class LogRenderer {
       readline.moveCursor(process.stdout, 0, -1);
     }
     this.currLinesLogged = 0;
+  }
+
+  clearFullScreen(msg = '') {
+    if(this.doClearScreen) {
+      this.logger.clearFullScreen(msg);
+    }
   }
 
   private logLine(line: string) {

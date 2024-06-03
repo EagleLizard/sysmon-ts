@@ -113,6 +113,7 @@ const colorCfg = {
   // suite: ezdColors.pastel_orange,
   // suite: ezdColors.coral,
   suite: ezdColors.yellow_yellow,
+  run_task: ezdColors.blue_light,
   dim: chalk.dim,
   dimmer: ezdColors.gray.dim,
   italic: chalk.italic,
@@ -128,7 +129,9 @@ const colorCfg = {
   todo_tasks: ezdColors.teal,
   task_result_count: ezdColors.gray,
   // user_log: ezdColors.gray,
-  user_log: ezdColors.gray_light,
+  user_log: ezdColors.blue_light,
+  user_error_log: ezdColors.purple_light,
+  user_log_task_path: chalk.dim,
   syntax: {
     function: ezdColors.pink,
     string: ezdColors.chartreuse_light.italic,
@@ -152,6 +155,7 @@ const formatResultColors: FormatResultOpts['colors'] = {
     pass: colorCfg.pass,
     suite: colorCfg.suite,
     fail: colorCfg.fail,
+    run: colorCfg.run_task,
     skip: colorCfg.dimmer.bold,
   }
 };

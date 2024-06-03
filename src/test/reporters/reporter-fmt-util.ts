@@ -3,12 +3,12 @@ import path, { ParsedPath } from 'path';
 
 import stripAnsi from 'strip-ansi';
 
-import { EzdReporterColors, Formatter } from './ezd-reporter-colors';
 import { F_LONG_DASH } from './reporters-constants';
 import { Task, UserConsoleLog } from 'vitest';
-import { GetStatSymbolOpts, TaskResultsOutput, TaskUtil } from './task-util';
+import { GetStateSymbolOpts, TaskUtil } from './task-util';
 import { getIntuitiveTime } from '../../lib/util/format-util';
 import { PrintResultsOpts } from './task-fmt-util';
+import { Formatter } from './ezd-reporter-colors';
 
 export type GetDividerOpts = {
   rightPad?: number;
@@ -24,7 +24,7 @@ export type FormatResultOpts = PrintResultsOpts & {
     heapUsage: Formatter;
     duration: Formatter;
     duration_slow: Formatter;
-    getStateSymbolColors: GetStatSymbolOpts['colors'];
+    getStateSymbolColors: GetStateSymbolOpts['colors'];
   };
 };
 
@@ -37,7 +37,8 @@ type FormatFilePathOpts = {
 export type FormatUserConsoleLogOpts = {
   colors: {
     user_log: Formatter;
-    dim: Formatter;
+    user_error_log: Formatter;
+    user_log_task_path: Formatter;
   };
 };
 
@@ -49,6 +50,7 @@ export class ReporterFmtUtil {
     let taskName: string | undefined;
     let header: string;
     let resStr: string;
+    let fmtFn: Formatter;
 
     if(task === undefined) {
       taskName = (log.taskId === UNKNOWN_TEST_ID)
@@ -58,7 +60,13 @@ export class ReporterFmtUtil {
     } else {
       taskName = TaskUtil.getFullName(task);
     }
-    header = opts.colors.user_log(`${log.type}${opts.colors.dim(` | ${taskName}`)}`);
+
+    fmtFn = log.type === 'stdout'
+      ? opts.colors.user_log
+      : opts.colors.user_error_log
+    ;
+
+    header = fmtFn(`${log.type}${opts.colors.user_log_task_path(` | ${taskName}`)}`);
     resStr = `${header}\n${log.content}\n`;
     return resStr;
   }
