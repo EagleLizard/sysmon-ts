@@ -10,7 +10,7 @@
     "build": "tsc",
     "test": "vitest",
     "vitest-dev": "nodemon --ext '*' -w . -d 0.25 --exec 'npx vitest run'",
-    "test-ezd-reporter": "vitest run --reporter=./src/test/reporters/ezd-reporter.ts -t \"scanDir | admin | parse-argv | ping command\"",
+    "test-ezd-reporter": "vitest run --reporter=./src/test/reporters/ezd-reporter.ts",
     "test-dev": "nodemon --ext '*' -w . -d 0.25 --exec 'npm run test-ezd-reporter'",
     "coverage": "vitest run --coverage"
   },
