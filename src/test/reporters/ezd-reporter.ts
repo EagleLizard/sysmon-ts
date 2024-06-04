@@ -31,10 +31,6 @@ interface Reporter {
 
 const colorCfg = EzdReporterColors.colorCfg;
 
-/*
-  see: https://github.com/vitest-dev/vitest/blob/7900f9f89c6a37928df9ea1ae473e526883d6d43/packages/vitest/src/runtime/console.ts#L9
-*/
-
 export default class EzdReporter implements Reporter {
   ctx: Vitest = undefined!;
   logRenderer: LogRenderer = undefined!;
@@ -265,11 +261,7 @@ async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintE
   printErrorsOpts = {
     ...opts,
     getErrorDivider,
-    colors: {
-      dim: colorCfg.dim,
-      pass: colorCfg.pass,
-      fail: colorCfg.fail,
-    },
+    colors: EzdReporterColors.printErrors,
     formatResultColors: EzdReporterColors.formatResultColors,
   };
   await printErrors(errorsSummary.suites, 'Suites', printErrorsOpts);

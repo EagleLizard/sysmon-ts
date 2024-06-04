@@ -42,6 +42,9 @@ export type FormatUserConsoleLogOpts = {
   };
 };
 
+/*
+  see: https://github.com/vitest-dev/vitest/blob/7900f9f89c6a37928df9ea1ae473e526883d6d43/packages/vitest/src/runtime/console.ts#L9
+*/
 const UNKNOWN_TEST_ID = '__vitest__unknown_test__';
 
 export class ReporterFmtUtil {
