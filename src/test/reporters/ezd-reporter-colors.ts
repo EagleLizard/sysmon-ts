@@ -3,7 +3,7 @@ import chalk, { ChalkInstance } from 'chalk';
 import { FormatErrorCodeFrameOpts } from './error-fmt-util';
 import { FormatResultOpts, FormatUserConsoleLogOpts } from './reporter-fmt-util';
 import { FormatResultSummaryOpts, GetResultSummaryOpts } from './result-summary-util';
-import { PrintErrorsOpts } from './task-fmt-util';
+import { FormatErrorsSummaryOpts } from './error-summary-util';
 
 export type Formatter = ChalkInstance;
 
@@ -189,10 +189,11 @@ const formatUserConsoleLog: FormatUserConsoleLogOpts['colors'] = {
   user_error_log: colorCfg.user_error_log,
   user_log_task_path: colorCfg.user_log_task_path,
 };
-const printErrors: PrintErrorsOpts['colors'] = {
+const printErrors: FormatErrorsSummaryOpts['colors'] = {
   dim: colorCfg.dim,
   pass: colorCfg.pass,
   fail: colorCfg.fail,
+  failed_tasks_label: colorCfg.fail.bold.inverse,
 };
 
 export const EzdReporterColors = {

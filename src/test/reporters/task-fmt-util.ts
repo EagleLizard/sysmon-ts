@@ -1,12 +1,13 @@
 
+import path from 'path';
 import { ErrorWithDiff, Task, Vitest } from 'vitest';
 
 import { LogRenderer } from './log-renderer';
-import { FormatResultOpts, ReporterFmtUtil } from './reporter-fmt-util';
-import { EzdReporterColors, Formatter } from './ezd-reporter-colors';
+import { ReporterFmtUtil } from './reporter-fmt-util';
+import { EzdReporterColors } from './ezd-reporter-colors';
 import { TaskUtil } from './task-util';
 import { ErrorFmtUtil } from './error-fmt-util';
-import path from 'path';
+import { FormatErrorsOpts } from './error-summary-util';
 
 export type PrintResultsOpts = {
   logger: LogRenderer;
@@ -19,16 +20,6 @@ export type PrintResultsOpts = {
 export type PrintErrorSummayOpts = {
   logger: LogRenderer;
   config: Vitest['config'];
-};
-
-export type PrintErrorsOpts = PrintErrorSummayOpts & {
-  getErrorDivider: () => string;
-  colors: {
-    dim: Formatter;
-    fail: Formatter;
-    pass: Formatter;
-  };
-  formatResultColors: FormatResultOpts['colors'];
 };
 
 export class TaskFmtUtil {
@@ -87,7 +78,7 @@ export class TaskFmtUtil {
     return outputLines;
   }
 
-  static async getErrorResults(errors: [ErrorWithDiff | undefined, Task[]][], opts: PrintErrorsOpts) {
+  static async getErrorResults(errors: [ErrorWithDiff | undefined, Task[]][], opts: FormatErrorsOpts) {
     let errorResults: string[];
     errorResults = [];
     for(let i = 0; i < errors.length; ++i) {
@@ -105,7 +96,7 @@ export class TaskFmtUtil {
   static async getErrorResult(
     error: ErrorWithDiff | undefined,
     currTasks: Task[],
-    opts: PrintErrorsOpts
+    opts: FormatErrorsOpts
   ): Promise<string[]> {
     let nearestTrace: string;
     let highlightedSnippet: string;
@@ -119,7 +110,6 @@ export class TaskFmtUtil {
       let currTask: Task;
       let filePath: string | undefined;
       let taskName: string;
-      let formattedResult: string;
       currTask = currTasks[i];
       if(currTask.type === 'suite') {
         filePath =  currTask.projectName ?? currTask.file?.projectName;
@@ -128,11 +118,7 @@ export class TaskFmtUtil {
       if(filePath !== undefined) {
         taskName += ` ${colors.dim()} ${path.relative(opts.config.root, filePath)}`;
       }
-      formattedResult = ReporterFmtUtil.formatResult(currTask, {
-        ...opts,
-        colors: EzdReporterColors.formatResultColors,
-      });
-      errorLines.push(`${colors.fail.bold.inverse(' FAIL ')} ${formattedResult}${taskName}`);
+      errorLines.push(`${colors.fail.bold.inverse(' FAIL ')} ${taskName}`);
     }
     if(error === undefined) {
       throw new Error('Undefined error in printErrors()');

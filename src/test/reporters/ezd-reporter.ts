@@ -2,16 +2,15 @@
 import sourceMapSupport from 'source-map-support';
 sourceMapSupport.install();
 
-import { Awaitable, ErrorWithDiff, File, Reporter, Task, TaskResultPack, UserConsoleLog, Vitest } from 'vitest';
+import { Awaitable, File, Reporter, Task, TaskResultPack, UserConsoleLog, Vitest } from 'vitest';
 
-import { TaskUtil } from './task-util';
 import { EzdReporterColors } from './ezd-reporter-colors';
 import { ReporterFmtUtil } from './reporter-fmt-util';
 import { Timer } from '../../lib/util/timer';
-import { ErrorFmtUtil, ErrorsSummary } from './error-fmt-util';
 import { LogRenderer } from './log-renderer';
-import { PrintErrorSummayOpts, PrintErrorsOpts, PrintResultsOpts, TaskFmtUtil } from './task-fmt-util';
+import { PrintErrorSummayOpts, PrintResultsOpts, TaskFmtUtil } from './task-fmt-util';
 import { ResultSummary, ResultSummaryUtil } from './result-summary-util';
+import { ErrorSummaryUtil, ErrorsSummary, FormatErrorsSummaryResult } from './error-summary-util';
 
 /*
 interface Reporter {
@@ -28,8 +27,6 @@ interface Reporter {
     onProcessTimeout?: () => Awaitable<void>;
 }
 */
-
-const colorCfg = EzdReporterColors.colorCfg;
 
 export default class EzdReporter implements Reporter {
   ctx: Vitest = undefined!;
@@ -243,51 +240,18 @@ function printResultsSummary(files: File[], errors: unknown[], opts: PrintResult
 
 async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintErrorSummayOpts) {
   let errorsSummary: ErrorsSummary;
-  let failedTotal: number;
-  let errorCount: number;
-  let printErrorsOpts: PrintErrorsOpts;
-
-  errorsSummary = await ErrorFmtUtil.getErrorsSummary(files, errors, opts);
-
-  failedTotal = errorsSummary.suitesCount + errorsSummary.testsCount;
-
-  errorCount = 0;
-  const getErrorDivider = () => {
-    return colorCfg.fail.dim(ReporterFmtUtil.getDivider(`[${++errorCount}/${failedTotal}]`, {
-      rightPad: 3,
-    }));
-  };
-
-  printErrorsOpts = {
-    ...opts,
-    getErrorDivider,
+  let formattedErrorsSummary: FormatErrorsSummaryResult;
+  errorsSummary = ErrorSummaryUtil.getErrorsSummary(files, errors, opts);
+  formattedErrorsSummary = await ErrorSummaryUtil.formatErrorsSummary(errorsSummary, {
+    config: opts.config,
     colors: EzdReporterColors.printErrors,
     formatResultColors: EzdReporterColors.formatResultColors,
-  };
-  await printErrors(errorsSummary.suites, 'Suites', printErrorsOpts);
-  await printErrors(errorsSummary.tests, 'Tests', printErrorsOpts);
-}
-
-async function printErrors(tasks: Task[], label: string, opts: PrintErrorsOpts) {
-  let errorsQueue: [ErrorWithDiff | undefined, Task[]][];
-  let failedTasksLabel: string;
-  let errorResults: string[];
-
-  if(tasks.length === 0) {
-    return;
+  });
+  for(let i = 0; i < formattedErrorsSummary.suites.length; ++i) {
+    opts.logger.error(formattedErrorsSummary.suites[i]);
   }
-
-  failedTasksLabel = colorCfg.fail.inverse.bold(` Failed ${label}: ${tasks.length}`);
-  opts.logger.error();
-  opts.logger.error(ReporterFmtUtil.getDivider(failedTasksLabel, {
-    color: colorCfg.fail,
-  }));
-  opts.logger.error();
-
-  errorsQueue = TaskUtil.getErrors(tasks);
-  errorResults = await TaskFmtUtil.getErrorResults(errorsQueue, opts);
-  for(let i = 0; i < errorResults.length; ++i) {
-    opts.logger.error(errorResults[i]);
+  for(let i = 0; i < formattedErrorsSummary.tests.length; ++i) {
+    opts.logger.error(formattedErrorsSummary.tests[i]);
   }
 }
 

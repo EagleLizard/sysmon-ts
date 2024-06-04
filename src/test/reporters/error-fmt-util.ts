@@ -5,9 +5,6 @@ import { ReadFileByLineOpts, readFileByLine } from '../../lib/util/files';
 import { Formatter } from './ezd-reporter-colors';
 
 import { ERR_STACK_CODE_FRAME_START_STR, F_ARROW_UP } from './reporters-constants';
-import { Task, File } from 'vitest';
-import { TaskUtil } from './task-util';
-import { PrintErrorSummayOpts } from './task-fmt-util';
 
 type CodeFrame = {
   fileStr: string;
@@ -30,13 +27,6 @@ export type FormatErrorCodeFrameOpts = {
       built_in: Formatter;
     };
   };
-};
-
-export type ErrorsSummary = {
-  suites: Task[];
-  tests: Task[];
-  suitesCount: number;
-  testsCount: number;
 };
 
 const DEFAULT_CODE_LINES_TO_INCLUDE = 2;
@@ -105,46 +95,6 @@ export class ErrorFmtUtil {
 
     highlightedStr = highlightedLines.join('\n');
     return highlightedStr;
-  }
-
-  static async getErrorsSummary(files: File[], errors: unknown[], opts: PrintErrorSummayOpts): Promise<ErrorsSummary> {
-    let suites: Task[];
-    let tests: Task[];
-    let failedSuites: Task[];
-    let failedTests: Task[];
-    let failedSuitesCount: number;
-    let failedTestsCount: number;
-
-    let errorsSummary: ErrorsSummary;
-
-    suites = TaskUtil.getSuites(files);
-    tests = TaskUtil.getTests(files);
-    failedSuitesCount = 0;
-    failedTestsCount = 0;
-
-    failedSuites = [];
-    for(let i = 0; i < suites.length; ++i) {
-      let suite = suites[i];
-      if(suite.result?.errors !== undefined) {
-        failedSuitesCount += suite.result.errors.length || 0;
-        failedSuites.push(suite);
-      }
-    }
-    failedTests = [];
-    for(let i = 0; i < tests.length; ++i) {
-      let test = tests[i];
-      if(test.result?.state === 'fail') {
-        failedTestsCount += test.result.errors?.length || 0;
-        failedTests.push(test);
-      }
-    }
-    errorsSummary = {
-      suites: failedSuites,
-      tests: failedTests,
-      suitesCount: failedSuitesCount,
-      testsCount: failedTestsCount,
-    };
-    return errorsSummary;
   }
 }
 

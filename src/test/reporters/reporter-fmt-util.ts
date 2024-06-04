@@ -4,10 +4,9 @@ import path, { ParsedPath } from 'path';
 import stripAnsi from 'strip-ansi';
 
 import { F_LONG_DASH } from './reporters-constants';
-import { Task, UserConsoleLog } from 'vitest';
+import { Task, UserConsoleLog, Vitest } from 'vitest';
 import { GetStateSymbolOpts, TaskUtil } from './task-util';
 import { getIntuitiveTime } from '../../lib/util/format-util';
-import { PrintResultsOpts } from './task-fmt-util';
 import { Formatter } from './ezd-reporter-colors';
 
 export type GetDividerOpts = {
@@ -15,7 +14,9 @@ export type GetDividerOpts = {
   color?: Formatter;
 };
 
-export type FormatResultOpts = PrintResultsOpts & {
+export type FormatResultOpts = {
+  config: Vitest['config'];
+  showAllDurations?: boolean;
   colors: {
     dim: Formatter;
     dimmer: Formatter;
