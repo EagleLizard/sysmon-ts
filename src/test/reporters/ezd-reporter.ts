@@ -6,7 +6,7 @@ import { Awaitable, ErrorWithDiff, File, Reporter, Task, TaskResultPack, UserCon
 
 import { TaskUtil } from './task-util';
 import { EzdReporterColors } from './ezd-reporter-colors';
-import { GetDividerOpts, ReporterFmtUtil } from './reporter-fmt-util';
+import { ReporterFmtUtil } from './reporter-fmt-util';
 import { Timer } from '../../lib/util/timer';
 import { ErrorFmtUtil, ErrorsSummary } from './error-fmt-util';
 import { LogRenderer } from './log-renderer';
@@ -37,7 +37,7 @@ const colorCfg = EzdReporterColors.colorCfg;
 
 export default class EzdReporter implements Reporter {
   ctx: Vitest = undefined!;
-  loggerRenderer: LogRenderer = undefined!;
+  logRenderer: LogRenderer = undefined!;
 
   private watchFiles: string[] = [];
 
@@ -49,7 +49,7 @@ export default class EzdReporter implements Reporter {
   onInit(ctx: Vitest) {
     this.ctx = ctx;
     this.executionTimer = Timer.start();
-    this.loggerRenderer = LogRenderer.init(this.ctx.logger, {
+    this.logRenderer = LogRenderer.init(this.ctx.logger, {
       maxLines: process.stdout.rows,
       clearScreen: this.ctx.config.clearScreen,
       // doClear: false,
@@ -74,9 +74,9 @@ export default class EzdReporter implements Reporter {
         && (task.result?.state !== 'run')
       ) {
         this.tasksRan.push(task);
-        this.loggerRenderer.clear();
+        this.logRenderer.clear();
         printResults([ task ], {
-          logger: this.loggerRenderer,
+          logger: this.logRenderer,
           config: this.ctx.config,
           onlyFailed: false,
           showAllDurations: true,
@@ -94,9 +94,9 @@ export default class EzdReporter implements Reporter {
       let file = files[i];
       this.collectedFiles.push(file);
     }
-    this.loggerRenderer.clear();
+    this.logRenderer.clear();
     printResults(files, {
-      logger: this.loggerRenderer,
+      logger: this.logRenderer,
       config: this.ctx.config,
       onlyFailed: false,
       showAllDurations: true,
@@ -121,9 +121,7 @@ export default class EzdReporter implements Reporter {
   // onWatcherRerun?: ((files: string[], trigger?: string | undefined) => Awaitable<void>) | undefined;
   onWatcherRerun(files: string[], trigger?: string | undefined): Awaitable<void> | undefined {
     // logHook('onWatcherRerun()');
-    // this.loggerRenderer.clearFullScreen('');
-    // console.log(files);
-    this.loggerRenderer.clearFullScreen();
+    this.logRenderer.clearFullScreen();
     this.watchFiles = files;
     this.executionTimer.reset();
   }
@@ -134,12 +132,12 @@ export default class EzdReporter implements Reporter {
     if(!this.shouldLog(log)) {
       return;
     }
-    this.loggerRenderer.clear();
+    this.logRenderer.clear();
     printLog(log, {
       getTask: (taskId: string) => {
         return this.ctx.state.idMap.get(taskId);
       },
-      logger: this.loggerRenderer,
+      logger: this.logRenderer,
     });
     // this.currUserConsoleLogs.push(log);
   }
@@ -157,24 +155,27 @@ export default class EzdReporter implements Reporter {
   // onFinished?: ((files?: File[] | undefined, errors?: unknown[] | undefined) => Awaitable<void>) | undefined;
   onFinished(files?: File[] | undefined, errors?: unknown[] | undefined): Awaitable<void> | undefined {
     let execTimeMs: number;
-    // this.loggerRenderer.clear();
+    this.logRenderer.clear();
     execTimeMs = this.executionTimer.stop();
     return (async () => {
-      logHook('onFinished()');
-      // let files: File[];
-      // let errors: unknown[];
+      // logHook('onFinished()');
+      let maxLevel: number;
 
       files = files ?? this.ctx.state.getFiles();
       errors = errors ?? this.ctx.state.getUnhandledErrors();
+      /*
+        When rerunning a single file in watch mode, show all levels
+      */
+      maxLevel = (files.length === 1) ? Infinity : 0;
       printResults(files, {
-        logger: this.loggerRenderer,
+        logger: this.logRenderer,
         config: this.ctx.config,
         onlyFailed: false,
         showAllDurations: true,
-        maxLevel: 0,
+        maxLevel,
       });
       await printErrorsSummary(files, errors, {
-        logger: this.loggerRenderer,
+        logger: this.logRenderer,
         config: this.ctx.config,
       });
 
@@ -183,7 +184,7 @@ export default class EzdReporter implements Reporter {
         execTimeMs,
         isWatcherRerun: (this.watchFiles.length > 0),
         projects: this.ctx.projects,
-        logger: this.loggerRenderer,
+        logger: this.logRenderer,
         config: this.ctx.config,
       });
     })();
@@ -210,11 +211,7 @@ function printLog(log: UserConsoleLog, opts: PrintLogOpts) {
   ;
 
   logStr = ReporterFmtUtil.formatUserConsoleLog(log, task, {
-    colors: {
-      user_log: colorCfg.user_log,
-      user_error_log: colorCfg.user_error_log,
-      user_log_task_path: colorCfg.user_log_task_path,
-    },
+    colors: EzdReporterColors.formatUserConsoleLog,
   });
 
   logWs.write(logStr);
@@ -260,7 +257,7 @@ async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintE
 
   errorCount = 0;
   const getErrorDivider = () => {
-    return colorCfg.dim(getDivider(`[${++errorCount}/${failedTotal}]`, {
+    return colorCfg.fail.dim(ReporterFmtUtil.getDivider(`[${++errorCount}/${failedTotal}]`, {
       rightPad: 3,
     }));
   };
@@ -282,6 +279,7 @@ async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintE
 async function printErrors(tasks: Task[], label: string, opts: PrintErrorsOpts) {
   let errorsQueue: [ErrorWithDiff | undefined, Task[]][];
   let failedTasksLabel: string;
+  let errorResults: string[];
 
   if(tasks.length === 0) {
     return;
@@ -289,28 +287,16 @@ async function printErrors(tasks: Task[], label: string, opts: PrintErrorsOpts) 
 
   failedTasksLabel = colorCfg.fail.inverse.bold(` Failed ${label}: ${tasks.length}`);
   opts.logger.error();
-  opts.logger.error(getDivider(failedTasksLabel, {
+  opts.logger.error(ReporterFmtUtil.getDivider(failedTasksLabel, {
     color: colorCfg.fail,
   }));
   opts.logger.error();
 
   errorsQueue = TaskUtil.getErrors(tasks);
-
-  for(let i = 0; i < errorsQueue.length; ++i) {
-    let [ error, currTasks ] = errorsQueue[i];
-    let errorResults: string[];
-    errorResults = await TaskFmtUtil.getErrorResults(error, currTasks, opts);
-    for(let i = 0; i < errorResults.length; ++i) {
-      let errorResult = errorResults[i];
-      opts.logger.error(errorResult);
-    }
+  errorResults = await TaskFmtUtil.getErrorResults(errorsQueue, opts);
+  for(let i = 0; i < errorResults.length; ++i) {
+    opts.logger.error(errorResults[i]);
   }
-}
-
-function getDivider(msg: string, opts?: GetDividerOpts) {
-  let dividerStr: string;
-  dividerStr = ReporterFmtUtil.getDivider(msg, opts);
-  return colorCfg.fail(dividerStr);
 }
 
 function printResults(tasks: Task[], opts: PrintResultsOpts) {

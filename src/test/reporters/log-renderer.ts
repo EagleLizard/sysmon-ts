@@ -66,7 +66,11 @@ export class LogRenderer {
     }
     this.currLinesLogged = 0;
   }
-
+  clearScreen(msg = '') {
+    if(this.doClearScreen) {
+      this.logger.clearScreen(msg);
+    }
+  }
   clearFullScreen(msg = '') {
     if(this.doClearScreen) {
       this.logger.clearFullScreen(msg);

@@ -15,7 +15,7 @@ export type ResultSummary = {
     transformTime: number;
     envTime: number;
     prepareTime: number;
-    // threadTime: number;
+    threadTime: number;
   };
 }
 
@@ -115,7 +115,7 @@ export class ResultSummaryUtil {
     });
     startAtStr = ` ${get24HourTimeStr(new Date(opts.startTimeMs))}`;
     durationStr = (opts.isWatcherRerun)
-      ? execTimeStr
+      ? timeFmt(resultSummary.testFilesResults.threadTime)
       : `${execTimeStr} ${opts.colors.dim(`(${timersStr})`)}`
     ;
 
@@ -172,6 +172,7 @@ export class ResultSummaryUtil {
       testsTime: testFilesResults.testsTime,
       envTime: testFilesResults.envTime,
       prepareTime: testFilesResults.prepareTime,
+      threadTime: testFilesResults.threadTime,
     };
     resultSummary = {
       testFilesResults,

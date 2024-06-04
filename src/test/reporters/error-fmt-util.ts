@@ -39,7 +39,7 @@ export type ErrorsSummary = {
   testsCount: number;
 };
 
-const DEFAULT_CODE_LINES_TO_INCLUDE = 3;
+const DEFAULT_CODE_LINES_TO_INCLUDE = 2;
 
 export class ErrorFmtUtil {
   static getNearestStackTrace(errorStack: string): string {

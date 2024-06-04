@@ -87,7 +87,22 @@ export class TaskFmtUtil {
     return outputLines;
   }
 
-  static async getErrorResults(
+  static async getErrorResults(errors: [ErrorWithDiff | undefined, Task[]][], opts: PrintErrorsOpts) {
+    let errorResults: string[];
+    errorResults = [];
+    for(let i = 0; i < errors.length; ++i) {
+      let [ error, currTasks ] = errors[i];
+      let errorResult: string[];
+      errorResult = await TaskFmtUtil.getErrorResult(error, currTasks, opts);
+      for(let k = 0; k < errorResult.length; ++k) {
+        let errorResultLine = errorResult[k];
+        errorResults.push(errorResultLine);
+      }
+    }
+    return errorResults;
+  }
+
+  static async getErrorResult(
     error: ErrorWithDiff | undefined,
     currTasks: Task[],
     opts: PrintErrorsOpts
