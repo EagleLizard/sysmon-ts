@@ -3,12 +3,20 @@ import { File, Task, Vitest } from 'vitest';
 import { TaskResultsOutput, TaskUtil } from './task-util';
 import { getIntuitiveTime } from '../../lib/util/format-util';
 import { Formatter } from './ezd-reporter-colors';
+import { get24HourTimeStr } from '../../lib/util/datetime-util';
 
 export type ResultSummary = {
-  testFilesResultStr: string;
-  testsResultStr: string;
-  timersStr: string;
-  execTimeStr: string;
+  testFilesResults: TaskResultsOutput;
+  testsResults: TaskResultsOutput;
+  timers: {
+    collectTime: number;
+    setupTime: number;
+    testsTime: number;
+    transformTime: number;
+    envTime: number;
+    prepareTime: number;
+    // threadTime: number;
+  };
 }
 
 export type GetResultSummaryOpts = {
@@ -25,37 +33,49 @@ export type GetResultSummaryOpts = {
   };
 };
 
+export type FormatResultSummaryOpts = {
+  isWatcherRerun: boolean;
+  startTimeMs: number;
+  execTimeMs: number;
+  colors: {
+    dim: Formatter;
+    duration_label: Formatter;
+    failed_tasks: Formatter;
+    fail: Formatter;
+    pass: Formatter;
+    skipped_tasks: Formatter;
+    todo_tasks: Formatter;
+    task_result_count: Formatter;
+  };
+};
+
+type FormatTaskResultsOpts = {
+  name?: string;
+  showTotal?: boolean;
+  colors: {
+    dim: Formatter;
+    failed_tasks: Formatter;
+    pass: Formatter;
+    skipped_tasks: Formatter;
+    todo_tasks: Formatter;
+    task_result_count: Formatter;
+  }
+};
+
 export class ResultSummaryUtil {
-  static getResultSummary(files: File[], opts: GetResultSummaryOpts): ResultSummary {
-    let transformTimeMs: number;
-    let testFileResults: TaskResultsOutput;
-    let testFilesResultStr: string;
 
-    let tests: Task[];
-    let testResults: TaskResultsOutput;
-    let testsResultStr: string;
-
+  static formatResultSummary(resultSummary: ResultSummary, opts: FormatResultSummaryOpts): string[] {
     let execTimeStr: string;
+    let testFilesResultsStr: string;
+    let testsResultsStr: string;
+    let startAtStr: string;
+    let durationStr: string;
     let timersStr: string;
+    let outputLineTuples: [string, string][];
+    let outputLineLabelLen: number;
+    let outputLines: string[];
 
-    let resultSummary: ResultSummary;
-    transformTimeMs = 0;
-    for(let i = 0; i < opts.projects.length; ++i) {
-    /*
-        TODO: vitest PR to remove unecessary flatMap call: https://github.com/vitest-dev/vitest/blob/b84f1721df66aad9685645084b33e8313a5cffd7/packages/vitest/src/node/reporters/base.ts#L240
-      */
-      let projectDuration = opts.projects[i].vitenode.getTotalDuration();
-      transformTimeMs += projectDuration;
-    }
-    testFileResults = getTaskResults(files);
-    testFilesResultStr = formatTaskResults(testFileResults, {
-      colors: opts.colors,
-    });
-    tests = TaskUtil.getTests(files);
-    testResults = getTaskResults(tests);
-    testsResultStr = formatTaskResults(testResults, {
-      colors: opts.colors,
-    });
+    outputLineTuples = [];
 
     const timeFmt = (ms: number): string => {
       let timeVal: number;
@@ -69,20 +89,94 @@ export class ResultSummaryUtil {
       return `${timeStr}${timeUnit}`;
     };
 
+    const formatTaskResultsColors = {
+      dim: opts.colors.dim,
+      failed_tasks: opts.colors.failed_tasks,
+      pass: opts.colors.pass,
+      skipped_tasks: opts.colors.skipped_tasks,
+      todo_tasks: opts.colors.todo_tasks,
+      task_result_count: opts.colors.task_result_count,
+    };
+
     execTimeStr = timeFmt(opts.execTimeMs);
     timersStr = [
-      `transform: ${timeFmt(transformTimeMs)}`,
-      `setup: ${timeFmt(testFileResults.setupTime)}`,
-      `collect: ${timeFmt(testFileResults.collectTime)}`,
-      `tests: ${timeFmt(testFileResults.testsTime)}`,
-      `environment: ${timeFmt(testFileResults.envTime)}`,
-      `prepare: ${timeFmt(testFileResults.prepareTime)}`,
+      `transform: ${timeFmt(resultSummary.timers.transformTime)}`,
+      `setup: ${timeFmt(resultSummary.timers.setupTime)}`,
+      `collect: ${timeFmt(resultSummary.timers.collectTime)}`,
+      `tests: ${timeFmt(resultSummary.timers.testsTime)}`,
+      `environment: ${timeFmt(resultSummary.timers.envTime)}`,
+      `prepare: ${timeFmt(resultSummary.timers.prepareTime)}`,
     ].join(', ');
+    testFilesResultsStr = formatTaskResults(resultSummary.testFilesResults, {
+      colors: formatTaskResultsColors,
+    });
+    testsResultsStr = formatTaskResults(resultSummary.testsResults, {
+      colors: formatTaskResultsColors,
+    });
+    startAtStr = ` ${get24HourTimeStr(new Date(opts.startTimeMs))}`;
+    durationStr = (opts.isWatcherRerun)
+      ? execTimeStr
+      : `${execTimeStr} ${opts.colors.dim(`(${timersStr})`)}`
+    ;
+
+    outputLineTuples = [
+      [ 'Test Files', testFilesResultsStr ],
+      [ 'Tests', testsResultsStr ],
+      [ 'Start at', startAtStr ],
+      [ 'Duration', durationStr ],
+    ];
+
+    outputLineLabelLen = -Infinity;
+    for(let i = 0; i < outputLineTuples.length; ++i) {
+      let [ title, ] = outputLineTuples[i];
+      if(title.length > outputLineLabelLen) {
+        outputLineLabelLen = title.length;
+      }
+    }
+    outputLines = [];
+    for(let i = 0; i < outputLineTuples.length; ++i) {
+      let title: string;
+      let text: string;
+      let leftPad: number;
+      [ title, text ] = outputLineTuples[i];
+      leftPad = outputLineLabelLen - title.length;
+      outputLines.push(`${' '.repeat(leftPad)} ${opts.colors.duration_label(title)} ${text}`);
+    }
+    return outputLines;
+  }
+
+  static getResultSummary(files: File[], opts: GetResultSummaryOpts): ResultSummary {
+    let transformTimeMs: number;
+    let testFilesResults: TaskResultsOutput;
+    let tests: Task[];
+    let testsResults: TaskResultsOutput;
+    let timers: ResultSummary['timers'];
+
+    let resultSummary: ResultSummary;
+    transformTimeMs = 0;
+    for(let i = 0; i < opts.projects.length; ++i) {
+      /*
+        TODO: vitest PR to remove unecessary flatMap call: https://github.com/vitest-dev/vitest/blob/b84f1721df66aad9685645084b33e8313a5cffd7/packages/vitest/src/node/reporters/base.ts#L240
+      */
+      let projectDuration = opts.projects[i].vitenode.getTotalDuration();
+      transformTimeMs += projectDuration;
+    }
+    testFilesResults = getTaskResults(files);
+    tests = TaskUtil.getTests(files);
+    testsResults = getTaskResults(tests);
+
+    timers = {
+      transformTime: transformTimeMs,
+      setupTime: testFilesResults.setupTime,
+      collectTime: testFilesResults.collectTime,
+      testsTime: testFilesResults.testsTime,
+      envTime: testFilesResults.envTime,
+      prepareTime: testFilesResults.prepareTime,
+    };
     resultSummary = {
-      testFilesResultStr,
-      testsResultStr,
-      timersStr,
-      execTimeStr,
+      testFilesResults,
+      testsResults,
+      timers,
     };
     return resultSummary;
   }

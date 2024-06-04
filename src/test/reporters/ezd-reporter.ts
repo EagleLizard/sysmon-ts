@@ -4,13 +4,11 @@ sourceMapSupport.install();
 
 import { Awaitable, ErrorWithDiff, File, Reporter, Task, TaskResultPack, UserConsoleLog, Vitest } from 'vitest';
 
-import { TaskResultsOutput, TaskUtil } from './task-util';
+import { TaskUtil } from './task-util';
 import { EzdReporterColors } from './ezd-reporter-colors';
 import { GetDividerOpts, ReporterFmtUtil } from './reporter-fmt-util';
 import { Timer } from '../../lib/util/timer';
-import { getIntuitiveTime } from '../../lib/util/format-util';
 import { ErrorFmtUtil, ErrorsSummary } from './error-fmt-util';
-import { get24HourTimeStr } from '../../lib/util/datetime-util';
 import { LogRenderer } from './log-renderer';
 import { PrintErrorSummayOpts, PrintErrorsOpts, PrintResultsOpts, TaskFmtUtil } from './task-fmt-util';
 import { ResultSummary, ResultSummaryUtil } from './result-summary-util';
@@ -230,11 +228,8 @@ type PrintResultsSummaryOpts = PrintResultsOpts & {
 };
 
 function printResultsSummary(files: File[], errors: unknown[], opts: PrintResultsSummaryOpts) {
-  let outputLines: [string, string][];
-  let outputLineLabelLen: number;
-  let durationStr: string;
-
   let resultSummary: ResultSummary;
+  let outputLines: string[];
 
   resultSummary = ResultSummaryUtil.getResultSummary(files, {
     projects: opts.projects,
@@ -242,44 +237,14 @@ function printResultsSummary(files: File[], errors: unknown[], opts: PrintResult
     colors: EzdReporterColors.resultSummaryColors,
   });
 
-  outputLines = [];
-
-  outputLines.push([
-    'Test Files',
-    resultSummary.testFilesResultStr,
-  ]);
-  outputLines.push([
-    'Tests',
-    resultSummary.testsResultStr
-  ]);
-  outputLines.push([
-    'Start at',
-    ` ${get24HourTimeStr(new Date(opts.startTimeMs))}`,
-  ]);
-
-  durationStr = (opts.isWatcherRerun)
-    ? resultSummary.execTimeStr
-    : `${resultSummary.execTimeStr} ${colorCfg.dim(`(${resultSummary.timersStr})`)}`
-  ;
-  outputLines.push([
-    'Duration',
-    ` ${durationStr}`,
-  ]);
-
-  outputLineLabelLen = -Infinity;
+  outputLines = ResultSummaryUtil.formatResultSummary(resultSummary, {
+    isWatcherRerun: opts.isWatcherRerun,
+    startTimeMs: opts.startTimeMs,
+    execTimeMs: opts.execTimeMs,
+    colors: EzdReporterColors.formatResultSummary,
+  });
   for(let i = 0; i < outputLines.length; ++i) {
-    let [ title, ] = outputLines[i];
-    if(title.length > outputLineLabelLen) {
-      outputLineLabelLen = title.length;
-    }
-  }
-  for(let i = 0; i < outputLines.length; ++i) {
-    let title: string;
-    let text: string;
-    let leftPad: number;
-    [ title, text ] = outputLines[i];
-    leftPad = outputLineLabelLen - title.length;
-    opts.logger.log(`${' '.repeat(leftPad)} ${colorCfg.duration_label(title)} ${text}`);
+    opts.logger.log(outputLines[i]);
   }
 }
 
