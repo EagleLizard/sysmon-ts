@@ -2,6 +2,7 @@
 import readline from 'readline';
 import { Writable } from 'stream';
 import { Vitest } from 'vitest';
+import { ErrorFmtUtil } from './error-fmt-util';
 
 type LogRendererOpts = {
   maxLines: number;
@@ -15,8 +16,6 @@ type LogRendererOpts = {
 
 export class LogRenderer {
   maxLines: number;
-  outputStream: NodeJS.WritableStream | Writable;
-  errorStream: NodeJS.WritableStream | Writable;
 
   doClearScreen: boolean;
   doClear: boolean;
@@ -24,15 +23,26 @@ export class LogRenderer {
   private currLinesLogged: number = 0;
 
   private constructor(
-    public logger: Vitest['logger'],
+    private ctx: Vitest,
     opts: LogRendererOpts,
   ) {
-    this.outputStream = logger.outputStream;
-    this.errorStream = logger.errorStream;
 
     this.maxLines = opts.maxLines;
     this.doClearScreen = opts.clearScreen ?? true;
     this.doClear = opts.doClear ?? true;
+
+    const _clearHighlightCach = this.ctx.logger.clearHighlightCache;
+    this.ctx.logger.clearHighlightCache = (filename?: string | undefined) => {
+      ErrorFmtUtil.clearHighlightCache();
+      _clearHighlightCach.bind(this.ctx.logger)(filename);
+    };
+  }
+
+  public get outputStream(): NodeJS.WritableStream | Writable {
+    return this.ctx.logger.outputStream;
+  }
+  public get errorStream(): NodeJS.WritableStream | Writable {
+    return this.ctx.logger.errorStream;
   }
 
   log(msg?: string) {
@@ -68,12 +78,12 @@ export class LogRenderer {
   }
   clearScreen(msg = '') {
     if(this.doClearScreen) {
-      this.logger.clearScreen(msg);
+      this.ctx.logger.clearScreen(msg);
     }
   }
   clearFullScreen(msg = '') {
     if(this.doClearScreen) {
-      this.logger.clearFullScreen(msg);
+      this.ctx.logger.clearFullScreen(msg);
     }
   }
 
@@ -83,12 +93,12 @@ export class LogRenderer {
   }
 
   private errorLine(line: string) {
-    this.logger.error(line);
+    this.ctx.logger.error(line);
   }
 
-  static init(logger: Vitest['logger'], opts: LogRendererOpts): LogRenderer {
+  static init(ctx: Vitest, opts: LogRendererOpts): LogRenderer {
     let logRenderer: LogRenderer;
-    logRenderer = new LogRenderer(logger, opts);
+    logRenderer = new LogRenderer(ctx, opts);
     return logRenderer;
   }
 }

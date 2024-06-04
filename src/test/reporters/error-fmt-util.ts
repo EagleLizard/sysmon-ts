@@ -30,8 +30,14 @@ export type FormatErrorCodeFrameOpts = {
 };
 
 const DEFAULT_CODE_LINES_TO_INCLUDE = 2;
+const highlightCache: Map<string, CodeFrame> = new Map();
 
 export class ErrorFmtUtil {
+
+  static clearHighlightCache() {
+    highlightCache.clear();
+  }
+
   static getNearestStackTrace(errorStack: string): string {
     let codeFrames: string[];
     let stacks: string[];
@@ -99,6 +105,7 @@ export class ErrorFmtUtil {
 }
 
 async function getHighlightedFrame(stackTraceLine: string, opts: FormatErrorCodeFrameOpts): Promise<CodeFrame> {
+  let cachedCodeFrame: CodeFrame | undefined;
   let codePathStr: string | undefined;
   let codeLineStr: string | undefined;
   let codeColStr: string | undefined;
@@ -114,6 +121,11 @@ async function getHighlightedFrame(stackTraceLine: string, opts: FormatErrorCode
   let snippetLineNumStart: number;
   let fileStr: string;
   let highlighted: string;
+  let codeFrame: CodeFrame;
+
+  if((cachedCodeFrame = highlightCache.get(stackTraceLine)) !== undefined) {
+    return cachedCodeFrame;
+  }
 
   const colors = opts.colors;
 
@@ -170,13 +182,15 @@ async function getHighlightedFrame(stackTraceLine: string, opts: FormatErrorCode
       // built_in: colors.syntax.built_in,
     }
   });
-  return {
+  codeFrame = {
     fileStr: highlighted,
     errorLineIdx,
     codeLineIdx: codeLine,
     codeCol,
     snippetLineNumStart,
   };
+  highlightCache.set(stackTraceLine, codeFrame);
+  return codeFrame;
 }
 
 function isInternalCodeFrame(codeFrame: string): boolean {

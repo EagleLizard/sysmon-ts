@@ -10,7 +10,7 @@ import { Timer } from '../../lib/util/timer';
 import { LogRenderer } from './log-renderer';
 import { PrintErrorSummayOpts, PrintResultsOpts, TaskFmtUtil } from './task-fmt-util';
 import { ResultSummary, ResultSummaryUtil } from './result-summary-util';
-import { ErrorSummaryUtil, ErrorsSummary, FormatErrorsSummaryResult } from './error-summary-util';
+import { ErrorSummaryUtil, ErrorsSummary, FormatErrorsOpts } from './error-summary-util';
 
 /*
 interface Reporter {
@@ -42,7 +42,7 @@ export default class EzdReporter implements Reporter {
   onInit(ctx: Vitest) {
     this.ctx = ctx;
     this.executionTimer = Timer.start();
-    this.logRenderer = LogRenderer.init(this.ctx.logger, {
+    this.logRenderer = LogRenderer.init(this.ctx, {
       maxLines: process.stdout.rows,
       clearScreen: this.ctx.config.clearScreen,
       // doClear: false,
@@ -240,18 +240,32 @@ function printResultsSummary(files: File[], errors: unknown[], opts: PrintResult
 
 async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintErrorSummayOpts) {
   let errorsSummary: ErrorsSummary;
-  let formattedErrorsSummary: FormatErrorsSummaryResult;
+  let formatErrorsOpts: FormatErrorsOpts;
+  let suitesErrorResults: string[];
+  let testsErrorResults: string[];
+  let failedTotal: number;
+  let errorCount: number;
   errorsSummary = ErrorSummaryUtil.getErrorsSummary(files, errors, opts);
-  formattedErrorsSummary = await ErrorSummaryUtil.formatErrorsSummary(errorsSummary, {
-    config: opts.config,
+  failedTotal = errorsSummary.suitesCount + errorsSummary.testsCount;
+  errorCount = 0;
+  const getErrorDivider = () => {
+    return EzdReporterColors.printErrors.fail(ReporterFmtUtil.getDivider(`[${++errorCount}/${failedTotal}]`, {
+      rightPad: 3,
+    }));
+  };
+  formatErrorsOpts = {
+    ...opts,
+    getErrorDivider,
     colors: EzdReporterColors.printErrors,
     formatResultColors: EzdReporterColors.formatResultColors,
-  });
-  for(let i = 0; i < formattedErrorsSummary.suites.length; ++i) {
-    opts.logger.error(formattedErrorsSummary.suites[i]);
+  };
+  suitesErrorResults = await ErrorSummaryUtil.formatErrors(errorsSummary.suites, 'Suites', formatErrorsOpts);
+  for(let i = 0; i < suitesErrorResults.length; ++i) {
+    opts.logger.error(suitesErrorResults[i]);
   }
-  for(let i = 0; i < formattedErrorsSummary.tests.length; ++i) {
-    opts.logger.error(formattedErrorsSummary.tests[i]);
+  testsErrorResults = await ErrorSummaryUtil.formatErrors(errorsSummary.tests, 'Tests', formatErrorsOpts);
+  for(let i = 0; i < testsErrorResults.length; ++i) {
+    opts.logger.error(testsErrorResults[i]);
   }
 }
 
