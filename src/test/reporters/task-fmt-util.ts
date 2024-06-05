@@ -1,13 +1,10 @@
 
-import path from 'path';
-import { ErrorWithDiff, Task, Vitest } from 'vitest';
+import { Task, Vitest } from 'vitest';
 
 import { LogRenderer } from './log-renderer';
 import { ReporterFmtUtil } from './reporter-fmt-util';
 import { EzdReporterColors } from './ezd-reporter-colors';
 import { TaskUtil } from './task-util';
-import { ErrorFmtUtil } from './error-fmt-util';
-import { FormatErrorsOpts } from './error-summary-util';
 
 export type PrintResultsOpts = {
   logger: LogRenderer;
@@ -77,84 +74,5 @@ export class TaskFmtUtil {
       }
     }
     return outputLines;
-  }
-
-  static async getErrorResult(
-    error: ErrorWithDiff | undefined,
-    currTasks: Task[],
-    opts: FormatErrorsOpts
-  ): Promise<string[]> {
-    let nearestTrace: string;
-    let highlightedSnippet: string;
-    let errorLines: string[];
-
-    const colors = opts.colors;
-
-    errorLines = [];
-
-    for(let i = 0; i < currTasks.length; ++i) {
-      let currTask: Task;
-      let filePath: string | undefined;
-      let taskName: string;
-      currTask = currTasks[i];
-      if(currTask.type === 'suite') {
-        filePath =  currTask.projectName ?? currTask.file?.projectName;
-      }
-      taskName = TaskUtil.getFullName(currTask, colors.dim(' > '));
-      if(filePath !== undefined) {
-        taskName += ` ${colors.dim()} ${path.relative(opts.config.root, filePath)}`;
-      }
-      errorLines.push(`${colors.fail.bold.inverse(' FAIL ')} ${taskName}`);
-    }
-    if(error === undefined) {
-      throw new Error('Undefined error in printErrors()');
-    }
-    errorLines.push(`${colors.error_name(`${error.name}`)}${colors.fail(`: ${error.message}`)}`);
-    if(error.diff) {
-      errorLines.push('');
-      errorLines.push(colors.pass('- Expected'));
-      errorLines.push(colors.fail('+ Received'));
-      errorLines.push('');
-      errorLines.push(colors.pass(`- ${error.expected}`));
-      errorLines.push(colors.fail(`+ ${error.actual}`));
-      errorLines.push('');
-    }
-
-    if(error.stack !== undefined) {
-      let stackTraceOutStr: string;
-      let codePathStr: string | undefined;
-      let codeLineStr: string | undefined;
-      let codeColStr: string | undefined;
-      nearestTrace = ErrorFmtUtil.getNearestStackTrace(error.stack);
-      [ codePathStr, codeLineStr, codeColStr ] = nearestTrace.split(':');
-      if(
-        (codePathStr !== undefined)
-        && (codeLineStr !== undefined)
-        && (codeColStr !== undefined)
-      ) {
-        stackTraceOutStr = [
-          opts.colors.error_pos(' > '),
-          opts.colors.trace(`${path.relative(opts.rootPath, codePathStr)}:`),
-          opts.colors.error_pos(`${codeLineStr}:`),
-          opts.colors.error_pos(`${codeColStr}`),
-        ].join(''),
-        errorLines.push(stackTraceOutStr);
-      }
-      try {
-        highlightedSnippet = await ErrorFmtUtil.formatErrorCodeFrame(nearestTrace, {
-          rootPath: opts.rootPath,
-          colors: opts.formatCodeFrameColors,
-        });
-      } catch(e) {
-        console.error(e);
-        throw e;
-      }
-      errorLines.push(highlightedSnippet);
-    }
-
-    errorLines.push('');
-    errorLines.push(opts.getErrorDivider());
-    errorLines.push('');
-    return errorLines;
   }
 }

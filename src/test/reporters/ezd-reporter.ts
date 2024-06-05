@@ -250,10 +250,9 @@ async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintE
     );
   };
   formatErrorsOpts = {
-    ...opts,
+    rootPath: opts.config.root,
     getErrorDivider,
     colors: EzdReporterColors.printErrors,
-    formatResultColors: EzdReporterColors.formatResultColors,
     formatCodeFrameColors: EzdReporterColors.formatErrorCodeFrameColors,
   };
   if(errorsSummary.suitesCount > 0) {
@@ -266,7 +265,7 @@ async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintE
   for(let i = 0; i < suiteErrorsQueue.length; ++i) {
     let errorResult: string[];
     let [ error, currTasks ] = suiteErrorsQueue[i];
-    errorResult = await TaskFmtUtil.getErrorResult(error, currTasks, formatErrorsOpts);
+    errorResult = await ErrorSummaryUtil.getErrorResult(error, currTasks, formatErrorsOpts);
     for(let k = 0; k < errorResult.length; ++k) {
       opts.logger.error(errorResult[k]);
     }
@@ -281,7 +280,7 @@ async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintE
   for(let i = 0; i < testErrorsQueue.length; ++i) {
     let errorResult: string[];
     let [ error, currTasks ] = testErrorsQueue[i];
-    errorResult = await TaskFmtUtil.getErrorResult(error, currTasks, formatErrorsOpts);
+    errorResult = await ErrorSummaryUtil.getErrorResult(error, currTasks, formatErrorsOpts);
     for(let k = 0; k < errorResult.length; ++k) {
       opts.logger.error(errorResult[k]);
     }
