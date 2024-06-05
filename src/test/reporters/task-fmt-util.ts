@@ -111,7 +111,6 @@ export class TaskFmtUtil {
     }
     errorLines.push(`${colors.error_name(`${error.name}`)}${colors.fail(`: ${error.message}`)}`);
     if(error.diff) {
-      // errorLines.push(`\n${colors.pass('- Expected')}\n${colors.fail('+ Received')}\n${colors.pass(`- ${formattedError.expected}`)}\n${colors.fail(`+ ${formattedError.actual}`)}\n`);
       errorLines.push('');
       errorLines.push(colors.pass('- Expected'));
       errorLines.push(colors.fail('+ Received'));
