@@ -31,6 +31,7 @@ export type FormatErrorCodeFrameOpts = {
 };
 
 const DEFAULT_CODE_LINES_TO_INCLUDE = 2;
+const DEFAULT_CODE_LINE_LEFT_PAD = 5;
 const highlightCache: Map<string, string> = new Map();
 
 export class ErrorFmtUtil {
@@ -94,14 +95,14 @@ export class ErrorFmtUtil {
       if(lineNumStr.length < lineNumWidth) {
         lineNumStr = `${' '.repeat(lineNumWidth - lineNumStr.length)}${lineNumStr}`;
       }
-      highlightedLines[i] = `${colors.dim(`${lineNumStr}|`)} ${highlightedLine}`;
+      highlightedLines[i] = `${' '.repeat(DEFAULT_CODE_LINE_LEFT_PAD)}${colors.dim(`${lineNumStr}|`)} ${highlightedLine}`;
     }
 
     if(errorLineIdx !== undefined) {
       let ptrLine: string;
       let ptrLineNumStr: string;
       ptrLineNumStr = `${' '.repeat(lineNumWidth)}|`;
-      ptrLine = `${colors.dim(ptrLineNumStr)}${' '.repeat(codeCol)}${colors.fail(F_ARROW_UP)}`;
+      ptrLine = `${' '.repeat(DEFAULT_CODE_LINE_LEFT_PAD)}${colors.dim(ptrLineNumStr)}${' '.repeat(codeCol)}${colors.fail(F_ARROW_UP)}`;
       highlightedLines.splice(errorLineIdx, 0, ptrLine);
     }
 
