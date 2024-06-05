@@ -11,6 +11,7 @@ import { LogRenderer } from './log-renderer';
 import { PrintErrorSummayOpts, PrintResultsOpts, TaskFmtUtil } from './task-fmt-util';
 import { ResultSummary, ResultSummaryUtil } from './result-summary-util';
 import { ErrorSummaryUtil, ErrorsSummary, FormatErrorsOpts } from './error-summary-util';
+import { TaskUtil } from './task-util';
 
 /*
 interface Reporter {
@@ -51,12 +52,11 @@ export default class EzdReporter implements Reporter {
 
   // onPathsCollected?: ((paths?: string[] | undefined) => Awaitable<void>) | undefined;
   // onPathsCollected(paths?: string[] | undefined): Awaitable<void> {
-  //   logHook('onPathsCollected()');
+  //
   // }
 
   // onTaskUpdate?: ((packs: TaskResultPack[]) => Awaitable<void>) | undefined;
   onTaskUpdate(packs: TaskResultPack[]): Awaitable<void> | undefined {
-    // logHook('onTaskUpdate()');
     for(let i = 0; i < packs.length; ++i) {
       let pack = packs[i];
       let task = this.ctx.state.idMap.get(pack[0]);
@@ -81,7 +81,6 @@ export default class EzdReporter implements Reporter {
 
   // onCollected?: ((files?: File[] | undefined) => Awaitable<void>) | undefined;
   onCollected(files?: File[] | undefined): Awaitable<void> {
-    // logHook('onCollected()');
     files = files ?? [];
     for(let i = 0; i < files.length; ++i) {
       let file = files[i];
@@ -99,7 +98,6 @@ export default class EzdReporter implements Reporter {
 
   // onWatcherStart?: ((files?: File[] | undefined, errors?: unknown[] | undefined) => Awaitable<void>) | undefined;
   onWatcherStart(files?: File[] | undefined, errors?: unknown[]): Awaitable<void> | undefined {
-    // logHook('onWatcherStart()');
     // let files: File[];
     // let errors: unknown[];
     // files = this.ctx.state.getFiles();
@@ -113,7 +111,6 @@ export default class EzdReporter implements Reporter {
   }
   // onWatcherRerun?: ((files: string[], trigger?: string | undefined) => Awaitable<void>) | undefined;
   onWatcherRerun(files: string[], trigger?: string | undefined): Awaitable<void> | undefined {
-    // logHook('onWatcherRerun()');
     this.logRenderer.clearFullScreen();
     this.watchFiles = files;
     this.executionTimer.reset();
@@ -121,7 +118,6 @@ export default class EzdReporter implements Reporter {
 
   // onUserConsoleLog?: ((log: UserConsoleLog) => Awaitable<void>) | undefined;
   onUserConsoleLog(log: UserConsoleLog): Awaitable<void> | undefined {
-    // logHook('onUserConsoleLog()');
     if(!this.shouldLog(log)) {
       return;
     }
@@ -151,7 +147,6 @@ export default class EzdReporter implements Reporter {
     this.logRenderer.clear();
     execTimeMs = this.executionTimer.stop();
     return (async () => {
-      // logHook('onFinished()');
       let maxLevel: number;
 
       files = files ?? this.ctx.state.getFiles();
@@ -168,6 +163,7 @@ export default class EzdReporter implements Reporter {
         maxLevel,
       });
       await printErrorsSummary(files, errors, {
+        rootPath: this.ctx.config.root,
         logger: this.logRenderer,
         config: this.ctx.config,
       });
@@ -241,31 +237,54 @@ function printResultsSummary(files: File[], errors: unknown[], opts: PrintResult
 async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintErrorSummayOpts) {
   let errorsSummary: ErrorsSummary;
   let formatErrorsOpts: FormatErrorsOpts;
-  let suitesErrorResults: string[];
-  let testsErrorResults: string[];
   let failedTotal: number;
   let errorCount: number;
   errorsSummary = ErrorSummaryUtil.getErrorsSummary(files, errors, opts);
   failedTotal = errorsSummary.suitesCount + errorsSummary.testsCount;
   errorCount = 0;
   const getErrorDivider = () => {
-    return EzdReporterColors.printErrors.fail(ReporterFmtUtil.getDivider(`[${++errorCount}/${failedTotal}]`, {
-      rightPad: 3,
-    }));
+    return EzdReporterColors.printErrors.dim(
+      EzdReporterColors.printErrors.fail(ReporterFmtUtil.getDivider(`[${++errorCount}/${failedTotal}]`, {
+        rightPad: 3,
+      }))
+    );
   };
   formatErrorsOpts = {
     ...opts,
     getErrorDivider,
     colors: EzdReporterColors.printErrors,
     formatResultColors: EzdReporterColors.formatResultColors,
+    formatCodeFrameColors: EzdReporterColors.formatErrorCodeFrameColors,
   };
-  suitesErrorResults = await ErrorSummaryUtil.formatErrors(errorsSummary.suites, 'Suites', formatErrorsOpts);
-  for(let i = 0; i < suitesErrorResults.length; ++i) {
-    opts.logger.error(suitesErrorResults[i]);
+  if(errorsSummary.suitesCount > 0) {
+    let suitesBanner = ErrorSummaryUtil.getErrorBanner('Suites', errorsSummary.suitesCount, {
+      colors: EzdReporterColors.errorBanner,
+    });
+    opts.logger.log(`\n${suitesBanner}\n`);
   }
-  testsErrorResults = await ErrorSummaryUtil.formatErrors(errorsSummary.tests, 'Tests', formatErrorsOpts);
-  for(let i = 0; i < testsErrorResults.length; ++i) {
-    opts.logger.error(testsErrorResults[i]);
+  let suiteErrorsQueue = TaskUtil.getErrors(errorsSummary.suites);
+  for(let i = 0; i < suiteErrorsQueue.length; ++i) {
+    let errorResult: string[];
+    let [ error, currTasks ] = suiteErrorsQueue[i];
+    errorResult = await TaskFmtUtil.getErrorResult(error, currTasks, formatErrorsOpts);
+    for(let k = 0; k < errorResult.length; ++k) {
+      opts.logger.error(errorResult[k]);
+    }
+  }
+  if(errorsSummary.testsCount > 0) {
+    let testsBanner = ErrorSummaryUtil.getErrorBanner('Tests', errorsSummary.testsCount, {
+      colors: EzdReporterColors.errorBanner,
+    });
+    opts.logger.log(`\n${testsBanner}\n`);
+  }
+  let testErrorsQueue = TaskUtil.getErrors(errorsSummary.tests);
+  for(let i = 0; i < testErrorsQueue.length; ++i) {
+    let errorResult: string[];
+    let [ error, currTasks ] = testErrorsQueue[i];
+    errorResult = await TaskFmtUtil.getErrorResult(error, currTasks, formatErrorsOpts);
+    for(let k = 0; k < errorResult.length; ++k) {
+      opts.logger.error(errorResult[k]);
+    }
   }
 }
 
@@ -280,8 +299,4 @@ function printResults(tasks: Task[], opts: PrintResultsOpts) {
     let outputLine = outputLines[i];
     logger.log(outputLine);
   }
-}
-
-function logHook(hookName: string) {
-  console.log(`-- ${hookName}`);
 }

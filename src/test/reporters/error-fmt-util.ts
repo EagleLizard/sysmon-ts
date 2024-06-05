@@ -15,6 +15,7 @@ type CodeFrame = {
 };
 
 export type FormatErrorCodeFrameOpts = {
+  rootPath: string;
   colors: {
     fail: Formatter;
     dim: Formatter;
@@ -30,7 +31,7 @@ export type FormatErrorCodeFrameOpts = {
 };
 
 const DEFAULT_CODE_LINES_TO_INCLUDE = 2;
-const highlightCache: Map<string, CodeFrame> = new Map();
+const highlightCache: Map<string, string> = new Map();
 
 export class ErrorFmtUtil {
 
@@ -58,6 +59,7 @@ export class ErrorFmtUtil {
   }
 
   static async formatErrorCodeFrame(stackTraceLine: string, opts: FormatErrorCodeFrameOpts) {
+    let cachedHighlight: string | undefined;
     let codeCol: number;
     let errorLineIdx: number | undefined;
     let highlightedLines: string[];
@@ -67,6 +69,10 @@ export class ErrorFmtUtil {
     let snippetLineNumStart: number;
     let lineNums: number[];
     let lineNumWidth: number;
+
+    if((cachedHighlight = highlightCache.get(stackTraceLine)) !== undefined) {
+      return cachedHighlight;
+    }
 
     const colors = opts.colors;
     codeFrame = await getHighlightedFrame(stackTraceLine, opts);
@@ -100,12 +106,12 @@ export class ErrorFmtUtil {
     }
 
     highlightedStr = highlightedLines.join('\n');
+    highlightCache.set(stackTraceLine, highlightedStr);
     return highlightedStr;
   }
 }
 
 async function getHighlightedFrame(stackTraceLine: string, opts: FormatErrorCodeFrameOpts): Promise<CodeFrame> {
-  let cachedCodeFrame: CodeFrame | undefined;
   let codePathStr: string | undefined;
   let codeLineStr: string | undefined;
   let codeColStr: string | undefined;
@@ -122,10 +128,6 @@ async function getHighlightedFrame(stackTraceLine: string, opts: FormatErrorCode
   let fileStr: string;
   let highlighted: string;
   let codeFrame: CodeFrame;
-
-  if((cachedCodeFrame = highlightCache.get(stackTraceLine)) !== undefined) {
-    return cachedCodeFrame;
-  }
 
   const colors = opts.colors;
 
@@ -189,7 +191,6 @@ async function getHighlightedFrame(stackTraceLine: string, opts: FormatErrorCode
     codeCol,
     snippetLineNumStart,
   };
-  highlightCache.set(stackTraceLine, codeFrame);
   return codeFrame;
 }
 

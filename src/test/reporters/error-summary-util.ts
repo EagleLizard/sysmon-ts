@@ -1,8 +1,9 @@
-import { Task, File, ErrorWithDiff, Vitest } from 'vitest';
-import { PrintErrorSummayOpts, TaskFmtUtil } from './task-fmt-util';
+import { Task, File, Vitest } from 'vitest';
+import { PrintErrorSummayOpts } from './task-fmt-util';
 import { TaskUtil } from './task-util';
 import { Formatter } from './ezd-reporter-colors';
 import { FormatResultOpts, ReporterFmtUtil } from './reporter-fmt-util';
+import { FormatErrorCodeFrameOpts } from './error-fmt-util';
 
 export type FormatErrorsSummaryOpts = {
   config: Vitest['config'];
@@ -11,12 +12,17 @@ export type FormatErrorsSummaryOpts = {
     dim: Formatter;
     fail: Formatter;
     pass: Formatter;
+    error_name: Formatter;
     failed_tasks_label: Formatter;
+    trace: Formatter;
+    error_pos: Formatter;
   };
   formatResultColors: FormatResultOpts['colors'];
+  formatCodeFrameColors: FormatErrorCodeFrameOpts['colors'];
 };
 
 export type FormatErrorsOpts = FormatErrorsSummaryOpts & {
+  rootPath: string,
   getErrorDivider: () => string;
 }
 
@@ -32,7 +38,25 @@ export type FormatErrorsSummaryResult = {
   tests: string[],
 }
 
+export type GetErrorBannerOpts = {
+  colors: {
+    dim: Formatter,
+    line: Formatter,
+    label: Formatter,
+  }
+};
+
 export class ErrorSummaryUtil {
+
+  static getErrorBanner(label: string, errorCount: number, opts: GetErrorBannerOpts): string {
+    let title: string;
+    let banner: string;
+    title = opts.colors.label(` Failed ${label}: ${errorCount} `);
+    banner = ReporterFmtUtil.getDivider(title, {
+      color: opts.colors.line,
+    });
+    return banner;
+  }
 
   static getErrorsSummary(files: File[], errors: unknown[], opts: PrintErrorSummayOpts): ErrorsSummary {
     let suites: Task[];
@@ -72,32 +96,5 @@ export class ErrorSummaryUtil {
       testsCount: failedTestsCount,
     };
     return errorsSummary;
-  }
-
-  static async formatErrors(tasks: Task[], label: string, opts: FormatErrorsOpts): Promise<string[]> {
-    let outputLines: string[];
-    let errorsQueue: [ErrorWithDiff | undefined, Task[]][];
-    let failedTasksLabel: string;
-    let failedTaskDivider: string;
-    let errorResults: string[];
-    outputLines = [];
-
-    if(tasks.length === 0) {
-      return outputLines;
-    }
-
-    failedTasksLabel = opts.colors.failed_tasks_label(` Failed ${label}: ${tasks.length}`);
-    failedTaskDivider = ReporterFmtUtil.getDivider(failedTasksLabel, {
-      color: opts.colors.fail,
-    });
-    outputLines.push(`\n${failedTaskDivider}\n`);
-
-    errorsQueue = TaskUtil.getErrors(tasks);
-    errorResults = await TaskFmtUtil.getErrorResults(errorsQueue, opts);
-    for(let i = 0; i < errorResults.length; ++i) {
-      outputLines.push(errorResults[i]);
-    }
-
-    return outputLines;
   }
 }

@@ -3,7 +3,7 @@ import chalk, { ChalkInstance } from 'chalk';
 import { FormatErrorCodeFrameOpts } from './error-fmt-util';
 import { FormatResultOpts, FormatUserConsoleLogOpts } from './reporter-fmt-util';
 import { FormatResultSummaryOpts, GetResultSummaryOpts } from './result-summary-util';
-import { FormatErrorsSummaryOpts } from './error-summary-util';
+import { FormatErrorsSummaryOpts, GetErrorBannerOpts } from './error-summary-util';
 
 export type Formatter = ChalkInstance;
 
@@ -50,6 +50,7 @@ const orange_light = chalk.rgb(orange_lightRgb.r, orange_lightRgb.g, orange_ligh
 // const yellow_light = chalk.rgb(255, 255, 117);
 const yellow_light = chalk.yellow;
 const blue_light = chalk.rgb(149, 199, 255);
+const cyan = chalk.cyan;
 
 export type ColorConfig = {
   pass: Formatter;
@@ -100,6 +101,7 @@ const ezdColors = {
   magenta,
   orange_light,
   blue_light,
+  cyan,
 };
 
 const colorCfg = {
@@ -109,6 +111,7 @@ const colorCfg = {
   // fail: ezdColors.hot_pink,
   // fail: ezdColors.magenta.bold,
   fail: ezdColors.purple,
+  fail_2: ezdColors.purple_light,
   failComplement: ezdColors.orange_light,
   // suite: ezdColors.pc.yellow,
   // suite: ezdColors.pastel_orange,
@@ -133,6 +136,7 @@ const colorCfg = {
   user_log: ezdColors.blue_light,
   user_error_log: ezdColors.purple_light,
   user_log_task_path: chalk.dim,
+  trace: ezdColors.cyan,
   syntax: {
     function: ezdColors.pink,
     string: ezdColors.chartreuse_light.italic,
@@ -193,7 +197,15 @@ const printErrors: FormatErrorsSummaryOpts['colors'] = {
   dim: colorCfg.dim,
   pass: colorCfg.pass,
   fail: colorCfg.fail,
+  error_name: colorCfg.fail_2.underline,
   failed_tasks_label: colorCfg.fail.bold.inverse,
+  trace: colorCfg.trace,
+  error_pos: colorCfg.trace.dim,
+};
+const errorBanner: GetErrorBannerOpts['colors'] = {
+  dim: colorCfg.dim,
+  line: colorCfg.fail,
+  label: colorCfg.fail.bold.inverse
 };
 
 export const EzdReporterColors = {
@@ -205,5 +217,6 @@ export const EzdReporterColors = {
   formatResultSummary,
   formatUserConsoleLog,
   printErrors,
+  errorBanner,
 };
 

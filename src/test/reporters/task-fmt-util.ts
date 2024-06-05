@@ -18,6 +18,7 @@ export type PrintResultsOpts = {
 };
 
 export type PrintErrorSummayOpts = {
+  rootPath: string;
   logger: LogRenderer;
   config: Vitest['config'];
 };
@@ -78,21 +79,6 @@ export class TaskFmtUtil {
     return outputLines;
   }
 
-  static async getErrorResults(errors: [ErrorWithDiff | undefined, Task[]][], opts: FormatErrorsOpts) {
-    let errorResults: string[];
-    errorResults = [];
-    for(let i = 0; i < errors.length; ++i) {
-      let [ error, currTasks ] = errors[i];
-      let errorResult: string[];
-      errorResult = await TaskFmtUtil.getErrorResult(error, currTasks, opts);
-      for(let k = 0; k < errorResult.length; ++k) {
-        let errorResultLine = errorResult[k];
-        errorResults.push(errorResultLine);
-      }
-    }
-    return errorResults;
-  }
-
   static async getErrorResult(
     error: ErrorWithDiff | undefined,
     currTasks: Task[],
@@ -123,7 +109,7 @@ export class TaskFmtUtil {
     if(error === undefined) {
       throw new Error('Undefined error in printErrors()');
     }
-    errorLines.push(`\n${colors.fail.bold.underline(`${error.name}`)}${colors.fail(`: ${error.message}`)}`);
+    errorLines.push(`${colors.error_name(`${error.name}`)}${colors.fail(`: ${error.message}`)}`);
     if(error.diff) {
       // errorLines.push(`\n${colors.pass('- Expected')}\n${colors.fail('+ Received')}\n${colors.pass(`- ${formattedError.expected}`)}\n${colors.fail(`+ ${formattedError.actual}`)}\n`);
       errorLines.push('');
@@ -136,10 +122,29 @@ export class TaskFmtUtil {
     }
 
     if(error.stack !== undefined) {
+      let stackTraceOutStr: string;
+      let codePathStr: string | undefined;
+      let codeLineStr: string | undefined;
+      let codeColStr: string | undefined;
       nearestTrace = ErrorFmtUtil.getNearestStackTrace(error.stack);
+      [ codePathStr, codeLineStr, codeColStr ] = nearestTrace.split(':');
+      if(
+        (codePathStr !== undefined)
+        && (codeLineStr !== undefined)
+        && (codeColStr !== undefined)
+      ) {
+        stackTraceOutStr = [
+          opts.colors.error_pos(' > '),
+          opts.colors.trace(`${path.relative(opts.rootPath, codePathStr)}:`),
+          opts.colors.error_pos(`${codeLineStr}:`),
+          opts.colors.error_pos(`${codeColStr}`),
+        ].join(''),
+        errorLines.push(stackTraceOutStr);
+      }
       try {
         highlightedSnippet = await ErrorFmtUtil.formatErrorCodeFrame(nearestTrace, {
-          colors: EzdReporterColors.formatErrorCodeFrameColors,
+          rootPath: opts.rootPath,
+          colors: opts.formatCodeFrameColors,
         });
       } catch(e) {
         console.error(e);
