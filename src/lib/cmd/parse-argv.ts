@@ -8,7 +8,7 @@ export type ParsedArgv2 = {
 type ArgvToken = {
   kind: ArgvTokenEnum;
   val: string;
-}
+};
 
 enum ArgvTokenEnum {
   CMD = 'CMD',
@@ -33,6 +33,7 @@ export function parseArgv2(argv: string[]): ParsedArgv2 {
   let argvParser: Generator<ArgvToken>;
   let iterRes: IteratorResult<ArgvToken>;
   let tokenStack: ArgvToken[];
+  let tokensSoFar: ArgvToken[];
 
   argv = argv.slice(2);
   cmdArgs = [];
@@ -40,9 +41,11 @@ export function parseArgv2(argv: string[]): ParsedArgv2 {
 
   argvParser = getArgvParser(argv);
   tokenStack = [];
+  tokensSoFar = [];
 
   while(!(iterRes = argvParser.next()).done) {
     let currToken = iterRes.value;
+    tokensSoFar.push(currToken);
     /*
       CMD and FLAG token types are terminal. We'll consume the current token stack, and
         validate the results
@@ -51,7 +54,12 @@ export function parseArgv2(argv: string[]): ParsedArgv2 {
       case ArgvTokenEnum.FLAG:
       case ArgvTokenEnum.CMD:
       case ArgvTokenEnum.END:
-        consumeCmdOrFlag();
+        try {
+          consumeCmdOrFlag();
+        } catch(e) {
+          console.error(tokensSoFar);
+          throw e;
+        }
         tokenStack.push(currToken);
         break;
       case ArgvTokenEnum.ARG:
@@ -163,5 +171,5 @@ function isFlagArg(argStr: string): boolean {
 }
 
 function isCmdStr(cmdStr: string): boolean {
-  return /^[a-z0-9]+([a-z0-9]+|-)*[a-z0-9]+/.test(cmdStr);
+  return /^[a-z0-9]+(([a-z0-9]+|-)*[a-z0-9]+)?/.test(cmdStr);
 }
