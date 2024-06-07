@@ -120,6 +120,10 @@ export function parseArgv2(argv: string[]): ParsedArgv2 {
 function *getArgvParser(argv: string[]): Generator<ArgvToken> {
   let pos: number;
   let parseState: ArgvParserState;
+  /*
+    copy argv because we may modify in-place for flags
+  */
+  argv = argv.slice();
   parseState = ArgvParserState.INIT;
   pos = 0;
   while(pos < argv.length) {
@@ -143,12 +147,30 @@ function *getArgvParser(argv: string[]): Generator<ArgvToken> {
         parseState = ArgvParserState.INIT;
         break;
       case ArgvParserState.FLAG:
-        yield {
-          kind: ArgvTokenEnum.FLAG,
-          val: currArg,
-        };
-        pos++;
-        parseState = ArgvParserState.INIT;
+        let hasAssignment: boolean;
+        hasAssignment = isAssignment(currArg);
+        if(hasAssignment) {
+          /*
+          A flag may ocntain a single '=' char, in which case we'll split it,
+            remove the original, and insert the LHS and RHS into argv
+          */
+          let assignmentParts: string[];
+          let lhs: string;
+          let rhs: string;
+          assignmentParts = currArg.split('=');
+          if(assignmentParts.length !== 2) {
+            throw new Error(`Invalid flag assignment: ${currArg}`);
+          }
+          [ lhs, rhs ] = assignmentParts;
+          argv.splice(pos, 1, lhs, rhs);
+        } else {
+          yield {
+            kind: ArgvTokenEnum.FLAG,
+            val: currArg,
+          };
+          pos++;
+          parseState = ArgvParserState.INIT;
+        }
         break;
       case ArgvParserState.ARG:
         yield {
@@ -166,8 +188,23 @@ function *getArgvParser(argv: string[]): Generator<ArgvToken> {
   };
 }
 
+function isAssignment(flagStr: string): boolean {
+  let execRes: RegExpExecArray | null;
+  execRes = getFlagArgRx().exec(flagStr);
+  if(execRes === null) {
+    return false;
+  }
+  return execRes.groups?.farg !== undefined;
+}
+
 function isFlagArg(argStr: string): boolean {
-  return /^-{1,2}[a-zA-Z0-9][a-zA-Z0-9-]*/.test(argStr);
+  return getFlagArgRx().test(argStr);
+}
+
+function getFlagArgRx(): RegExp {
+  return /^-{1,2}[a-zA-Z0-9][a-zA-Z0-9-]*(?<farg>=(?:(?!=)\S)*)?/dg;
+  // return /^-{1,2}[a-zA-Z0-9][a-zA-Z0-9-]*(?<farg>=(?:(?!=)\S)+)?/dg;
+  // return /^-{1,2}[a-zA-Z0-9][a-zA-Z0-9-]*(=)?/d;
 }
 
 function isCmdStr(cmdStr: string): boolean {
