@@ -26,11 +26,11 @@ export const SYSMON_CMD_STRS: CmdStr[] = [
   ...cmdShorts,
 ];
 
-export type CmdDef = {
+export type CmdDef<T extends SYSMON_CMD_ENUM = SYSMON_CMD_ENUM> = {
   long: CmdLong;
   short: CmdShort;
   arg?: [string, ArgKind];
-  flags?: Record<string, CmdFlagDef>
+  flags?: Record<keyof CmdFlagArgs[T], CmdFlagDef>
 };
 
 export type CmdFlagDef = {
@@ -39,7 +39,35 @@ export type CmdFlagDef = {
   arg: [string, ArgKind] | 'boolean';
 }
 
-export const SYSMON_CMDS: Record<SYSMON_CMD_ENUM, CmdDef> = {
+export type CmdArgs = {
+  [SYSMON_CMD_ENUM.PING]: string,
+  [SYSMON_CMD_ENUM.SCAN_DIR]: string[],
+};
+
+export type CmdArgType = CmdArgs[keyof CmdArgs];
+
+export type CmdFlagArgs = {
+  [SYSMON_CMD_ENUM.PING]: {
+    wait?: number;
+    count?: number;
+    iface?: string;
+  };
+  [SYSMON_CMD_ENUM.SCAN_DIR]: {
+    find_duplicates?: boolean;
+    find_dirs?: string[];
+  };
+};
+
+type KeyOfUnion<T> = T extends T ? keyof T : never;
+
+export type CmdFlagArgKey = KeyOfUnion<CmdFlagArgs[keyof typeof SYSMON_CMD_ENUM]>;
+
+// export type CmdFlagArgs = {
+//   [SYSMON_CMD_ENUM.PING]: keyof typeof SYSMON_CMDS[SYSMON_CMD_ENUM.PING]['flags'],
+//   [SYSMON_CMD_ENUM.SCAN_DIR]: string[],
+// }
+// let etc: CmdFlagArgs[SYSMON_CMD_ENUM.PING];
+export const SYSMON_CMDS = {
   [SYSMON_CMD_ENUM.PING]: {
     long: 'ping',
     short: 'p',
@@ -79,4 +107,4 @@ export const SYSMON_CMDS: Record<SYSMON_CMD_ENUM, CmdDef> = {
       },
     },
   },
-};
+} satisfies Record<SYSMON_CMD_ENUM, CmdDef>;

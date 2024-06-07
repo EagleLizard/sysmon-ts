@@ -1,20 +1,21 @@
 
 import { ParsedArgv2, parseArgv2 } from './parse-argv';
-import { ArgKind, ArgType, CmdDef, CmdFlagDef, CmdStr, FlagArgType, SYSMON_CMD_ENUM, SYSMON_CMD_STRS, SYSMON_CMDS } from './sysmon-cmd-defs';
+import { ArgKind, CmdArgs, CmdArgType, CmdDef, CmdFlagArgs, CmdFlagArgKey, CmdFlagDef, CmdStr, FlagArgType, SYSMON_CMD_ENUM, SYSMON_CMD_STRS, SYSMON_CMDS } from './sysmon-cmd-defs';
 
 type CmdFlag = {
   flagDef: CmdFlagDef;
   args: FlagArgType;
 };
 
-type CmdOptKey = string;
-
-type Cmd = {
-  kind: SYSMON_CMD_ENUM;
+export type Cmd<T extends SYSMON_CMD_ENUM = SYSMON_CMD_ENUM> = {
+  kind: T;
   cmdDef: CmdDef;
-  args: ArgType[];
-  opts: Record<CmdOptKey, CmdFlag>;
+  args?: CmdArgs[T];
+  opts: CmdFlagArgs[T];
+  // opts: Record<CmdOptKey, CmdFlag>;
 }
+
+SYSMON_CMDS[SYSMON_CMD_ENUM.PING].long;
 
 export function parseSysmonArgs2(argv: string[]) {
   let parsedArgv: ParsedArgv2;
@@ -27,17 +28,18 @@ export function parseSysmonArgs2(argv: string[]) {
   // console.log('-- Parsed:');
   let sysmonCmd = parseSysmonCmd(cmd, parsedArgv);
   console.log(sysmonCmd);
+  return sysmonCmd;
 }
 
 function parseSysmonCmd(cmdStr: string, parsedArgv: ParsedArgv2): Cmd {
   let cmdKind: SYSMON_CMD_ENUM;
   let cmdDef: CmdDef;
-  let cmdArgs: ArgType[];
-  let cmdFlags: [flagKey: string, CmdFlag][];
-  let cmdOpts: Record<CmdOptKey, CmdFlag>;
+  let cmdArgs: CmdArgType | undefined;
+  let cmdFlags: [flagKey: CmdFlagArgKey, CmdFlag][];
+  // let cmdOpts: Partial<Record<CmdFlagArgKey, CmdFlag>>;
+  let cmdOpts: CmdFlagArgs[keyof typeof SYSMON_CMD_ENUM];
   let cmd: Cmd;
 
-  cmdArgs = [];
   cmdFlags = [];
 
   if(!validateCmdStr(cmdStr)) {
@@ -74,7 +76,7 @@ function parseSysmonCmd(cmdStr: string, parsedArgv: ParsedArgv2): Cmd {
         if(parsedArgv.args.length > 1) {
           throw new Error(`Expected one argument, received ${parsedArgv.args.length}`);
         }
-        cmdArgs.push(parsedArgv.args[0]);
+        cmdArgs = parsedArgv.args[0];
         break;
       case 'string[]':
         cmdArgs = parsedArgv.args;
@@ -86,9 +88,9 @@ function parseSysmonCmd(cmdStr: string, parsedArgv: ParsedArgv2): Cmd {
     for(let i = 0; i < parsedArgv.opts.length; ++i) {
       let currOpt: [string, string[]];
       let optKey: string;
-      let flagDefTuple: [flagKey: string, CmdFlagDef] | undefined;
+      let flagDefTuple: [flagKey: CmdFlagArgKey, CmdFlagDef] | undefined;
       let flagDef: CmdFlagDef;
-      let flagKey: string;
+      let flagKey: CmdFlagArgKey;
       let cmdFlag: CmdFlag;
       currOpt = parsedArgv.opts[i];
       optKey = currOpt[0];
@@ -103,10 +105,11 @@ function parseSysmonCmd(cmdStr: string, parsedArgv: ParsedArgv2): Cmd {
   }
   cmdOpts = {};
   for(let i = 0; i < cmdFlags.length; ++i) {
-    let flagKey: string;
+    let flagKey: CmdFlagArgKey;
     let cmdFlag: CmdFlag;
     [ flagKey, cmdFlag ] = cmdFlags[i];
-    cmdOpts[flagKey] = cmdFlag;
+    // kind of gross but should be typesafe
+    (cmdOpts as Record<any, CmdFlag>)[flagKey] = cmdFlag;
   }
   cmd = {
     kind: cmdKind,
@@ -218,7 +221,7 @@ function parseCmdFlag(flagDef: CmdFlagDef, flagOpt: [string, string[]]): CmdFlag
   return cmdFlag;
 }
 
-function findFlagDef(flag: string, cmdDef: CmdDef): [string, CmdFlagDef] | undefined {
+function findFlagDef(flag: string, cmdDef: CmdDef): [CmdFlagArgKey, CmdFlagDef] | undefined {
   let flagTuples: [string, CmdFlagDef][];
   let opt: string;
   opt = stripOpt(flag);
@@ -235,7 +238,7 @@ function findFlagDef(flag: string, cmdDef: CmdDef): [string, CmdFlagDef] | undef
       (flagDef.long === opt)
       || (flagDef.short === opt)
     ) {
-      return [ flagKey, flagDef ];
+      return [ flagKey, flagDef ] as [CmdFlagArgKey, CmdFlagDef];
     }
   }
 }
