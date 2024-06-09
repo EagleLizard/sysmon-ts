@@ -1,15 +1,15 @@
 
 import { EventRegistry } from '../../util/event-registry';
 import { Timer } from '../../util/timer';
-import { SysmonCommand } from '../sysmon-args';
 import { getIntuitiveTimeString } from '../../util/format-util';
 import { MONITOR_OUT_DATA_DIR_PATH } from '../../../constants';
 import { mkdirIfNotExist } from '../../util/files';
-import { MonitorCmdOpts, getMonitorOpts } from './monitor-cmd-opts';
 import { MonitorEventData, MonitorReturnValue } from '../../models/monitor/monitor-cmd-types';
 import { getDebugInfoMon } from './debug-info-mon';
 import { getCpuMon } from './cpu-mon';
 import { logger } from '../../logger';
+import { MonitorOpts, getMonitorOpts } from '../parse-sysmon-args';
+import { ParsedArgv2 } from '../parse-argv';
 
 let monitorDeregisterCb: () => void = () => undefined;
 let stopMonitorLoopCb: () => void = () => undefined;
@@ -17,11 +17,13 @@ let elapsedMs = 0;
 
 const DRAW_INTERVAL_MS = 200;
 // const DRAW_INTERVAL_MS = 1000;
+const DEFAULT_INTERVAL_MS = 1e3;
 
-export async function monitorCmdMain(cmd: SysmonCommand) {
+export async function monitorCmdMain(parsedArgv: ParsedArgv2) {
+  let opts: MonitorOpts;
   let evtRegistry: EventRegistry<MonitorEventData>;
-  let opts: MonitorCmdOpts;
-  opts = getMonitorOpts(cmd);
+
+  opts = getMonitorOpts(parsedArgv.opts);
   console.log({ opts });
 
   initMon();
@@ -50,7 +52,7 @@ function setMonitorProcName() {
   process.title = `${process.title}_mon`;
 }
 
-function getMonMain(cmdOpts: MonitorCmdOpts) {
+function getMonMain(cmdOpts: MonitorOpts) {
   let logTimer: Timer;
   let debugInfoMon: (evt: MonitorEventData) => MonitorReturnValue;
   let cpuMon: (evt: MonitorEventData) => MonitorReturnValue;
@@ -79,7 +81,7 @@ function getMonMain(cmdOpts: MonitorCmdOpts) {
   };
 }
 
-async function startMonLoop(eventRegistry: EventRegistry<MonitorEventData>, cmdOpts: MonitorCmdOpts) {
+async function startMonLoop(eventRegistry: EventRegistry<MonitorEventData>, cmdOpts: MonitorOpts) {
   let loopTimer: Timer;
   let doMon: boolean;
   doMon = true;
@@ -104,6 +106,6 @@ async function startMonLoop(eventRegistry: EventRegistry<MonitorEventData>, cmdO
           console.error(err);
           throw err;
         });
-    }, cmdOpts.SAMPLE_INTERVAL_MS);
+    }, (cmdOpts.sample_interval ?? DEFAULT_INTERVAL_MS));
   }
 }

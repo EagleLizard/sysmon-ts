@@ -4,11 +4,12 @@ import { KeychainKeyDto } from '../../models/keychain-key-dto';
 import { UserDto } from '../../models/user-dto';
 import { AdminService } from '../../service/admin-service';
 import { decrypt } from '../../util/crypto-util';
-import { SysmonCommand } from '../sysmon-args';
+import { ParsedArgv2 } from '../parse-argv';
+import { getAdminArgs } from '../parse-sysmon-args';
 
-export async function adminMain(cmd: SysmonCommand) {
+export async function adminMain(parsedArgv: ParsedArgv2) {
   let cmdArg: string | undefined;
-  cmdArg = cmd?.args?.[0];
+  cmdArg = getAdminArgs(parsedArgv.args);
   if(cmdArg === 'kc') {
     await keychainCmd();
   }

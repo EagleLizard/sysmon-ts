@@ -1,27 +1,31 @@
 
 import fs from 'fs';
-import { ENCODE_CMD_FLAG_MAP, SysmonCommand } from '../sysmon-args';
+
 import { Bit, HuffHeader, HuffTree } from '../../models/encode/huff-tree';
 import { HuffStr, getHuffStr } from './huff';
 import path from 'path';
 import { joinPath, mkdirIfNotExist } from '../../util/files';
 import { ENCODE_OUT_DATA_DIR_PATH } from '../../../constants';
+import { EncodeOpts, getEncodeArgs, getEncodeOpts } from '../parse-sysmon-args';
+import { ParsedArgv2 } from '../parse-argv';
 
 /*
   huffman encoding
 */
-export async function encodeMain(cmd: SysmonCommand) {
+export async function encodeMain(parsedArgv: ParsedArgv2) {
+  let args: string;
+  let opts: EncodeOpts;
+
   let filePath: string | undefined;
   let decodeOpt: boolean;
 
+  args = getEncodeArgs(parsedArgv.args);
+  opts = getEncodeOpts(parsedArgv.opts);
+
   mkdirIfNotExist(ENCODE_OUT_DATA_DIR_PATH);
 
-  if(cmd.args?.[0] === undefined) {
-    throw new Error('encode expects at least 1 argument');
-  }
-
-  filePath = cmd.args[0];
-  decodeOpt = cmd.opts?.[ENCODE_CMD_FLAG_MAP.DECODE.flag] !== undefined;
+  filePath = args;
+  decodeOpt = opts.decode ?? false;
 
   if(decodeOpt) {
     decodeFile(filePath);

@@ -1,24 +1,25 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 
-import { PING_STAT_CMD_FLAG_MAP, SysmonCommand, parseSysmonArgs } from '../sysmon-args';
-import { BucketOpt, DEFAULT_NUM_STD_DEVIATIONS, PingStatOpts, getPingStatOpts } from './ping-stat-opts';
+import { BucketOpt, DEFAULT_NUM_STD_DEVIATIONS, _PingStatOpts, _getPingStatOpts } from './ping-stat-opts';
 import { TimeBucketUnit } from '../../models/ping-args';
+import { ParsedArgv2, parseArgv2 } from '../parse-argv';
+import { getPingStatOpts } from '../parse-sysmon-args';
 
 describe('ping-stat-opts tests', () => {
 
   let testArgv: string[];
-  let cmdMock: SysmonCommand;
-  let pingStatOpts: PingStatOpts;
+  let cmdMock: ParsedArgv2;
+  let pingStatOpts: _PingStatOpts;
 
   beforeEach(() => {
     testArgv = [ 'node', 'main.js', 'ping-stat' ];
-    cmdMock = parseSysmonArgs(testArgv);
+    cmdMock = parseArgv2(testArgv);
   });
 
   it('tests getPingStatOpts() returns default values with no args', () => {
-    cmdMock = parseSysmonArgs(testArgv);
-    pingStatOpts = getPingStatOpts(cmdMock);
+    cmdMock = parseArgv2(testArgv);
+    pingStatOpts = _getPingStatOpts(getPingStatOpts(cmdMock.opts));
 
     expect(pingStatOpts.numStdDevs).toBe(DEFAULT_NUM_STD_DEVIATIONS);
     expect(pingStatOpts.addr).toBeUndefined;
@@ -35,9 +36,9 @@ describe('ping-stat-opts tests', () => {
       '--ip',
       addrArgMock,
     ]);
-    cmdMock = parseSysmonArgs(testArgv);
+    cmdMock = parseArgv2(testArgv);
 
-    pingStatOpts = getPingStatOpts(cmdMock);
+    pingStatOpts = _getPingStatOpts(getPingStatOpts(cmdMock.opts));
     console.log(pingStatOpts);
     expect(pingStatOpts.addr).toBe(addrArgMock);
   });
@@ -49,9 +50,9 @@ describe('ping-stat-opts tests', () => {
       '--stddev',
       `${numStdDevsArgMock}`,
     ]);
-    cmdMock = parseSysmonArgs(testArgv);
+    cmdMock = parseArgv2(testArgv);
 
-    pingStatOpts = getPingStatOpts(cmdMock);
+    pingStatOpts = _getPingStatOpts(getPingStatOpts(cmdMock.opts));
     expect(pingStatOpts.numStdDevs).toBe(numStdDevsArgMock);
   });
 
@@ -62,8 +63,8 @@ describe('ping-stat-opts tests', () => {
       '--network',
       networkArgMock,
     ]);
-    cmdMock = parseSysmonArgs(testArgv);
-    pingStatOpts = getPingStatOpts(cmdMock);
+    cmdMock = parseArgv2(testArgv);
+    pingStatOpts = _getPingStatOpts(getPingStatOpts(cmdMock.opts));
 
     expect(pingStatOpts.network).toBe(networkArgMock);
   });
@@ -82,30 +83,10 @@ describe('ping-stat-opts tests', () => {
       '--bucket',
       `${bucketArgMock}`,
     ]);
-    cmdMock = parseSysmonArgs(testArgv);
-    pingStatOpts = getPingStatOpts(cmdMock);
+    cmdMock = parseArgv2(testArgv);
+    pingStatOpts = _getPingStatOpts(getPingStatOpts(cmdMock.opts));
 
     expect(pingStatOpts.bucket).toEqual(expectedBucket);
-  });
-
-  it('tests opts.bucket is set correctly when passed a value with a space', () => {
-    let mockBucketVal: number;
-    let mockBucketUnit: TimeBucketUnit;
-    if(cmdMock.opts === undefined) {
-      throw new Error('cmdMock.opts is undefined.');
-    }
-
-    mockBucketVal = 15;
-    mockBucketUnit = 'min';
-    cmdMock.opts[PING_STAT_CMD_FLAG_MAP.BUCKET.flag] = {
-      flag: PING_STAT_CMD_FLAG_MAP.BUCKET.flag,
-      value: [
-        `${mockBucketVal}`,
-        mockBucketUnit,
-      ],
-    };
-    pingStatOpts = getPingStatOpts(cmdMock);
-    expect(pingStatOpts.bucket?.bucketUnit).toBe(mockBucketUnit);
   });
 
   it('tests opts.start is set correctly', () => {
@@ -117,8 +98,8 @@ describe('ping-stat-opts tests', () => {
       `${startArgMock}`,
     ]);
 
-    cmdMock = parseSysmonArgs(testArgv);
-    pingStatOpts = getPingStatOpts(cmdMock);
+    cmdMock = parseArgv2(testArgv);
+    pingStatOpts = _getPingStatOpts(getPingStatOpts(cmdMock.opts));
 
     expect(pingStatOpts.start).toEqual(startArgMock);
   });
@@ -134,10 +115,10 @@ describe('ping-stat-opts tests', () => {
       '--stddev',
       `${numStdDevsArgMock}`,
     ]);
-    cmdMock = parseSysmonArgs(testArgv);
+    cmdMock = parseArgv2(testArgv);
 
     expect(() => {
-      getPingStatOpts(cmdMock);
+      _getPingStatOpts(getPingStatOpts(cmdMock.opts));
     }).toThrowError();
   });
 
@@ -145,10 +126,10 @@ describe('ping-stat-opts tests', () => {
     testArgv = testArgv.concat([
       '--bucket',
     ]);
-    cmdMock = parseSysmonArgs(testArgv);
+    cmdMock = parseArgv2(testArgv);
 
     expect(() => {
-      getPingStatOpts(cmdMock);
+      _getPingStatOpts(getPingStatOpts(cmdMock.opts));
     }).toThrowError();
   });
 
@@ -160,16 +141,12 @@ describe('ping-stat-opts tests', () => {
     }
     mockBucketVal = NaN;
     mockBucketUnit = 'min';
-    cmdMock.opts[PING_STAT_CMD_FLAG_MAP.BUCKET.flag] = {
-      flag: PING_STAT_CMD_FLAG_MAP.BUCKET.flag,
-      value: [
-        `${mockBucketVal}`,
-        mockBucketUnit,
-      ],
-    };
+    cmdMock.opts = [
+      [ 'b', [ `${mockBucketVal}${mockBucketUnit}` ]]
+    ];
 
     expect(() => {
-      getPingStatOpts(cmdMock);
+      _getPingStatOpts(getPingStatOpts(cmdMock.opts));
     }).toThrowError();
   });
 
@@ -183,17 +160,12 @@ describe('ping-stat-opts tests', () => {
     mockBucketVal = 15;
     mockBucketUnit = 'min';
     invalidBucketVal = 'invalid_bucket_val';
-    cmdMock.opts[PING_STAT_CMD_FLAG_MAP.BUCKET.flag] = {
-      flag: PING_STAT_CMD_FLAG_MAP.BUCKET.flag,
-      value: [
-        `${mockBucketVal}`,
-        mockBucketUnit,
-        invalidBucketVal,
-      ],
-    };
+    cmdMock.opts = [
+      [ '-b', [ `${mockBucketVal}${mockBucketUnit}`, `${invalidBucketVal}` ]]
+    ];
 
     expect(() => {
-      getPingStatOpts(cmdMock);
+      _getPingStatOpts(getPingStatOpts(cmdMock.opts));
     }).toThrowError();
   });
 
@@ -205,16 +177,12 @@ describe('ping-stat-opts tests', () => {
     }
     mockBucketVal = 1e6;
     invalidBucketUnit = 'μ';
-    cmdMock.opts[PING_STAT_CMD_FLAG_MAP.BUCKET.flag] = {
-      flag: PING_STAT_CMD_FLAG_MAP.BUCKET.flag,
-      value: [
-        `${mockBucketVal}`,
-        invalidBucketUnit,
-      ],
-    };
+    cmdMock.opts = [
+      [ '-b', [ `${mockBucketVal}${invalidBucketUnit}` ]],
+    ];
 
     expect(() => {
-      getPingStatOpts(cmdMock);
+      _getPingStatOpts(getPingStatOpts(cmdMock.opts));
     }).toThrowError();
   });
 
@@ -222,10 +190,10 @@ describe('ping-stat-opts tests', () => {
     testArgv = testArgv.concat([
       '--start',
     ]);
-    cmdMock = parseSysmonArgs(testArgv);
+    cmdMock = parseArgv2(testArgv);
 
     expect(() => {
-      getPingStatOpts(cmdMock);
+      _getPingStatOpts(getPingStatOpts(cmdMock.opts));
     }).toThrowError();
   });
 
@@ -236,10 +204,10 @@ describe('ping-stat-opts tests', () => {
       '--start',
       startArgMock,
     ]);
-    cmdMock = parseSysmonArgs(testArgv);
+    cmdMock = parseArgv2(testArgv);
 
     expect(() => {
-      getPingStatOpts(cmdMock);
+      _getPingStatOpts(getPingStatOpts(cmdMock.opts));
     }).toThrowError();
   });
 
@@ -253,10 +221,10 @@ describe('ping-stat-opts tests', () => {
       startArgMock,
       invalidStartArgMock,
     ]);
-    cmdMock = parseSysmonArgs(testArgv);
+    cmdMock = parseArgv2(testArgv);
 
     expect(() => {
-      getPingStatOpts(cmdMock);
+      _getPingStatOpts(getPingStatOpts(cmdMock.opts));
     }).toThrowError();
   });
 
@@ -267,10 +235,10 @@ describe('ping-stat-opts tests', () => {
       '--network',
       networkArgMock,
     ]);
-    cmdMock = parseSysmonArgs(testArgv);
+    cmdMock = parseArgv2(testArgv);
 
     expect(() => {
-      getPingStatOpts(cmdMock);
+      _getPingStatOpts(getPingStatOpts(cmdMock.opts));
     }).toThrowError();
   });
 

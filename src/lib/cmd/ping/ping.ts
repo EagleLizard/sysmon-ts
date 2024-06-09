@@ -4,12 +4,13 @@ import { ChildProcess } from 'child_process';
 import { ipProc } from '../net/ip-proc';
 import { logger } from '../../logger';
 import { Timer } from '../../util/timer';
-import { SysmonCommand } from '../sysmon-args';
 import { config } from '../../../config';
 import { PingService } from '../../service/ping-service';
 import { isString } from '../../util/validate-primitives';
 import { NetService } from '../../service/net-service';
 import { PingProcOpts, PingResult, spawnPingProc } from './ping-proc';
+import { PingOpts, getPingArgs, getPingOpts } from '../parse-sysmon-args';
+import { ParsedArgv2 } from '../parse-argv';
 
 const PING_INFO_LOG_INTERVAL_MS = (config.ENVIRONMENT === 'development')
   ? 0.25e3
@@ -17,47 +18,27 @@ const PING_INFO_LOG_INTERVAL_MS = (config.ENVIRONMENT === 'development')
 ;
 let activePingProc: ChildProcess | undefined;
 
-export async function pingMain(cmd: SysmonCommand) {
+export async function pingMain(parsedArgv: ParsedArgv2) {
+  let addr: string;
+  let opts: PingOpts;
+
   let pingTimer: Timer;
-  let addr: string | undefined;
   let resolvedAddr: string | undefined;
-  let waitStr: string | undefined;
   let wait: number | undefined;
-  let countStr: string | undefined;
   let count: number | undefined;
   let pingProcOpts: PingProcOpts;
   let iface: string | undefined;
 
-  if(cmd.args === undefined) {
-    throw new Error(`at least 1 positional argument required for command '${cmd.command}'`);
-  }
-  if(isString(cmd.args[0])) {
-    addr = cmd.args[0];
-    resolvedAddr = await NetService.dnsLookup(addr);
-  }
-  waitStr = cmd.opts?.wait?.value[0];
-  if(
-    waitStr !== undefined
-    && !isNaN(+waitStr)
-  ) {
-    wait = +waitStr;
-  }
-  countStr = cmd.opts?.count?.value[0];
-  if(
-    (countStr !== undefined)
-    && !isNaN(+countStr)
-  ) {
-    count = +countStr;
-  }
+  addr = getPingArgs(parsedArgv.args);
+  opts = getPingOpts(parsedArgv.opts);
 
-  iface = cmd.opts?.iface?.value[0] ?? undefined;
+  resolvedAddr = await NetService.dnsLookup(addr);
+  wait = opts.wait;
+  count = opts.count;
+  iface = opts.iface;
 
   const srcAddr = await ipProc();
 
-  if(addr === undefined) {
-    logger.error(cmd);
-    throw new Error('Invalid ping command');
-  }
   if(!isString(resolvedAddr)) {
     throw new Error(`Failed to resolve: ${addr}`);
   }
@@ -118,5 +99,3 @@ export function killActivePingProc() {
   }
   activePingProc.kill('SIGINT');
 }
-
-

@@ -1,6 +1,4 @@
 
-import { SysmonCommand } from '../sysmon-args';
-
-export async function speedtestMain(cmd: SysmonCommand) {
+export async function speedtestMain() {
   console.log('Speedtest');
 }

@@ -4,12 +4,12 @@ import os, { CpuInfo } from 'os';
 import { Dll } from '../../models/lists/dll';
 import { CpuDiffStat, CpuStat, MonitorEventData, MonitorReturnValue } from '../../models/monitor/monitor-cmd-types';
 import { MonitorUtil } from '../../util/monitor-util';
-import { MonitorCmdOpts } from './monitor-cmd-opts';
 import { DllNode } from '../../models/lists/dll-node';
+import { MonitorOpts } from '../parse-sysmon-args';
 
 type CpuUsageMonOpts = {
   //
-} & Pick<MonitorCmdOpts, 'SAMPLE_MAX'>;
+} & Pick<MonitorOpts, 'sample_max'>;
 
 type CpuSample = {
   timestamp: number,
@@ -24,6 +24,7 @@ type CpuMonLogCbOpts = {
 const NUM_CPUS = os.cpus().length;
 // const MAX_CPU_SAMPLES = 1e3;
 const CPU_OUT_SCALE = 30;
+const DEFAULT_MAX_CPU_SAMPLES = 1e3;
 
 export function getCpuMon(cmdOpts: CpuUsageMonOpts) {
   let cpuSamples: Dll<CpuSample>;
@@ -67,7 +68,7 @@ export function getCpuMon(cmdOpts: CpuUsageMonOpts) {
       cpuDiffStats,
     });
 
-    doPrune = cpuSamples.length > cmdOpts.SAMPLE_MAX;
+    doPrune = cpuSamples.length > (cmdOpts.sample_max ?? DEFAULT_MAX_CPU_SAMPLES);
     if(doPrune) {
       pruneCpuSamples(cpuSamples);
     }

@@ -7,34 +7,36 @@ import {
   createWriteStream,
   writeFileSync
 } from 'fs';
-import { FIND_DUPLICATES_FLAG_CMD, SCANDIR_CMD_FLAGS, SysmonCommand } from '../sysmon-args';
 import { getDateFileStr } from '../../util/datetime-util';
 import { findDuplicateFiles } from './find-duplicate-files';
 import { ScanDirCbParams, scanDir } from './scan-dir';
+import { ScanDirOpts, getScanDirArgs, getScanDirOpts } from '../parse-sysmon-args';
+import { ParsedArgv2 } from '../parse-argv';
 
-export async function scanDirCmdMain(cmd: SysmonCommand) {
+export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
+  let dirPaths: string[];
+  let opts: ScanDirOpts;
+
   let files: string[];
   let dirs: string[];
   let timer: Timer;
   let scanMs: number;
   let findDuplicatesMs: number;
-  let dirPaths: string[];
   let nowDate: Date;
+
+  dirPaths = getScanDirArgs(parsedArgv.args);
+  opts = getScanDirOpts(parsedArgv.opts);
 
   nowDate = new Date;
 
-  if(cmd.args === undefined) {
-    throw new Error(`at least 1 positional argument required for command '${cmd.command}'`);
-  }
-  dirPaths = cmd.args;
   files = [];
   dirs = [];
   const scanDirCb = (params: ScanDirCbParams) => {
     if(params.isDir) {
       dirs.push(params.fullPath);
       let skipDir = (
-        (cmd.opts?.[SCANDIR_CMD_FLAGS.FIND_DIRS.flag] !== undefined)
-        && cmd.opts[SCANDIR_CMD_FLAGS.FIND_DIRS.flag].value.some(findDirPath => {
+        (opts.find_dirs !== undefined)
+        && opts.find_dirs.some(findDirPath => {
           return params.fullPath.includes(findDirPath);
         })
       );
@@ -81,7 +83,7 @@ export async function scanDirCmdMain(cmd: SysmonCommand) {
   });
   ws.close();
 
-  if(cmd.opts?.[FIND_DUPLICATES_FLAG_CMD.flag] === undefined) {
+  if(opts.find_duplicates === undefined) {
     return;
   }
   timer = Timer.start();

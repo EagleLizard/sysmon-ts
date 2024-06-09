@@ -1,8 +1,8 @@
 
 import { PorterStemmer, SentimentAnalyzer } from 'natural';
-import { SysmonCommand } from '../sysmon-args';
+import { ParsedArgv2 } from '../parse-argv';
 
-export async function nlpMain(cmd: SysmonCommand) {
+export async function nlpMain(parsedArgv: ParsedArgv2) {
   console.log('~ nlp');
 
   let analyzer = new SentimentAnalyzer('English', PorterStemmer, 'afinn');

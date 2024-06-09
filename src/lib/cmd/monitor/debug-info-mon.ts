@@ -2,13 +2,13 @@
 import { MonitorEventData, MonitorReturnValue } from '../../models/monitor/monitor-cmd-types';
 import { getIntuitiveByteString, getIntuitiveTimeString } from '../../util/format-util';
 import { Timer } from '../../util/timer';
-import { MonitorCmdOpts } from './monitor-cmd-opts';
+import { MonitorOpts } from '../parse-sysmon-args';
 
 const elapsedTimer = Timer.start();
 let monitorCount = 0;
 let drawCount = 0;
 
-export function getDebugInfoMon(cmdOpts: MonitorCmdOpts, DRAW_INTERVAL_MS: number) {
+export function getDebugInfoMon(cmdOpts: MonitorOpts, DRAW_INTERVAL_MS: number) {
   let currMem: NodeJS.MemoryUsage;
   let rssMax = -Infinity;
   let heapUsedMax = -Infinity;
@@ -31,7 +31,7 @@ export function getDebugInfoMon(cmdOpts: MonitorCmdOpts, DRAW_INTERVAL_MS: numbe
       elapsedMs = getElapsedMs();
       drawCount++;
       // console.log({ DRAW_INTERVAL_MS });
-      console.log({ SAMPLE_INTERVAL_MS: cmdOpts.SAMPLE_INTERVAL_MS });
+      console.log({ SAMPLE_INTERVAL_MS: cmdOpts.sample_interval });
       console.log({ monitorCount });
       printMem();
       console.log(`elapsed: ${getIntuitiveTimeString(elapsedMs)}`);

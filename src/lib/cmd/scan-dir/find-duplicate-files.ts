@@ -12,6 +12,8 @@ import { HashFileResult, hashFile } from '../../util/hasher';
 import { isObject } from '../../util/validate-primitives';
 import { sleep } from '../../util/sleep';
 import { joinPath } from '../../util/files';
+import { Timer } from '../../util/timer';
+import { getIntuitiveTimeString } from '../../util/format-util';
 
 let maxConcurrentHashPromises: number;
 
@@ -52,8 +54,8 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts) {
   let outStream: FindDuplicatesOutStream;
   let hashMap: Map<string, string[]>;
 
-  let pathMapEntries: [ number, string[] ][]
-  let hashCount: number
+  let pathMapEntries: [ number, string[] ][];
+  let hashCount: number;
   let possibleDupesFileName: string;
   let possibleDupesFilePath: string;
   let possibleDupesWs: FindDuplicatesWriteStream;
@@ -74,7 +76,10 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts) {
     First, find potential duplicates - a file can be a duplicate if it
       has the same size as another file.
   */
+  let potentialDupesTimer = Timer.start();
   pathMapEntries = getPotentialDupes(opts.filePaths);
+  // pathMapEntries = await getPotentialDupesAsync(opts.filePaths);
+  console.log(`getPotentialDupes took: ${getIntuitiveTimeString(potentialDupesTimer.stop())}`);
 
   /*
     Next, pare the list of duplicates down to actual duplicates
@@ -114,11 +119,6 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts) {
       let hashFileRes: HashFileResult;
       let hashPromiseId: number;
       let hashPromise: Promise<void>;
-      let hashStr: string;
-      let hashArr: string[];
-
-      let nextHashProgress: number;
-      let nextHashProgressLong: number;
 
       while(promiseQueue.length >= maxConcurrentHashPromises) {
         await sleep(0);
@@ -127,14 +127,19 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts) {
       const filePath = filePaths[k];
 
       hashFileRes = hashFile(filePath);
-      
+
       hashPromiseId = promiseIdCounter++;
       hashPromise = (async () => {
+        let hashStr: string;
+        let hashArr: string[];
+        let foundQueuedIdx: number;
+        let nextHashProgress: number;
+
         try {
           await hashFileRes.fileReadPromise;
         } catch(e) {
           if(isObject(e) && (
-             (e.code === 'EISDIR')
+            (e.code === 'EISDIR')
             || (e.code === 'ENOENT')
           )) {
             console.error(`${e.code}: ${filePath}`);
@@ -150,20 +155,15 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts) {
         hashArr.push(filePath);
         hashCount++;
         nextHashProgress = (hashCount / totalFileCount) * 100;
-        nextHashProgressLong = (hashCount / totalFileCount) * 100;
-        if(
-          (nextHashProgress - hashProgess) > 0.5
-        ) {
+        if((nextHashProgress - hashProgess) > 0.5) {
           hashProgess = nextHashProgress;
           outStream.write('.');
         }
-        if(
-          (nextHashProgressLong - hashProgessLong) > 2
-        ) {
-          hashProgessLong = nextHashProgressLong;
+        if((nextHashProgress - hashProgessLong) > 2) {
+          hashProgessLong = nextHashProgress;
           outStream.write(`${Math.round((hashCount / totalFileCount) * 100)}`);
         }
-        let foundQueuedIdx = promiseQueue.findIndex(queuedPromise => {
+        foundQueuedIdx = promiseQueue.findIndex(queuedPromise => {
           return queuedPromise[0] === hashPromiseId;
         });
         promiseQueue.splice(foundQueuedIdx, 1);
@@ -195,7 +195,7 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts) {
 
 function getPotentialDupes(filePaths: string[]): [ number, string[] ][] {
   let pathMap: Map<number, string[]>;
-  let pathMapEntries: [ number, string[] ][]
+  let pathMapEntries: [ number, string[] ][];
   pathMap = new Map;
   for(let i = 0; i < filePaths.length; ++i) {
     let stat: Stats;
@@ -204,6 +204,7 @@ function getPotentialDupes(filePaths: string[]): [ number, string[] ][] {
     let filePath = filePaths[i];
     stat = lstatSync(filePath);
     size = stat.size;
+    // size = 0;
     if(!pathMap.has(size)) {
       pathMap.set(size, []);
     }

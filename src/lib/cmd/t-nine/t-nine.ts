@@ -2,24 +2,20 @@
 import readline from 'readline';
 import { Key } from 'readline';
 
-import { SysmonCommand } from '../sysmon-args';
 import { TNineService } from './t-nine-service';
 import { DIGIT_CHAR_MAP, KEY_MAPPINGS, KEY_TO_NUM_MAP } from './t-nine-key-mappings';
 import { DigitTrie, DigitTrieNode } from './digit-trie';
 import { isString } from '../../util/validate-primitives';
+import { ParsedArgv2 } from '../parse-argv';
 
-export async function tNineMain(cmd: SysmonCommand) {
+export async function tNineMain(parsedArgv: ParsedArgv2) {
+  let args: string[];
   let keys: string;
   let numKeys: string;
   setProcName();
   console.log('t9');
-  // if(
-  //   cmd.args === undefined
-  //   || cmd.args.length < 1
-  // ) {
-  //   throw new Error('t9 expects one argument');
-  // }
-  keys = cmd?.args?.join(' ') ?? '';
+  args = parsedArgv.args;
+  keys = args.join(' ') ?? '';
   console.log(keys);
   numKeys = convertKeysToNums(keys);
   console.log(numKeys);

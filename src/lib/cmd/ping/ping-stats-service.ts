@@ -2,7 +2,7 @@
 import { MathNumericType, std } from 'mathjs';
 import { PingStatDto } from '../../models/ping-stat-dto';
 import { isNumber } from '../../util/validate-primitives';
-import { PingStatOpts } from './ping-stat-opts';
+import { _PingStatOpts } from './ping-stat-opts';
 import { PingService } from '../../service/ping-service';
 import { WriteStream } from 'fs';
 import { getDateStr, getDayStr } from '../../util/datetime-util';
@@ -20,7 +20,7 @@ const PRINT_STATS_SCALE = 50;
 
 export class PingStatsService {
 
-  static async getPingStats(opts: PingStatOpts): Promise<PingStatDto[]> {
+  static async getPingStats(opts: _PingStatOpts): Promise<PingStatDto[]> {
     let pingStats: PingStatDto[] | undefined;
     let addrId: number | undefined;
 

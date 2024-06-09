@@ -2,14 +2,15 @@
 import fs, { WriteStream } from 'fs';
 import path from 'path';
 
-import { SysmonCommand } from '../sysmon-args';
 import { PingStatDto } from '../../models/ping-stat-dto';
 import { ADDR_TYPE_ENUM } from '../../models/ping-args';
 import { Timer } from '../../util/timer';
 import { getIntuitiveTimeString } from '../../util/format-util';
 import { OUT_DATA_DIR_PATH } from '../../../constants';
-import { PingStatOpts, getPingStatOpts } from './ping-stat-opts';
+import { _PingStatOpts, _getPingStatOpts } from './ping-stat-opts';
 import { PingStatsService } from './ping-stats-service';
+import { getPingStatOpts } from '../parse-sysmon-args';
+import { ParsedArgv2 } from '../parse-argv';
 
 type AggregatePingStats = {
   minAvg: number;
@@ -23,14 +24,14 @@ type AggregatePingStats = {
 type RunPingStatOpts = {
   pingStats: PingStatDto[];
   ws: WriteStream;
-} & PingStatOpts;
+} & _PingStatOpts;
 
 export const LOCAL_PING_STATS_OUTFILE_NAME = 'out_local.txt';
 export const GLOBAL_PING_STATS_OUTFILE_NAME = 'out_global.txt';
 export const DEFAULT_PING_STATS_OUTFILE_NAME = 'out.txt';
 
-export async function pingStatsMain(cmd: SysmonCommand) {
-  let opts: PingStatOpts;
+export async function pingStatsMain(parsedArgv: ParsedArgv2) {
+  let opts: _PingStatOpts;
   let runOpts: RunPingStatOpts;
   let outFilePath: string;
   let ws: WriteStream;
@@ -39,7 +40,7 @@ export async function pingStatsMain(cmd: SysmonCommand) {
   let getStatsMs: number;
   let timer: Timer;
 
-  opts = getPingStatOpts(cmd);
+  opts = _getPingStatOpts(getPingStatOpts(parsedArgv.opts));
 
   outFilePath = getOutFilePath(opts);
   ws = fs.createWriteStream(outFilePath);
@@ -87,7 +88,7 @@ async function runPingStats(opts: RunPingStatOpts) {
   PingStatsService.printStats(sortedDevPings, aggStats, opts.ws);
 }
 
-function getOutFilePath(opts: PingStatOpts): string {
+function getOutFilePath(opts: _PingStatOpts): string {
   let outFileName: string;
   let outFilePath: string;
   switch(opts.network) {

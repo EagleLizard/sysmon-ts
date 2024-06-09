@@ -1,252 +1,288 @@
 
-import { ParsedArgv2, parseArgv2 } from './parse-argv';
-import { ArgKind, CmdArgs, CmdArgType, CmdDef, CmdFlagArgs, CmdFlagArgKey, CmdFlagDef, CmdStr, FlagArgType, SYSMON_CMD_ENUM, SYSMON_CMD_STRS, SYSMON_CMDS } from './sysmon-cmd-defs';
+import { z } from 'zod';
 
-type CmdFlag = {
-  flagDef: CmdFlagDef;
-  args: FlagArgType;
+export enum SYSMON_CMD_ENUM {
+  PING = 'PING',
+  SCAN_DIR = 'SCAN_DIR',
+  MONITOR = 'MONITOR',
+  PING_STAT = 'PING_STAT',
+  ADMIN = 'ADMIN',
+  SPEEDTEST = 'SPEEDTEST',
+  T_NINE = 'T_NINE',
+  ENCODE = 'ENCODE',
+  NLP = 'NLP',
+}
+
+const PingOptSchema = z.tuple([
+  z.literal('-i').or(z.literal('--wait')).transform(() => 'wait' as const),
+  z.array(z.coerce.number()).length(1),
+]).or(
+  z.tuple([
+    z.literal('-c').or(z.literal('--count')).transform(() => 'count' as const),
+    z.array(z.coerce.number()).length(1),
+  ])
+).or(
+  z.tuple([
+    z.literal('-I').or(z.literal('--iface')).transform(() => 'iface' as const),
+    z.array(z.string()).length(1),
+  ])
+);
+
+const ScanDirOptsSchema = z.tuple([
+  z.literal('-d').or(z.literal('--find-duplicates')).transform(() => 'find_duplicates' as const),
+  z.tuple([]).transform(() => [ true ]).or(
+    z.tuple([
+      z.literal('true').or(z.literal('false')).transform(val => {
+        return val === 'true' ? true : false;
+      }),
+    ]),
+  ),
+]).or(
+  z.tuple([
+    z.literal('-fd').or(z.literal('--find-dirs')).transform(() => 'find_dirs' as const),
+    z.array(z.string()).min(1),
+  ])
+);
+
+const MonitorOptsSchema = z.tuple([
+  z.literal('-si').or(z.literal('--sample-interval')).transform(() => 'sample_interval' as const),
+  z.tuple([
+    z.coerce.number(),
+  ]),
+]).or(
+  z.tuple([
+    z.literal('-sm').or(z.literal('--sample-max')).transform(() => 'sample_max' as const),
+    z.tuple([
+      z.coerce.number(),
+    ]),
+  ])
+);
+
+const PingStatOptsSchema = z.tuple([
+  z.literal('-ip').or(z.literal('--ip')).transform(() => 'ip' as const),
+  z.tuple([
+    z.string(),
+  ]),
+]).or(
+  z.tuple([
+    z.literal('-net').or(z.literal('--network')).transform(() => 'network' as const),
+    z.tuple([
+      z.string(),
+    ]),
+  ])
+).or(
+  z.tuple([
+    z.literal('-b').or(z.literal('--bucket')).transform(() => 'bucket' as const),
+    z.tuple([
+      z.string(),
+    ]),
+  ])
+).or(
+  z.tuple([
+    z.literal('-sd').or(z.literal('--stddev')).transform(() => 'stddev' as const),
+    z.tuple([
+      z.coerce.number(),
+    ]),
+  ])
+).or(
+  z.tuple([
+    z.literal('-s').or(z.literal('--start')).transform(() => 'start' as const),
+    z.tuple([
+      z.string(),
+    ]),
+  ])
+);
+
+const EncodeOptsSchema = z.tuple([
+  z.literal('-d').or(z.literal('--decode')).transform(() => 'decode' as const),
+  z.tuple([]).transform(() => [ true ]).or(
+    z.tuple([
+      z.literal('true').or(z.literal('false')).transform(val => {
+        return val === 'true' ? true : false;
+      }),
+    ]),
+  ),
+]);
+
+export type PingOpts = {
+  wait?: number;
+  count?: number;
+  iface?: string;
 };
 
-export type Cmd<T extends SYSMON_CMD_ENUM = SYSMON_CMD_ENUM> = {
-  kind: T;
-  cmdDef: CmdDef;
-  args?: CmdArgs[T];
-  opts: CmdFlagArgs[T];
-  // opts: Record<CmdOptKey, CmdFlag>;
+export type ScanDirOpts = {
+  find_duplicates?: boolean;
+  find_dirs?: string[];
 }
 
-SYSMON_CMDS[SYSMON_CMD_ENUM.PING].long;
+export type MonitorOpts = {
+  sample_interval?: number;
+  sample_max?: number;
+};
 
-export function parseSysmonArgs2(argv: string[]) {
-  let parsedArgv: ParsedArgv2;
-  let cmd: string;
-  console.log(argv);
-  parsedArgv = parseArgv2(argv);
-  console.log('parsedArgv:');
-  console.log(parsedArgv);
-  cmd = parsedArgv.cmd;
-  // console.log('-- Parsed:');
-  let sysmonCmd = parseSysmonCmd(cmd, parsedArgv);
-  console.log(sysmonCmd);
-  return sysmonCmd;
+export type EncodeOpts = {
+  decode?: boolean;
 }
 
-function parseSysmonCmd(cmdStr: string, parsedArgv: ParsedArgv2): Cmd {
-  let cmdKind: SYSMON_CMD_ENUM;
-  let cmdDef: CmdDef;
-  let cmdArgs: CmdArgType | undefined;
-  let cmdFlags: [flagKey: CmdFlagArgKey, CmdFlag][];
-  // let cmdOpts: Partial<Record<CmdFlagArgKey, CmdFlag>>;
-  let cmdOpts: CmdFlagArgs[keyof typeof SYSMON_CMD_ENUM];
-  let cmd: Cmd;
-
-  cmdFlags = [];
-
-  if(!validateCmdStr(cmdStr)) {
-    throw new Error(`Invalid command: ${cmdStr}`);
-  }
+export function getCmdKind(cmdStr: string) {
   switch(cmdStr) {
     case 'ping':
     case 'p':
-      cmdKind = SYSMON_CMD_ENUM.PING;
-      break;
+      return SYSMON_CMD_ENUM.PING;
     case 'scan-dir':
     case 'sd':
-      cmdKind = SYSMON_CMD_ENUM.SCAN_DIR;
-      break;
+      return SYSMON_CMD_ENUM.SCAN_DIR;
+    case 'monitor':
+    case 'm':
+      return SYSMON_CMD_ENUM.MONITOR;
+    case 'ping-stat':
+    case 'ps':
+      return SYSMON_CMD_ENUM.PING_STAT;
+    case 'admin':
+    case 'a':
+      return SYSMON_CMD_ENUM.ADMIN;
+    case 'speedtest':
+    case 'sp':
+      return SYSMON_CMD_ENUM.SPEEDTEST;
+    case 't9':
+      return SYSMON_CMD_ENUM.T_NINE;
+    case 'encode':
+    case 'e':
+      return SYSMON_CMD_ENUM.ENCODE;
+    case 'nlp':
+      return SYSMON_CMD_ENUM.NLP;
     default:
-      throw new Error(`No command def found for '${cmdStr}'`);
-  }
-
-  cmdDef = SYSMON_CMDS[cmdKind];
-
-  if(cmdDef.arg !== undefined) {
-    let argDef: [string, ArgKind];
-    // let argKey: string;
-    let argKind: string;
-    argDef = cmdDef.arg;
-    [ , argKind ] = argDef;
-    // console.log(`${argKey}: ${argKind}`);
-    switch(argKind) {
-      case 'number':
-        break;
-      case 'number[]':
-        break;
-      case 'string':
-        if(parsedArgv.args.length > 1) {
-          throw new Error(`Expected one argument, received ${parsedArgv.args.length}`);
-        }
-        cmdArgs = parsedArgv.args[0];
-        break;
-      case 'string[]':
-        cmdArgs = parsedArgv.args;
-        break;
-    }
-  }
-
-  if(cmdDef.flags !== undefined) {
-    for(let i = 0; i < parsedArgv.opts.length; ++i) {
-      let currOpt: [string, string[]];
-      let optKey: string;
-      let flagDefTuple: [flagKey: CmdFlagArgKey, CmdFlagDef] | undefined;
-      let flagDef: CmdFlagDef;
-      let flagKey: CmdFlagArgKey;
-      let cmdFlag: CmdFlag;
-      currOpt = parsedArgv.opts[i];
-      optKey = currOpt[0];
-      flagDefTuple = findFlagDef(optKey, cmdDef);
-      if(flagDefTuple === undefined) {
-        throw new Error(`Invalid flag: ${optKey}`);
-      }
-      [ flagKey, flagDef ] = flagDefTuple;
-      cmdFlag = parseCmdFlag(flagDef, currOpt);
-      cmdFlags.push([ flagKey, cmdFlag ]);
-    }
-  }
-  cmdOpts = {};
-  for(let i = 0; i < cmdFlags.length; ++i) {
-    let flagKey: CmdFlagArgKey;
-    let cmdFlag: CmdFlag;
-    [ flagKey, cmdFlag ] = cmdFlags[i];
-    // kind of gross but should be typesafe
-    (cmdOpts as Record<any, CmdFlag>)[flagKey] = cmdFlag;
-  }
-  cmd = {
-    kind: cmdKind,
-    cmdDef,
-    args: cmdArgs,
-    opts: cmdOpts,
-  };
-  return cmd;
-}
-
-function parseCmdFlag(flagDef: CmdFlagDef, flagOpt: [string, string[]]): CmdFlag {
-  let optKey: string;
-  let opts: string[];
-  let flagArg: FlagArgType;
-  let cmdFlag: CmdFlag;
-  // let argLabel: string;
-  let argKind: ArgKind;
-  let flagStr: string;
-  [ optKey, opts ] = flagOpt;
-  if(flagDef.arg === 'boolean') {
-    let flagVal: boolean;
-    if(opts.length === 0) {
-      /*
-        --flag
-      */
-      flagVal = true;
-    } else if(opts.length === 1) {
-      let flagStr: string;
-      /*
-        --flag=<value>
-      */
-      flagStr = opts[0];
-      if(flagStr === 'true') {
-        flagVal = true;
-      } else if(flagStr === 'false') {
-        flagVal = false;
-      } else {
-        /*
-          --flag=1
-          --flag=str
-        */
-        throw new Error(`Invalid boolean flag assignment: ${optKey}=${flagStr}`);
-      }
-    } else {
-      /*
-        --flag=true false
-      */
-      throw new Error(`Invalid flag assignment: ${optKey}=${opts.join(' ')}`);
-    }
-    flagArg = flagVal;
-    cmdFlag = {
-      flagDef,
-      args: flagArg,
-    };
-    return cmdFlag;
-  }
-  // console.log(optKey);
-  // console.log(opts);
-  [ , argKind ] = flagDef.arg;
-  switch(argKind) {
-    case 'number':
-      if(opts.length !== 1) {
-        /*
-            --flag
-            --flag 1 2
-        */
-        throw new Error(`Invalid flag: expected one argument, received ${opts.length}: ${optKey} ${opts.join(' ')}`);
-      }
-      flagStr = opts[0];
-      if(isNaN(+flagStr)) {
-        throw new Error(`Invalid flag: expected a number: ${optKey} ${flagStr}`);
-      }
-      flagArg = +flagStr;
-      break;
-    case 'number[]':
-      let flagVals: number[];
-      flagVals = [];
-      if(opts.length < 1) {
-        /*
-          --flag=
-        */
-        throw new Error(`Invalid flag: ${optKey} expects at least one argument`);
-      }
-      for(let k = 0; k < opts.length; ++k) {
-        let opt = opts[k];
-        if(isNaN(+opt)) {
-          throw new Error(`Invalid flag: '${opt}' is NaN: ${optKey} ${opts.join(' ')}`);
-        }
-        flagVals.push(+opt);
-      }
-      flagArg = flagVals;
-      break;
-    case 'string':
-      if(opts.length !== 1) {
-        throw new Error(`Invalid flag: expected one argument, received: ${opts.length}: ${optKey} ${opts.join(' ')}`);
-      }
-      flagArg = opts[0];
-      break;
-    case 'string[]':
-      if(opts.length < 1) {
-        throw new Error(`Invalid flag: ${optKey} expects at least one argument`);
-      }
-      flagArg = opts;
-  }
-  cmdFlag = {
-    flagDef,
-    args: flagArg,
-  };
-  return cmdFlag;
-}
-
-function findFlagDef(flag: string, cmdDef: CmdDef): [CmdFlagArgKey, CmdFlagDef] | undefined {
-  let flagTuples: [string, CmdFlagDef][];
-  let opt: string;
-  opt = stripOpt(flag);
-  if(cmdDef.flags === undefined) {
-    return;
-  }
-  flagTuples = Object.entries(cmdDef.flags);
-  for(let i = 0; i < flagTuples.length; ++i) {
-    let flagKey: string;
-    let flagDef: CmdFlagDef;
-    [ flagKey, flagDef ] = flagTuples[i];
-    // console.log(flagDef);
-    if(
-      (flagDef.long === opt)
-      || (flagDef.short === opt)
-    ) {
-      return [ flagKey, flagDef ] as [CmdFlagArgKey, CmdFlagDef];
-    }
+      throw new Error(`Invalid command: ${cmdStr}`);
   }
 }
 
-function stripOpt(opt: string) {
-  return opt.replaceAll(/^[-]+/g, '');
+export function getEncodeArgs(args: string[]): string {
+  if(args.length !== 1) {
+    throw new Error(`Invalid decode command: expected one argument, received: ${args.length}`);
+  }
+  return args[0];
 }
 
-function validateCmdStr(cmd: string): cmd is CmdStr {
-  return (SYSMON_CMD_STRS as string[]).includes(cmd);
+export function getEncodeOpts(opts: [string, string[]][]) {
+  let encodeOpts: EncodeOpts;
+  encodeOpts = {};
+  for(let i = 0; i < opts.length; ++i) {
+    let encodeOpt = EncodeOptsSchema.parse(opts[i]);
+    switch(encodeOpt[0]) {
+      case 'decode':
+        encodeOpts.decode = encodeOpt[1][0];
+    }
+  }
+  return encodeOpts;
+}
+
+export function getAdminArgs(args: string[]): string {
+  if(args.length !== 1) {
+    throw new Error(`Invalid admin command: Expected one argument, received: ${args.length}`);
+  }
+  return args[0];
+}
+
+export function getPingArgs(args: string[]): string {
+  if(args.length !== 1) {
+    throw new Error(`Invalid ping command: Expected one address argument, received: ${args.length}`);
+  }
+  return args[0];
+}
+
+export function getPingOpts(opts: [string, string[]][]) {
+  let pingOpts: PingOpts;
+  console.log(opts);
+  pingOpts = {};
+  for(let i = 0; i < opts.length; ++i) {
+    let pingOpt = PingOptSchema.parse(opts[i]);
+    switch(pingOpt[0]) {
+      case 'wait':
+        pingOpts.wait = pingOpt[1][0];
+        break;
+      case 'count':
+        pingOpts.count = pingOpt[1][0];
+        break;
+      case 'iface':
+        pingOpts.iface = pingOpt[1][0];
+        break;
+    }
+  }
+  return pingOpts;
+}
+
+export function getScanDirArgs(args: string[]): string[] {
+  if(args.length < 1) {
+    throw new Error('Invalid scan-dir command: expected at least one path argument');
+  }
+  return args;
+}
+
+export function getScanDirOpts(opts: [string, string[]][]) {
+  let scanDirOpts: ScanDirOpts;
+  console.log(opts);
+  scanDirOpts = {};
+  for(let i = 0; i < opts.length; ++i) {
+    let scanDirOpt = ScanDirOptsSchema.parse(opts[i]);
+    switch(scanDirOpt[0]) {
+      case 'find_duplicates':
+        scanDirOpts.find_duplicates = scanDirOpt[1][0];
+        break;
+      case 'find_dirs':
+        scanDirOpts.find_dirs = scanDirOpt[1];
+        break;
+    }
+  }
+  return scanDirOpts;
+}
+
+export function getMonitorOpts(opts: [string, string[]][]): MonitorOpts {
+  let monitorOpts: MonitorOpts;
+  monitorOpts = {};
+  for(let i = 0; i < opts.length; ++i) {
+    let monitorOpt = MonitorOptsSchema.parse(opts[i]);
+    switch(monitorOpt[0]) {
+      case 'sample_interval':
+        monitorOpts.sample_interval = monitorOpt[1][0];
+        break;
+      case 'sample_max':
+        monitorOpts.sample_max = monitorOpt[1][0];
+        break;
+    }
+  }
+  return monitorOpts;
+}
+
+export type PingStatOpts = {
+  ip?: string;
+  network?: string;
+  bucket?: string;
+  stddev?: number;
+  start?: string;
+}
+
+export function getPingStatOpts(opts: [string, string[]][]): PingStatOpts {
+  let pingStatOpts: PingStatOpts;
+  pingStatOpts = {};
+  for(let i = 0; i < opts.length; ++i) {
+    let pingStatOpt = PingStatOptsSchema.parse(opts[i]);
+    switch(pingStatOpt[0]) {
+      case 'ip':
+        pingStatOpts.ip = pingStatOpt[1][0];
+        break;
+      case 'network':
+        pingStatOpts.network = pingStatOpt[1][0];
+        break;
+      case 'bucket':
+        pingStatOpts.bucket = pingStatOpt[1][0];
+        break;
+      case 'stddev':
+        pingStatOpts.stddev = pingStatOpt[1][0];
+        break;
+      case 'start':
+        pingStatOpts.start = pingStatOpt[1][0];
+        break;
+    }
+  }
+  return pingStatOpts;
 }

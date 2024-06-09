@@ -2,8 +2,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Deferred } from '../../../test/deferred';
 import { killActivePingProc, pingMain } from './ping';
-import { SysmonCommand, parseSysmonArgs } from '../sysmon-args';
 import { PingProcOpts, PingResult } from './ping-proc';
+import { ParsedArgv2, parseArgv2 } from '../parse-argv';
 
 const pingMocks = vi.hoisted(() => {
   return {
@@ -50,7 +50,7 @@ describe('ping command tests', () => {
   let resolvedAddrMock: string;
   let srcAddrMock: string;
   let argvMock: string[];
-  let cmdMock: SysmonCommand;
+  let cmdMock: ParsedArgv2;
   let pingResMock: PingResult;
 
   let deferredSpawnPing: Deferred<string | void>;
@@ -93,7 +93,7 @@ describe('ping command tests', () => {
 
   it('tests ping with no args', async () => {
     let pingPromise: Promise<void>;
-    cmdMock = parseSysmonArgs(argvMock);
+    cmdMock = parseArgv2(argvMock);
     pingPromise = pingMain(cmdMock);
     deferredSpawnPing.resolve();
     await vi.waitFor(() => {
@@ -119,7 +119,7 @@ describe('ping command tests', () => {
       '-c', `${countMock}`,
       '-I', ifaceMock,
     ];
-    cmdMock = parseSysmonArgs(argvMock);
+    cmdMock = parseArgv2(argvMock);
     pingPromise = pingMain(cmdMock);
     deferredSpawnPing.resolve();
     await vi.waitFor(() => {
@@ -140,7 +140,7 @@ describe('ping command tests', () => {
 
   it('tests killActivePingProc is called', async () => {
     let pingPromise: Promise<void>;
-    cmdMock = parseSysmonArgs(argvMock);
+    cmdMock = parseArgv2(argvMock);
     pingPromise = pingMain(cmdMock);
     deferredSpawnPing.resolve();
     await vi.waitFor(() => {

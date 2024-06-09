@@ -3,7 +3,7 @@ import { config } from '../../config';
 import { logger } from '../logger';
 import { ADDR_TYPE_ENUM, TimeBucketUnit } from '../models/ping-args';
 import { PingStatDto } from '../models/ping-stat-dto';
-import { isNumber } from '../util/validate-primitives';
+import { isNumber, isObject } from '../util/validate-primitives';
 
 export type InsertPingParams = {
   srcAddr: string;
@@ -31,7 +31,7 @@ export class PingService {
     url = `${config.EZD_API_BASE_URL}/v1/addr/${addrId}/ping/stats`;
     pingStatsRawRespone = await fetch(url);
     let pingStatsResp = await pingStatsRawRespone.json();
-    if(Array.isArray(pingStatsResp.result)) {
+    if(isObject(pingStatsResp) && Array.isArray(pingStatsResp.result)) {
       pingStatResults = pingStatsResp.result.map((rawStat: unknown) => {
         return PingStatDto.deserialize(rawStat);
       });
@@ -68,7 +68,7 @@ export class PingService {
     pingStatsRawResp = await fetch(url);
     let pingStatsResp = await pingStatsRawResp.json();
 
-    if(Array.isArray(pingStatsResp.result)) {
+    if(isObject(pingStatsResp) && Array.isArray(pingStatsResp.result)) {
       pingStatsResults = pingStatsResp.result.map((rawStat: unknown) => {
         return PingStatDto.deserialize(rawStat);
       });
@@ -92,7 +92,11 @@ export class PingService {
       });
       let respBody = await resp.json();
       // console.log(respBody);
-      if(!isNumber(respBody.result?.ping_addr_id)) {
+      if(
+        !isObject(respBody)
+        || !isObject(respBody.result)
+        || !isNumber(respBody.result?.ping_addr_id)
+      ) {
         return;
       }
       return respBody.result.ping_addr_id;

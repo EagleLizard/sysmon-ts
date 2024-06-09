@@ -1,9 +1,9 @@
 
 import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
-import { SysmonCommand, parseSysmonArgs } from '../sysmon-args';
 import { GLOBAL_PING_STATS_OUTFILE_NAME, LOCAL_PING_STATS_OUTFILE_NAME, pingStatsMain } from './ping-stats';
 import { WriteStream } from 'fs';
 import { PingStatDto } from '../../models/ping-stat-dto';
+import { ParsedArgv2, parseArgv2 } from '../parse-argv';
 
 const pingStatsMocks = vi.hoisted(() => {
   return {
@@ -49,7 +49,7 @@ describe('ping-stats tests', () => {
   let pingStatsMock: PingStatDto[];
 
   let argvMock: string[];
-  let cmdMock: SysmonCommand;
+  let cmdMock: ParsedArgv2;
 
   let mockWs: Mocked<MockWs>;
 
@@ -84,7 +84,7 @@ describe('ping-stats tests', () => {
 
   it('tests pingStatsMain', () => {
     let pingStatsPromise: Promise<void>;
-    cmdMock = parseSysmonArgs(argvMock);
+    cmdMock = parseArgv2(argvMock);
 
     pingStatsPromise = pingStatsMain(cmdMock);
 
@@ -97,7 +97,7 @@ describe('ping-stats tests', () => {
     argvMock = argvMock.concat([
       '-net', 'local',
     ]);
-    cmdMock = parseSysmonArgs(argvMock);
+    cmdMock = parseArgv2(argvMock);
     pingStatsPromise = pingStatsMain(cmdMock);
     await pingStatsPromise;
     expect(pingStatsMocks.createWriteStream.mock.lastCall[0])
@@ -109,7 +109,7 @@ describe('ping-stats tests', () => {
     argvMock = argvMock.concat([
       '-net', 'global',
     ]);
-    cmdMock = parseSysmonArgs(argvMock);
+    cmdMock = parseArgv2(argvMock);
     pingStatsPromise = pingStatsMain(cmdMock);
     await pingStatsPromise;
     expect(pingStatsMocks.createWriteStream.mock.lastCall[0])
