@@ -1,5 +1,5 @@
 
-import { describe, it, expect, beforeEach, Vitest, vi, Mock, Mocked } from 'vitest';
+import { describe, it, expect, beforeEach, Vitest, vi, Mock } from 'vitest';
 import { LogRenderer } from './log-renderer';
 
 const readlineMocks = vi.hoisted(() => {
