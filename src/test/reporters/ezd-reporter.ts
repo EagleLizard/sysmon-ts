@@ -44,6 +44,7 @@ export default class EzdReporter implements Reporter {
     this.ctx = ctx;
     this.executionTimer = Timer.start();
     this.logRenderer = LogRenderer.init(this.ctx, {
+      logFn: console.log,
       maxLines: process.stdout.rows,
       clearScreen: this.ctx.config.clearScreen,
       // doClear: false,

@@ -6,6 +6,7 @@ import { ErrorFmtUtil } from './error-fmt-util';
 
 type LogRendererOpts = {
   maxLines: number;
+  logFn: (line: string) => void;
   clearScreen?: boolean;
   doClear?: boolean;
 };
@@ -16,6 +17,7 @@ type LogRendererOpts = {
 
 export class LogRenderer {
   maxLines: number;
+  logFn: LogRendererOpts['logFn'];
 
   doClearScreen: boolean;
   doClear: boolean;
@@ -27,14 +29,15 @@ export class LogRenderer {
     opts: LogRendererOpts,
   ) {
 
+    this.logFn = opts.logFn;
     this.maxLines = opts.maxLines;
     this.doClearScreen = opts.clearScreen ?? true;
     this.doClear = opts.doClear ?? true;
 
-    const _clearHighlightCach = this.ctx.logger.clearHighlightCache;
+    const _clearHighlightCache = this.ctx.logger.clearHighlightCache;
     this.ctx.logger.clearHighlightCache = (filename?: string | undefined) => {
       ErrorFmtUtil.clearHighlightCache();
-      _clearHighlightCach.bind(this.ctx.logger)(filename);
+      _clearHighlightCache.bind(this.ctx.logger)(filename);
     };
   }
 
@@ -71,8 +74,8 @@ export class LogRenderer {
     // readline.cursorTo(process.stdout, 0);
     for(let i = 0; i < this.currLinesLogged; ++i) {
       // let y = i === 0 ? null : -1;
-      readline.clearLine(process.stdout, 0);
-      readline.moveCursor(process.stdout, 0, -1);
+      readline.clearLine(this.outputStream, 0);
+      readline.moveCursor(this.outputStream, 0, -1);
     }
     this.currLinesLogged = 0;
   }
@@ -89,7 +92,7 @@ export class LogRenderer {
 
   private logLine(line: string) {
     this.currLinesLogged++;
-    console.log(line);
+    this.logFn(line);
   }
 
   private errorLine(line: string) {

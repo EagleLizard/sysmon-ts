@@ -113,6 +113,7 @@ export class ErrorFmtUtil {
 }
 
 async function getHighlightedFrame(stackTraceLine: string, opts: FormatErrorCodeFrameOpts): Promise<CodeFrame> {
+  let stackTraceLineParts: string[];
   let codePathStr: string | undefined;
   let codeLineStr: string | undefined;
   let codeColStr: string | undefined;
@@ -135,7 +136,10 @@ async function getHighlightedFrame(stackTraceLine: string, opts: FormatErrorCode
   lineCount = 0;
   fileLines = [];
   snippetLineNumStart = Infinity;
-  [ codePathStr, codeLineStr, codeColStr ] = stackTraceLine.split(':');
+  stackTraceLineParts = stackTraceLine.split(':');
+  codeColStr = stackTraceLineParts.pop();
+  codeLineStr = stackTraceLineParts.pop();
+  codePathStr = stackTraceLineParts.pop();
   if(
     codePathStr === undefined
     || codeLineStr === undefined
