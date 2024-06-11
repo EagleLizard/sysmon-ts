@@ -2,7 +2,6 @@
 import path from 'path';
 import { Task, File, Vitest, ErrorWithDiff } from 'vitest';
 
-import { PrintErrorSummayOpts } from './task-fmt-util';
 import { TaskUtil } from './task-util';
 import { Formatter } from './ezd-reporter-colors';
 import { FormatResultOpts, ReporterFmtUtil } from './reporter-fmt-util';
@@ -14,6 +13,7 @@ export type FormatErrorsSummaryOpts = {
   colors: {
     dim: Formatter;
     fail: Formatter;
+    fail_label: Formatter;
     pass: Formatter;
     error_name: Formatter;
     failed_tasks_label: Formatter;
@@ -44,8 +44,8 @@ export type FormatErrorsSummaryResult = {
 }
 
 export type GetErrorBannerOpts = {
+  cols: number;
   colors: {
-    dim: Formatter,
     line: Formatter,
     label: Formatter,
   }
@@ -58,12 +58,13 @@ export class ErrorSummaryUtil {
     let banner: string;
     title = opts.colors.label(` Failed ${label}: ${errorCount} `);
     banner = ReporterFmtUtil.getDivider(title, {
+      cols: opts.cols,
       color: opts.colors.line,
     });
     return banner;
   }
 
-  static getErrorsSummary(files: File[], errors: unknown[], opts: PrintErrorSummayOpts): ErrorsSummary {
+  static getErrorsSummary(files: File[], errors: unknown[]): ErrorsSummary {
     let suites: Task[];
     let tests: Task[];
     let failedSuites: Task[];
@@ -128,7 +129,7 @@ export class ErrorSummaryUtil {
       if(filePath !== undefined) {
         taskName += ` ${colors.dim()} ${path.relative(opts.rootPath, filePath)}`;
       }
-      errorLines.push(`${colors.fail.bold.inverse(' FAIL ')} ${taskName}`);
+      errorLines.push(`${colors.fail_label(' FAIL ')} ${taskName}`);
     }
     if(error === undefined) {
       throw new Error('Undefined error in printErrors()');

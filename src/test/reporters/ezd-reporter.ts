@@ -240,12 +240,15 @@ async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintE
   let formatErrorsOpts: FormatErrorsOpts;
   let failedTotal: number;
   let errorCount: number;
-  errorsSummary = ErrorSummaryUtil.getErrorsSummary(files, errors, opts);
+  let cols: number;
+  errorsSummary = ErrorSummaryUtil.getErrorsSummary(files, errors);
   failedTotal = errorsSummary.suitesCount + errorsSummary.testsCount;
   errorCount = 0;
+  cols = process.stdout.columns;
   const getErrorDivider = () => {
     return EzdReporterColors.printErrors.dim(
       EzdReporterColors.printErrors.fail(ReporterFmtUtil.getDivider(`[${++errorCount}/${failedTotal}]`, {
+        cols,
         rightPad: 3,
       }))
     );
@@ -258,6 +261,7 @@ async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintE
   };
   if(errorsSummary.suitesCount > 0) {
     let suitesBanner = ErrorSummaryUtil.getErrorBanner('Suites', errorsSummary.suitesCount, {
+      cols,
       colors: EzdReporterColors.errorBanner,
     });
     opts.logger.log(`\n${suitesBanner}\n`);
@@ -273,6 +277,7 @@ async function printErrorsSummary(files: File[], errors: unknown[], opts: PrintE
   }
   if(errorsSummary.testsCount > 0) {
     let testsBanner = ErrorSummaryUtil.getErrorBanner('Tests', errorsSummary.testsCount, {
+      cols,
       colors: EzdReporterColors.errorBanner,
     });
     opts.logger.log(`\n${testsBanner}\n`);

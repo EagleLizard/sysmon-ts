@@ -112,6 +112,7 @@ const colorCfg = {
   // fail: ezdColors.magenta.bold,
   fail: ezdColors.purple,
   fail_2: ezdColors.purple_light,
+  fail_label: ezdColors.purple.bold.inverse,
   failComplement: ezdColors.orange_light,
   // suite: ezdColors.pc.yellow,
   // suite: ezdColors.pastel_orange,
@@ -197,13 +198,13 @@ const printErrors: FormatErrorsSummaryOpts['colors'] = {
   dim: colorCfg.dim,
   pass: colorCfg.pass,
   fail: colorCfg.fail,
+  fail_label: colorCfg.fail_label,
   error_name: colorCfg.fail_2.underline,
   failed_tasks_label: colorCfg.fail.bold.inverse,
   trace: colorCfg.trace,
   error_pos: colorCfg.trace.dim,
 };
 const errorBanner: GetErrorBannerOpts['colors'] = {
-  dim: colorCfg.dim,
   line: colorCfg.fail,
   label: colorCfg.fail.bold.inverse
 };

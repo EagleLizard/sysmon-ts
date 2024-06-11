@@ -10,6 +10,7 @@ import { getIntuitiveTime } from '../../lib/util/format-util';
 import { Formatter } from './ezd-reporter-colors';
 
 export type GetDividerOpts = {
+  cols: number,
   rightPad?: number;
   color?: Formatter;
 };
@@ -95,7 +96,7 @@ export class ReporterFmtUtil {
     return resStr;
   }
 
-  static getDivider(msg: string, opts?: GetDividerOpts) {
+  static getDivider(msg: string, opts: GetDividerOpts) {
     let numCols: number;
     let msgLen: number;
     let left: number;
@@ -103,12 +104,9 @@ export class ReporterFmtUtil {
     let leftStr: string;
     let rightStr: string;
     let dividerStr: string;
-    if(opts === undefined) {
-      opts = {};
-    }
 
     msgLen = stripAnsi(msg).length;
-    numCols = process.stdout.columns;
+    numCols = opts.cols;
     if(opts.rightPad !== undefined) {
       left = numCols - msgLen - opts.rightPad;
       right = opts.rightPad;
