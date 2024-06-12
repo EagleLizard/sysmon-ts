@@ -1,13 +1,13 @@
 
-import fs from 'fs/promises';
 import { ReadStream, createReadStream } from 'fs';
 import path from 'path';
 import readline from 'readline';
 
 import { DATA_DIR_PATH } from '../../../constants';
+import { readFileByLine } from '../../util/files';
 
 export class TNineService {
-  static async loadWords() {
+  static async loadWords(): Promise<string[]> {
     console.log('loadWords()');
     let rawWords: string[];
     rawWords = await loadRawWords();
@@ -101,18 +101,20 @@ async function loadBaseFrequencies(): Promise<Map<string, number>> {
 
 async function loadRawWords() {
   let wordFilePath: string;
-  let fileData: Buffer;
   let fileLines: string[];
   wordFilePath = [
     DATA_DIR_PATH,
     'words.txt',
   ].join(path.sep);
-  fileData = await fs.readFile(wordFilePath);
-  fileLines = fileData.toString()
-    .split('\n')
-    .filter(fileLine => {
-      return fileLine.trim().length > 0;
-    })
-  ;
+  fileLines = [];
+  const lineCb = (line: string) => {
+    line = line.trim();
+    if(line.length > 0) {
+      fileLines.push(line);
+    }
+  };
+  await readFileByLine(wordFilePath, {
+    lineCb,
+  });
   return fileLines;
 }
