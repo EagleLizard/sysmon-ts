@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node dist/main.js sd ./ -d e -f g",
+    "start": "node dist/main.js h",
     "__start": "node dist/main.js m -si 50 -sm 1e3",
     "dev": "nodemon --ext '*' -w dist -w src --exec 'npm start'",
     "build": "tsc",
@@ -33,7 +33,6 @@
     "vitest": "^1.6.0"
   },
   "dependencies": {
-    "chalk": "^5.3.0",
     "cli-highlight": "^2.1.11",
     "csv": "^6.3.8",
     "date-fns": "^3.3.1",
