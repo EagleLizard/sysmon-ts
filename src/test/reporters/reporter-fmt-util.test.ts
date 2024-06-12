@@ -1,8 +1,9 @@
 
-import { describe, it, expect, beforeEach, UserConsoleLog, vi, File, Suite, Task, Test, Vitest } from 'vitest';
+import { describe, it, expect, beforeEach, UserConsoleLog, vi, Suite, Task, Vitest } from 'vitest';
 import { FormatResultOpts, FormatUserConsoleLogOpts, ReporterFmtUtil } from './reporter-fmt-util';
 import { Formatter } from './ezd-reporter-colors';
 import { GetStateSymbolOpts } from './task-util';
+import { TaskMocks, getTaskMocks } from '../task-mocks';
 
 describe('reporter-fmt-util tests', () => {
   let projectNameMock: string;
@@ -68,7 +69,7 @@ describe('reporter-fmt-util tests', () => {
     expect(formattedLog).toContain('stderr');
     expect(formattedLog).toContain(taskMocks.file.name);
     expect(formattedLog).toContain(taskMocks.suite.name);
-    expect(formattedLog).toContain(taskMocks.test.name);
+    expect(formattedLog).toContain(taskMocks.failedTest.name);
     expect(colorsMock.user_error_log).toHaveBeenCalledOnce();
     expect(colorsMock.user_log).toHaveBeenCalledTimes(0);
   });
@@ -208,86 +209,4 @@ describe('reporter-fmt-util tests', () => {
 
 function getFormatterMock() {
   return vi.fn().mockImplementation((val: string) => val);
-}
-
-type TaskMocks = {
-  file: File;
-  suite: Suite;
-  test: Task;
-  failedTest: Task;
-};
-
-function getTaskMocks(opts: {
-  projectName: string;
-  filepath: string;
-}): TaskMocks {
-  let taskMocks: TaskMocks;
-  let fileMock: File;
-  let suiteMock: Suite;
-  let testMock: Task;
-  let failTestMock: Task;
-  fileMock = {
-    type: 'suite',
-    id: 'mock_file_id',
-    filepath: '/path/to/file/mock_file',
-    projectName: opts.projectName,
-    name: 'mock_file',
-    tasks: [],
-    mode: 'run',
-    result: {
-      state: 'pass',
-    },
-    meta: {},
-  };
-  suiteMock = {
-    type: 'suite',
-    id: 'mock_suite_id',
-    file: fileMock,
-    filepath: opts.filepath,
-    projectName: opts.projectName,
-    name: 'suite_mock_name',
-    tasks: [],
-    mode: 'run',
-    result: {
-      state: 'pass',
-      duration: 5,
-    },
-    meta: {},
-  };
-  fileMock.tasks.push(suiteMock);
-  testMock = {
-    type: 'test',
-    id: 'mock_test_id',
-    context: undefined as unknown as Test['context'],
-    suite: suiteMock,
-    file: fileMock,
-    name: 'mock_test',
-    mode: 'run',
-    result: {
-      state: 'pass',
-    },
-    meta: {},
-  };
-  failTestMock = {
-    type: 'test',
-    id: 'mock_failed_test_id',
-    context: undefined as unknown as Test['context'],
-    suite: suiteMock,
-    file: fileMock,
-    name: 'mock_test',
-    mode: 'run',
-    result: {
-      state: 'fail',
-    },
-    meta: {},
-  };
-  suiteMock.tasks.push(testMock);
-  suiteMock.tasks.push(failTestMock);
-  taskMocks = {
-    file: fileMock,
-    suite: suiteMock,
-    test: testMock,
-    failedTest: failTestMock,
-  };
-  return taskMocks;
 }

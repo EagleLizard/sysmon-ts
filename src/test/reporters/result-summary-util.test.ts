@@ -83,7 +83,7 @@ describe('result-summary-util tests', () => {
     });
     expect(resultSummary).toEqual(resultSummaryMock);
   });
-  it('tests ResultSummaryUtil.formatResultSUmmary()', () => {
+  it('tests ResultSummaryUtil.formatResultSummary()', () => {
     let formattedResultSummary: string[];
     let expectedSummaryStrs: string[];
     const getFormatterMock = () => vi.fn().mockImplementation((val: string) => val);

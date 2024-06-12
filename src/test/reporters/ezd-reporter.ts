@@ -8,7 +8,7 @@ import { EzdReporterColors } from './ezd-reporter-colors';
 import { ReporterFmtUtil } from './reporter-fmt-util';
 import { Timer } from '../../lib/util/timer';
 import { LogRenderer } from './log-renderer';
-import { PrintErrorSummayOpts, PrintResultsOpts, TaskFmtUtil } from './task-fmt-util';
+import { PrintErrorSummayOpts, GetResultsOpts, TaskFmtUtil } from './task-fmt-util';
 import { ResultSummary, ResultSummaryUtil } from './result-summary-util';
 import { ErrorSummaryUtil, ErrorsSummary, FormatErrorsOpts } from './error-summary-util';
 import { TaskUtil } from './task-util';
@@ -205,6 +205,10 @@ function printLog(log: UserConsoleLog, opts: PrintLogOpts) {
   });
 
   logWs.write(logStr);
+}
+
+type PrintResultsOpts = GetResultsOpts & {
+  logger: LogRenderer;
 }
 
 type PrintResultsSummaryOpts = PrintResultsOpts & {

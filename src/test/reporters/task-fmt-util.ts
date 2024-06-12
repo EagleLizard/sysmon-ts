@@ -6,8 +6,7 @@ import { ReporterFmtUtil } from './reporter-fmt-util';
 import { EzdReporterColors } from './ezd-reporter-colors';
 import { TaskUtil } from './task-util';
 
-export type PrintResultsOpts = {
-  logger: LogRenderer;
+export type GetResultsOpts = {
   config: Vitest['config'];
   onlyFailed?: boolean;
   showAllDurations?: boolean;
@@ -21,7 +20,7 @@ export type PrintErrorSummayOpts = {
 };
 
 export class TaskFmtUtil {
-  static getResults(tasks: Task[], opts: PrintResultsOpts, outputLines?: string[], level = 0): string[] {
+  static getResults(tasks: Task[], opts: GetResultsOpts, outputLines?: string[], level = 0): string[] {
     let maxLevel: number;
     outputLines = outputLines ?? [];
     maxLevel = opts.maxLevel ?? Infinity;
