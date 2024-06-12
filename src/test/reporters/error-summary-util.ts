@@ -127,7 +127,7 @@ export class ErrorSummaryUtil {
       }
       taskName = TaskUtil.getFullName(currTask, colors.dim(' > '));
       if(filePath !== undefined) {
-        taskName += ` ${colors.dim()} ${path.relative(opts.rootPath, filePath)}`;
+        taskName += ` ${colors.dim('')} ${path.relative(opts.rootPath, filePath)}`;
       }
       errorLines.push(`${colors.fail_label(' FAIL ')} ${taskName}`);
     }

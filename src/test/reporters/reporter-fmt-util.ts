@@ -180,9 +180,9 @@ export class ReporterFmtUtil {
       [ outTimeVal, outTimeUnit ] = getIntuitiveTime(task.result.duration);
       formattedOutUnitVal = opts.colors.dim(outTimeUnit);
       if(isSlowTask) {
-        formattedOutTimeVal = ` ${opts.colors.duration_slow(outTimeVal)}`;
+        formattedOutTimeVal = ` ${opts.colors.duration_slow(`${outTimeVal}`)}`;
       } else if(opts.showAllDurations) {
-        formattedOutTimeVal = ` ${opts.colors.duration(outTimeVal)}`;
+        formattedOutTimeVal = ` ${opts.colors.duration(`${outTimeVal}`)}`;
       } else {
         formattedOutTimeVal = '';
         formattedOutUnitVal = '';
