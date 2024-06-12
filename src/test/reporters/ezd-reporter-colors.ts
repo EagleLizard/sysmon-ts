@@ -6,6 +6,8 @@ import { FormatResultSummaryOpts, GetResultSummaryOpts } from './result-summary-
 import { FormatErrorsSummaryOpts, GetErrorBannerOpts } from './error-summary-util';
 import { CliColors } from '../../lib/service/cli-colors';
 
+export type Formatter = (str: string) => string;
+
 const chartreuse = CliColors.rgb(127, 255, 0);
 // const chartreuse_light = chalk.rgb(213, 255, 171);
 // const chartreuse_light = chalk.rgb(231, 252, 210);
