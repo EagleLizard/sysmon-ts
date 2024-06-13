@@ -49,7 +49,7 @@ export function hashFile(filePath: string): HashFileResult {
   let readPromise: Promise<void>;
   hasher = getHasher();
   rs = createReadStream(filePath);
-  
+
   const chunkCb = (chunk: string | Buffer) => {
     hasher.update(chunk);
   };

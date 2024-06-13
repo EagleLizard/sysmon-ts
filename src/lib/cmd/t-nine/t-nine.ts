@@ -62,10 +62,6 @@ export async function tNineMain(parsedArgv: ParsedArgv2) {
     let inputCharsChanged: boolean;
     let inputDigits: string;
     let outLines: string[];
-    // console.log({
-    //   key,
-    //   str,
-    // });
 
     outLines = [];
 

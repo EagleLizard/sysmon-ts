@@ -11,12 +11,7 @@ import { encodeMain } from './cmd/encode/encode-cmd';
 import { SYSMON_CMD_ENUM, getCmdKind } from './cmd/parse-sysmon-args';
 import { parseArgv2 } from './cmd/parse-argv';
 
-const testArgv = 'node dist/main.js p beta.tylerwhited.com -i 0.5 --count 3 -I wlan0'.split(' ');
-const testArgv2 = 'node dist/main.js sd ./test-a ./test-b -d --find-dirs ./path'.split(' ');
-
 export async function sysmonMain() {
-  // let parsedArgv = parseArgv2(testArgv);
-  // let parsedArgv = parseArgv2(testArgv2);
   let parsedArgv = parseArgv2(process.argv);
   let cmdKind = getCmdKind(parsedArgv.cmd);
   switch(cmdKind) {

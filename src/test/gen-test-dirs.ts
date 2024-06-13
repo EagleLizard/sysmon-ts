@@ -63,7 +63,7 @@ export function genTestDirs(opts: GenTestDirsOpts): GenTestDirRes {
         currDupeCount = 0;
       }
       dupeMap.set(currFileData, currDupeCount + 1);
-      
+
       fs.writeFileSync(currFilePath, currFileData);
       fileCount++;
     }

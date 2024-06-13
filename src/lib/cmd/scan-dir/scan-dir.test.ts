@@ -19,10 +19,10 @@ const RECURSIVE_TEST_DIR_PATH = joinPath([
 describe('scanDir tests', () => {
   let flatTestGenRes: GenTestDirRes;
   let recursiveTestGenRes: GenTestDirRes;
-  
+
   let findDupesOutStreamMock: Mocked<FindDuplicateFilesOpts['outStream']>;
   let scanDirOutStreamMock: Mocked<ScanDirOpts['outStream']>;
-  
+
   let possibleDupesWsMock: Mocked<FindDuplicateFilesOpts['possibleDupesWs']>;
   let dupesWsMock: Mocked<FindDuplicateFilesOpts['dupesWs']>;
 
@@ -70,7 +70,7 @@ describe('scanDir tests', () => {
       close: vi.fn(),
     };
   });
-  
+
   it('scans the correct number of files and dirs [flat]', () => {
     let fileCount = 0;
     let dirCount = 0;
@@ -146,10 +146,9 @@ describe('scanDir tests', () => {
     expect(dupeCount).toBe(recursiveTestGenRes.numFileDupes);
     expect(findDupesOutStreamMock?.write).toHaveBeenCalled();
 
-    expect(possibleDupesWsMock?.write).toHaveBeenCalled()
-    expect(possibleDupesWsMock?.close).toHaveBeenCalledOnce()
-    expect(dupesWsMock?.write).toHaveBeenCalled()
-    expect(dupesWsMock?.close).toHaveBeenCalledOnce()
+    expect(possibleDupesWsMock?.write).toHaveBeenCalled();
+    expect(possibleDupesWsMock?.close).toHaveBeenCalledOnce();
+    expect(dupesWsMock?.write).toHaveBeenCalled();
+    expect(dupesWsMock?.close).toHaveBeenCalledOnce();
   });
-  
 });
