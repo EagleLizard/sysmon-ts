@@ -1,8 +1,8 @@
 
 import path from 'path';
-import fs from 'fs';
-import { mkdirIfNotExist } from '../lib/util/files';
+
 import { isNumber } from '../lib/util/validate-primitives';
+import { IFs } from 'memfs';
 
 export type GenTestDirRes = {
   numFiles: number;
@@ -17,7 +17,7 @@ type GenTestDirsOpts = {
   filesPerDir: number
 };
 
-export function genTestDirs(opts: GenTestDirsOpts): GenTestDirRes {
+export function genTestDirs(fs: IFs, opts: GenTestDirsOpts): GenTestDirRes {
   let dupeMap: Map<string, number>;
   let dupeMapKeys: string[];
   let dupeCount: number;
@@ -39,7 +39,7 @@ export function genTestDirs(opts: GenTestDirsOpts): GenTestDirRes {
           ...soFar,
           currDirName,
         ].join(path.sep);
-        mkdirIfNotExist(currDirPath);
+        fs.mkdirSync(currDirPath);
         dirCount++;
         soFar.push(currDirName);
         _genTestDirs(soFar, depth + 1);

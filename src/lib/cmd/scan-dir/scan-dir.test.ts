@@ -1,20 +1,18 @@
 
-import fs from 'fs';
+// import fs from 'fs';
 import { describe, it, expect, beforeAll, Mocked, vi, beforeEach } from 'vitest';
-import { joinPath, mkdirIfNotExist } from '../../util/files';
-import { EZD_TEST_DIR_PATH, SCAN_DIR_TEST_DIR_PATH } from '../../../test/test-constants';
+import { fs as mfs } from 'memfs';
+
 import { ScanDirCbParams, ScanDirOpts, scanDir } from './scan-dir';
 import { GenTestDirRes, genTestDirs } from '../../../test/gen-test-dirs';
 import { FindDuplicateFilesOpts, findDuplicateFiles } from './find-duplicate-files';
 
-const FLAT_TEST_DIR_PATH = joinPath([
-  SCAN_DIR_TEST_DIR_PATH,
-  'flat',
-]);
-const RECURSIVE_TEST_DIR_PATH = joinPath([
-  SCAN_DIR_TEST_DIR_PATH,
-  'recursive',
-]);
+const FLAT_TEST_DIR_PATH = '/flat';
+const RECURSIVE_TEST_DIR_PATH = '/recursive';
+
+vi.mock('fs', () => {
+  return mfs;
+});
 
 describe('scanDir tests', () => {
   let flatTestGenRes: GenTestDirRes;
@@ -27,29 +25,23 @@ describe('scanDir tests', () => {
   let dupesWsMock: Mocked<FindDuplicateFilesOpts['dupesWs']>;
 
   beforeAll(() => {
-    /* delete test dirs if they exist */
-    fs.rmSync(SCAN_DIR_TEST_DIR_PATH, {
-      recursive: true,
-    });
 
     /* init test dirs */
-    mkdirIfNotExist(EZD_TEST_DIR_PATH);
-    mkdirIfNotExist(SCAN_DIR_TEST_DIR_PATH);
-
-    mkdirIfNotExist(FLAT_TEST_DIR_PATH);
-    flatTestGenRes = genTestDirs({
+    console.log({ FLAT_TEST_DIR_PATH });
+    mfs.mkdirSync(FLAT_TEST_DIR_PATH);
+    flatTestGenRes = genTestDirs(mfs, {
       basePath: FLAT_TEST_DIR_PATH,
       dirDepth: 0,
       dirsPerLevel: 4,
       filesPerDir: 4,
     });
 
-    mkdirIfNotExist(RECURSIVE_TEST_DIR_PATH);
-    recursiveTestGenRes = genTestDirs({
+    mfs.mkdirSync(RECURSIVE_TEST_DIR_PATH);
+    recursiveTestGenRes = genTestDirs(mfs, {
       basePath: RECURSIVE_TEST_DIR_PATH,
-      dirDepth: 3,
-      dirsPerLevel: 4,
-      filesPerDir: 4,
+      dirDepth: 8,
+      dirsPerLevel: 2,
+      filesPerDir: 2,
     });
     console.log({ recursiveTestGenRes });
   });
