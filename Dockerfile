@@ -17,11 +17,13 @@ RUN git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUS
 
 COPY .zshrc .
 COPY .env* .
+COPY sysmon-startup.sh .
 
 COPY package.json .
 COPY package-lock.json* .
-RUN npm i
 COPY src/ src
 COPY tsconfig.json .
 COPY .eslintrc.js .
+
+RUN npm ci
 RUN npm run build
