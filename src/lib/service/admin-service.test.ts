@@ -150,7 +150,10 @@ describe('admin-service tests', () => {
     fetchMock.mockResolvedValueOnce({
       json: jsonMock,
     });
-    nextToken = await AdminService.getToken();
+    nextToken = await AdminService.getToken({
+      userName: userMock.user_name,
+      password: passwordMock,
+    });
     expect(nextToken).toBe(tokenMock);
   });
 
@@ -166,7 +169,10 @@ describe('admin-service tests', () => {
     fetchMock.mockResolvedValueOnce({
       json: jsonMock,
     });
-    nextToken = await AdminService.getToken();
+    nextToken = await AdminService.getToken({
+      userName: userMock.user_name,
+      password: passwordMock,
+    });
     expect(nextToken).toBe(tokenMock);
   });
 

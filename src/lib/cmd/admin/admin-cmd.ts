@@ -7,11 +7,15 @@ import { decrypt } from '../../util/crypto-util';
 import { ParsedArgv2 } from '../parse-argv';
 import { getAdminArgs } from '../parse-sysmon-args';
 
-export async function adminMain(parsedArgv: ParsedArgv2) {
+export type AdminCmdOpts = {
+  logFn: (line: string) => void;
+};
+
+export async function adminMain(parsedArgv: ParsedArgv2, opts: AdminCmdOpts) {
   let cmdArg: string | undefined;
   cmdArg = getAdminArgs(parsedArgv.args);
   if(cmdArg === 'kc') {
-    await keychainCmd();
+    await keychainCmd(opts);
   }
 }
 
@@ -20,7 +24,9 @@ type UserKeychain = {
   keys: KeychainKeyDto[];
 };
 
-async function keychainCmd() {
+async function keychainCmd(opts: {
+  logFn: AdminCmdOpts['logFn'];
+}) {
   let keychainKeys: KeychainKeyDto[];
   let userKeychainMap: Map<string, UserKeychain>;
   let userName: string;
@@ -28,7 +34,7 @@ async function keychainCmd() {
   userName = config.EZD_API_USER;
   password = config.EZD_API_PASSWORD;
   userKeychainMap = new Map;
-  console.log('Fetching keychain keys');
+  opts.logFn('Fetching keychain keys');
   keychainKeys = await AdminService.getKeychainKeys({
     userName,
     password,
@@ -48,12 +54,12 @@ async function keychainCmd() {
   }
 
   [ ...userKeychainMap.values() ].forEach(userKeychain => {
-    console.log('\nuser_name:');
-    console.log(userKeychain.user.user_name);
+    opts.logFn('\nuser_name:');
+    opts.logFn(userKeychain.user.user_name);
     userKeychain.keys.forEach((keychainKey, keyIdx) => {
       let decrypted: string;
       decrypted = decrypt(keychainKey.key_text, keychainKey.iv);
-      console.log(`${keyIdx}: ${decrypted}`);
+      opts.logFn(`${keyIdx}: ${decrypted}`);
     });
   });
 }

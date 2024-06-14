@@ -24,7 +24,9 @@ export async function sysmonMain() {
     case SYSMON_CMD_ENUM.PING_STAT:
       return await pingStatsMain(parsedArgv);
     case SYSMON_CMD_ENUM.ADMIN:
-      return await adminMain(parsedArgv);
+      return await adminMain(parsedArgv, {
+        logFn: console.log,
+      });
     case SYSMON_CMD_ENUM.SPEEDTEST:
       return await speedtestMain();
     case SYSMON_CMD_ENUM.T_NINE:
