@@ -68,7 +68,7 @@ export class AdminService {
     return user;
   }
 
-  static async getToken(opts?: GetTokenOpts) {
+  static async getToken(opts: GetTokenOpts) {
     let token: string;
     let url: string;
     let resp: Response;
@@ -86,8 +86,8 @@ export class AdminService {
 
     url = `${config.EZD_API_BASE_URL}/v1/jwt/auth`;
     const body = {
-      userName: config.EZD_API_USER,
-      password: config.EZD_API_PASSWORD,
+      userName: opts.userName,
+      password: opts.password,
     };
     resp = await fetch(url, {
       method: 'POST',
@@ -96,6 +96,9 @@ export class AdminService {
       },
       body: JSON.stringify(body),
     });
+    if(resp.status >= 300) {
+      throw new Error(`status: ${resp.status}: ${resp.statusText}`);
+    }
     rawRespBody = await resp.json();
     if(
       !isObject(rawRespBody)

@@ -25,7 +25,7 @@ async function keychainCmd() {
   let userKeychainMap: Map<string, UserKeychain>;
   let userName: string;
   let password: string;
-  userName = config.EZD_API_PASSWORD;
+  userName = config.EZD_API_USER;
   password = config.EZD_API_PASSWORD;
   userKeychainMap = new Map;
   console.log('Fetching keychain keys');
