@@ -27,4 +27,4 @@ COPY .eslintrc.js .
 
 RUN npm ci
 RUN npm run build
-RUN zsh sysmon-startup.sh
+ENTRYPOINT [ "sysmon-startup.sh" ]
