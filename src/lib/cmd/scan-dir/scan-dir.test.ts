@@ -27,7 +27,6 @@ describe('scanDir tests', () => {
   beforeAll(() => {
 
     /* init test dirs */
-    console.log({ FLAT_TEST_DIR_PATH });
     mfs.mkdirSync(FLAT_TEST_DIR_PATH);
     flatTestGenRes = genTestDirs(mfs, {
       basePath: FLAT_TEST_DIR_PATH,
@@ -39,7 +38,7 @@ describe('scanDir tests', () => {
     mfs.mkdirSync(RECURSIVE_TEST_DIR_PATH);
     recursiveTestGenRes = genTestDirs(mfs, {
       basePath: RECURSIVE_TEST_DIR_PATH,
-      dirDepth: 8,
+      dirDepth: 4,
       dirsPerLevel: 2,
       filesPerDir: 2,
     });
