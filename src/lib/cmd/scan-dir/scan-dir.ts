@@ -25,7 +25,16 @@ type ScanDirCbResult = {
   skip?: boolean,
 } | void;
 
-export function scanDir(opts: ScanDirOpts) {
+/*
+  This function is async currently ONLY because otherwise,
+    the interface would need to be changed in order to test
+    it properly.
+  As the filesystem calls in the function are still synchronous,
+    I don't expect to incur significant performance cost;
+    it will only create a single promise for each dir
+    hierarchy scanned
+*/
+export async function scanDir(opts: ScanDirOpts) {
   let outStream: ScanDirOutStream;
   let progressMod: number;
   let currDirents: Dirent[];

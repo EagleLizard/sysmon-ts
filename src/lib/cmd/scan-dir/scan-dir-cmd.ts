@@ -54,7 +54,7 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
 
   console.log(`Scanning: ${dirPaths}`);
   timer = Timer.start();
-  scanDir({
+  await scanDir({
     dirPaths,
     scanDirCb
   });
@@ -93,16 +93,29 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   });
   let fileDupeCount: number;
   let dupeMapKeys: string[];
+  const fileDupesDirName = `${getDateFileStr(nowDate)}_dupes.txt`;
+  const fileDupesFilePath = joinPath([
+    SCANDIR_OUT_DATA_DIR_PATH,
+    fileDupesDirName,
+  ]);
+
+  let dupeFileLines: string[];
+  dupeFileLines = [];
   fileDupeCount = 0;
   dupeMapKeys = [ ...duplicateFiles.keys() ];
   for(let i = 0; i < dupeMapKeys.length; ++i) {
     let currDupeKey = dupeMapKeys[i];
     let currDupes = duplicateFiles.get(currDupeKey);
+    dupeFileLines.push(`${currDupeKey}:`);
     if(Array.isArray(currDupes)) {
-      fileDupeCount += currDupeKey.length;
+      fileDupeCount += currDupes.length;
+      for(let k = 0; k < currDupes.length; ++k) {
+        let currDupe = currDupes[k];
+        dupeFileLines.push(`\n${currDupe}`);
+      }
     }
   }
-  // console.log({ duplicateFiles });
+  writeFileSync(fileDupesFilePath, dupeFileLines.join(''));
   console.log({ duplicateFiles: fileDupeCount });
   findDuplicatesMs = timer.stop();
   console.log(`findDuplicates took: ${getIntuitiveTimeString(findDuplicatesMs)}`);
