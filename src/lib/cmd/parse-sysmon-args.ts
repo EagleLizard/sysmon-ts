@@ -2,6 +2,7 @@
 import { z } from 'zod';
 
 export enum SYSMON_CMD_ENUM {
+  HELP = 'HELP',
   PING = 'PING',
   SCAN_DIR = 'SCAN_DIR',
   MONITOR = 'MONITOR',
@@ -148,6 +149,9 @@ export function getCmdKind(cmdStr: string) {
     case 'encode':
     case 'e':
       return SYSMON_CMD_ENUM.ENCODE;
+    case 'help':
+    case 'h':
+      return SYSMON_CMD_ENUM.HELP;
     default:
       throw new Error(`Invalid command: ${cmdStr}`);
   }

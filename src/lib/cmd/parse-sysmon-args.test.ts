@@ -18,7 +18,8 @@ const CMD_STR_MAP = {
   't9': SYSMON_CMD_ENUM.T_NINE,
   'encode': SYSMON_CMD_ENUM.ENCODE,
   'e': SYSMON_CMD_ENUM.ENCODE,
-  'nlp': SYSMON_CMD_ENUM.NLP,
+  'help': SYSMON_CMD_ENUM.HELP,
+  'h': SYSMON_CMD_ENUM.HELP,
 };
 
 describe('parse-sysmon-args tests', () => {
@@ -28,10 +29,11 @@ describe('parse-sysmon-args tests', () => {
   });
   it('tests getCmdKind()', () => {
     let expectedEnumVals: SYSMON_CMD_ENUM[];
-    let cmdKinds: Set<SYSMON_CMD_ENUM>;
+    let cmdKindsSet: Set<SYSMON_CMD_ENUM>;
     let cmdMapEntries: [string, SYSMON_CMD_ENUM][];
+    let cmdKinds: SYSMON_CMD_ENUM[];
     expectedEnumVals = [ ...Object.values(SYSMON_CMD_ENUM) ];
-    cmdKinds = new Set();
+    cmdKindsSet = new Set();
     cmdMapEntries = [ ...Object.entries(commandMap) ];
     for(let i = 0; i < cmdMapEntries.length; ++i) {
       let cmdStr: string;
@@ -40,9 +42,14 @@ describe('parse-sysmon-args tests', () => {
       [ cmdStr, cmdEnumVal ] = cmdMapEntries[i];
       currKind = getCmdKind(cmdStr);
       expect(currKind).toEqual(cmdEnumVal);
-      cmdKinds.add(currKind);
+      cmdKindsSet.add(currKind);
     }
-    expect([ ...cmdKinds ]).toEqual(expectedEnumVals);
+    cmdKinds = [ ...cmdKindsSet ];
+
+    cmdKinds.sort();
+    expectedEnumVals.sort();
+
+    expect(cmdKinds).toEqual(expectedEnumVals);
   });
 
   it('tests getCmdKind() with an invalid command string', () => {

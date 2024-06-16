@@ -15,8 +15,6 @@ export async function sysmonMain() {
   let parsedArgv = parseArgv2(process.argv);
   let cmdKind = getCmdKind(parsedArgv.cmd);
   switch(cmdKind) {
-    // case SYSMON_CMD_ENUM.HELP:
-    //   return await helpCmdMain();
     case SYSMON_CMD_ENUM.PING:
       return await pingMain(parsedArgv);
     case SYSMON_CMD_ENUM.SCAN_DIR:
@@ -35,5 +33,7 @@ export async function sysmonMain() {
       return await tNineMain(parsedArgv);
     case SYSMON_CMD_ENUM.ENCODE:
       return await encodeMain(parsedArgv);
+    case SYSMON_CMD_ENUM.HELP:
+      return await helpCmdMain();
   }
 }
