@@ -22,11 +22,11 @@ const format = winston.format.combine(
 );
 
 const transports: winston.transport[] = [];
-transports.push(new winston.transports.Console({
-  stderrLevels: [
-    'error',
-  ]
-}));
+// transports.push(new winston.transports.Console({
+//   stderrLevels: [
+//     'error',
+//   ]
+// }));
 transports.push(
   new winston.transports.File({
     filename: 'logs/app.log',
@@ -34,7 +34,7 @@ transports.push(
 );
 
 export const logger = createLogger({
-  levels: winston.config.syslog.levels,
+  levels: winston.config.npm.levels,
   level,
   format,
   transports,

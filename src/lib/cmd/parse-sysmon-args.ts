@@ -10,7 +10,6 @@ export enum SYSMON_CMD_ENUM {
   SPEEDTEST = 'SPEEDTEST',
   T_NINE = 'T_NINE',
   ENCODE = 'ENCODE',
-  NLP = 'NLP',
 }
 
 const PingOptSchema = z.tuple([
@@ -149,8 +148,6 @@ export function getCmdKind(cmdStr: string) {
     case 'encode':
     case 'e':
       return SYSMON_CMD_ENUM.ENCODE;
-    case 'nlp':
-      return SYSMON_CMD_ENUM.NLP;
     default:
       throw new Error(`Invalid command: ${cmdStr}`);
   }

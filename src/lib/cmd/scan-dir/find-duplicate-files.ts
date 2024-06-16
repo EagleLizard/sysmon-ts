@@ -14,6 +14,7 @@ import { sleep } from '../../util/sleep';
 import { joinPath } from '../../util/files';
 import { Timer } from '../../util/timer';
 import { getIntuitiveTimeString } from '../../util/format-util';
+import { logger } from '../../logger';
 
 let maxConcurrentHashPromises: number;
 
@@ -142,7 +143,13 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts) {
             (e.code === 'EISDIR')
             || (e.code === 'ENOENT')
           )) {
-            console.error(`${e.code}: ${filePath}`);
+            let stackStr = (new Error).stack;
+            let errMsg = `${e.code}: ${filePath}`;
+            let errObj = Object.assign({}, {
+              errMsg,
+              stackStr,
+            }, e);
+            logger.warn(errObj);
           } else {
             throw e;
           }
