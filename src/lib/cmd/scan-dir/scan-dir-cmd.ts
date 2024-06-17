@@ -9,7 +9,7 @@ import {
 } from 'fs';
 import { getDateFileStr } from '../../util/datetime-util';
 import { findDuplicateFiles } from './find-duplicate-files';
-import { ScanDirCbParams, scanDir } from './scan-dir';
+import { ScanDirCbParams, scanDir, scanDir2 } from './scan-dir';
 import { ScanDirOpts, getScanDirArgs, getScanDirOpts } from '../parse-sysmon-args';
 import { ParsedArgv2 } from '../parse-argv';
 
@@ -54,7 +54,7 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
 
   console.log(`Scanning: ${dirPaths}`);
   timer = Timer.start();
-  await scanDir({
+  await scanDir2({
     dirPaths,
     scanDirCb
   });
