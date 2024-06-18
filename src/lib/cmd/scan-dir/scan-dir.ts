@@ -29,7 +29,7 @@ export type ScanDirOpts = {
 
 type ScanDirCbResult = {
   skip?: boolean,
-} | void;
+} | undefined;
 
 /*
   This function is async currently ONLY because otherwise,
