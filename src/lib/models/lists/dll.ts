@@ -7,8 +7,11 @@ export class Dll<TVal> {
   first: DllNode<TVal> | undefined;
   last: DllNode<TVal> | undefined;
 
-  constructor() {
+  constructor(vals: TVal[] = []) {
     this._length = 0;
+    for(let i = 0; i < vals.length; ++i) {
+      this.push(vals[i]);
+    }
   }
 
   $destroy() {
