@@ -5,10 +5,7 @@ sourceMapSupport.install();
 import { sysmonMain } from './lib/sysmon';
 import { logger } from './lib/logger';
 import { killActivePingProc } from './lib/cmd/ping/ping';
-import { killRunningMonitor } from './lib/cmd/monitor/monitor-cmd';
-import { getIntuitiveTimeString } from './lib/util/format-util';
-
-const SHUTDOWN_TIMEOUT_MS = 1e3;
+import { stopRunningMonitor } from './lib/cmd/monitor/monitor-cmd';
 
 (async () => {
   try {
@@ -38,19 +35,15 @@ async function main() {
 }
 
 async function shutdown(sig: string) {
-  logger.info(`${sig} received.`);
+  let shutdownMsg: string;
+  shutdownMsg = `${sig} received`;
+  logger.info(shutdownMsg);
   killActivePingProc();
-  killRunningMonitor();
-  setImmediate(() => {
-    // console.clear();
-    process.exitCode = 0;
-    setTimeout(() => {
-      console.error(`Process didn't quit after ${getIntuitiveTimeString(SHUTDOWN_TIMEOUT_MS)}. Shutting down now.`);
-      process.exit();
-    }, SHUTDOWN_TIMEOUT_MS);
-  });
+  stopRunningMonitor();
+  console.log(`${shutdownMsg} - shutting down`);
+  process.exitCode = 0;
 }
 
 function setProcName() {
-  process.title = 'sysmon-ezd';
+  process.title = 'ezd-sysmon';
 }
