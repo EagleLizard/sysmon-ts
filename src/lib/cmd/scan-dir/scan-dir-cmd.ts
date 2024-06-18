@@ -52,12 +52,16 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
     }
   };
 
-  console.log(`Scanning: ${dirPaths}`);
   timer = Timer.start();
-  await scanDir2({
-    dirPaths,
-    scanDirCb
-  });
+  for(let i = 0; i < dirPaths.length; ++i) {
+    let dirPath: string;
+    dirPath = dirPaths[i];
+    console.log(`Scanning: ${dirPath}`);
+    await scanDir2({
+      dirPath,
+      scanDirCb
+    });
+  }
   scanMs = timer.stop();
   console.log(`files: ${files.length}`);
   console.log(`dirs: ${dirs.length}`);

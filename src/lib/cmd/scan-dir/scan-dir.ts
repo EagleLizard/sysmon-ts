@@ -21,7 +21,7 @@ type ScanDirOutStream = {
 };
 
 export type ScanDirOpts = {
-  dirPaths: string[];
+  dirPath: string;
   scanDirCb: (scanDirCbParams: ScanDirCbParams) => ScanDirCbResult;
   outStream?: ScanDirOutStream;
   progressMod?: number;
@@ -52,10 +52,7 @@ export async function scanDir(opts: ScanDirOpts) {
   outStream = opts.outStream ?? process.stdout;
   progressMod = opts.progressMod ?? 1e4;
 
-  dirQueue = new Dll([ ...opts.dirPaths ]);
-  // dirQueue = [
-  //   ...opts.dirPaths,
-  // ];
+  dirQueue = new Dll([ opts.dirPath ]);
 
   pathCount = 0;
 
@@ -172,7 +169,7 @@ function *getDirScanner(opts: ScanDirOpts): Generator<ScanDirCbParams, undefined
   let dirQueue: Dll<string>;
   let currDirPath: string | undefined;
 
-  dirQueue = new Dll([ ...opts.dirPaths ]);
+  dirQueue = new Dll([ opts.dirPath ]);
 
   while(dirQueue.length > 0) {
     let rootDirent: Stats | undefined;
