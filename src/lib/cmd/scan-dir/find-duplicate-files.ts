@@ -11,10 +11,11 @@ import { SCANDIR_OUT_DATA_DIR_PATH } from '../../../constants';
 import { HashFileResult, hashFile } from '../../util/hasher';
 import { isObject } from '../../util/validate-primitives';
 import { sleep } from '../../util/sleep';
-import { joinPath } from '../../util/files';
+import { joinPath, readFileByLine } from '../../util/files';
 import { Timer } from '../../util/timer';
 import { getIntuitiveTimeString } from '../../util/format-util';
 import { logger } from '../../logger';
+import path, { ParsedPath } from 'path';
 
 let maxConcurrentHashPromises: number;
 
@@ -27,10 +28,10 @@ let maxConcurrentHashPromises: number;
 // maxConcurrentHashPromises = 48;
 // maxConcurrentHashPromises = 96;
 
-// maxConcurrentHashPromises = 32;
+maxConcurrentHashPromises = 32;
 // maxConcurrentHashPromises = 64;
 // maxConcurrentHashPromises = 128;
-maxConcurrentHashPromises = 256; // best 36s
+// maxConcurrentHashPromises = 256; // best 36s
 // maxConcurrentHashPromises = 512; // best 36s
 
 // maxConcurrentHashPromises = 1;
@@ -44,7 +45,8 @@ type FindDuplicatesWriteStream = {
 };
 
 export type FindDuplicateFilesOpts = {
-  filePaths: string[];
+  // filePaths: string[];
+  filesDataFilePath: string;
   nowDate: Date;
   outStream?: FindDuplicatesOutStream;
   possibleDupesWs?: FindDuplicatesWriteStream;
@@ -55,6 +57,7 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts) {
   let outStream: FindDuplicatesOutStream;
   let hashMap: Map<string, string[]>;
 
+  let filePaths: string[];
   let pathMapEntries: [ number, string[] ][];
   let hashCount: number;
   let possibleDupesFileName: string;
@@ -78,7 +81,17 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts) {
       has the same size as another file.
   */
   let potentialDupesTimer = Timer.start();
-  pathMapEntries = getPotentialDupes(opts.filePaths);
+  filePaths = [];
+  const filesDataFileLineCb = (line: string) => {
+    line = line.trim();
+    if(line.length > 0) {
+      filePaths.push(line);
+    }
+  };
+  await readFileByLine(opts.filesDataFilePath, {
+    lineCb: filesDataFileLineCb,
+  });
+  pathMapEntries = getPotentialDupes(filePaths);
   // pathMapEntries = await getPotentialDupesAsync(opts.filePaths);
   console.log(`getPotentialDupes took: ${getIntuitiveTimeString(potentialDupesTimer.stop())}`);
 
@@ -122,6 +135,7 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts) {
       let hashPromise: Promise<void>;
 
       while(promiseQueue.length >= maxConcurrentHashPromises) {
+        // check for exitcode here
         await sleep(0);
       }
 
@@ -238,10 +252,18 @@ function writePotentialDupes(ws: FindDuplicatesWriteStream, pathMapEntries: [ nu
 
 function writeDupes(ws: FindDuplicatesWriteStream, hashMap: Map<string, string[]>) {
   [ ...hashMap.entries() ].forEach((curr) => {
+    let parsedPaths: ParsedPath[];
     let [ hash, dupeFilePaths ] = curr;
+    parsedPaths = [];
     ws.write(`\n${hash}\n`);
     dupeFilePaths.forEach(dupeFilePath => {
+      let parsedFilePath: ParsedPath;
+      parsedFilePath = path.parse(dupeFilePath);
+      parsedPaths.push(parsedFilePath);
       ws.write(`${dupeFilePath}\n`);
+    });
+    parsedPaths.forEach(parsedPath => {
+      ws.write(`  ${parsedPath.base}\n`);
     });
   });
 }
