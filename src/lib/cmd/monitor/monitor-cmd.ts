@@ -39,7 +39,7 @@ function initMon() {
   mkdirIfNotExist(MONITOR_OUT_DATA_DIR_PATH);
 }
 
-export function killRunningMonitor() {
+export function stopRunningMonitor() {
   let killStr: string;
   killStr = `Killing monitor, elapsed: ${getIntuitiveTimeString(elapsedMs)}`;
   logger.info(killStr);
