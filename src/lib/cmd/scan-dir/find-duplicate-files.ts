@@ -135,7 +135,6 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts) {
       let hashPromise: Promise<void>;
 
       while(promiseQueue.length >= maxConcurrentHashPromises) {
-        // check for exitcode here
         await sleep(0);
       }
 

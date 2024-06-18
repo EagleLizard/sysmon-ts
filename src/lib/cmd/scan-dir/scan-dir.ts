@@ -7,9 +7,9 @@ import { joinPath } from '../../util/files';
 import assert from 'assert';
 import path from 'path';
 import { Dll } from '../../models/lists/dll';
-import { Timer } from '../../util/timer';
 
-const INTERRUPT_MS = 1_000;
+const INTERRUPT_MS = 1e3;
+const INTERRUPT_NSECS = BigInt(INTERRUPT_MS * 1e6);
 
 export type ScanDirCbParams = {
   isDir: boolean;
@@ -29,7 +29,7 @@ export type ScanDirOpts = {
 
 type ScanDirCbResult = {
   skip?: boolean,
-} | undefined;
+} | void;
 
 /*
   This function is async currently ONLY because otherwise,
@@ -124,12 +124,14 @@ export async function scanDir2(opts: ScanDirOpts) {
   let outStream: ScanDirOutStream;
   let pathCount: number;
   let scanDirCbResult: ScanDirCbResult | undefined;
-  let timer: Timer;
+  let iterCount: number;
+  let startTime: bigint;
   progressMod = opts.progressMod ?? 1e4;
   outStream = opts.outStream ?? process.stdout;
 
   pathCount = 0;
-  timer = Timer.start();
+  iterCount = 0;
+  startTime = process.hrtime.bigint();
 
   dirScanner = getDirScanner(opts);
   /*
@@ -151,8 +153,12 @@ export async function scanDir2(opts: ScanDirOpts) {
         if((pathCount++ % progressMod) === 0) {
           outStream.write('.');
         }
-        if(timer.currentMs() > INTERRUPT_MS) {
-          timer.reset();
+        if(
+          true
+          && ((iterCount++ % 100) === 0)
+          && ((process.hrtime.bigint() - startTime) > INTERRUPT_NSECS)
+        ) {
+          startTime = process.hrtime.bigint();
           outStream.write('!');
           setImmediate(doIter);
           return;
@@ -224,13 +230,10 @@ function *getDirScanner(opts: ScanDirOpts): Generator<ScanDirCbParams, undefined
         }
       }
       for(let i = 0; i < currDirents.length; ++i) {
-        let direntPath: string;
-        let currDirent = currDirents[i];
-        direntPath = [
-          currDirent.path,
-          currDirent.name,
-        ].join(path.sep);
-        dirQueue.pushFront(direntPath);
+        dirQueue.pushFront([
+          currDirents[i].path,
+          currDirents[i].name,
+        ].join(path.sep));
       }
     }
   }

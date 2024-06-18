@@ -4,6 +4,7 @@ import { joinPath, mkdirIfNotExist } from '../../util/files';
 import { getIntuitiveTimeString } from '../../util/format-util';
 import { Timer } from '../../util/timer';
 import {
+  WriteStream,
   createWriteStream,
   writeFileSync
 } from 'fs';
@@ -17,23 +18,34 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   let dirPaths: string[];
   let opts: ScanDirOpts;
 
-  let files: string[];
-  let dirs: string[];
+  // let files: string[];
+  // let dirs: string[];
+  let dirCount: number;
+  let fileCount: number;
   let timer: Timer;
   let scanMs: number;
   let findDuplicatesMs: number;
   let nowDate: Date;
 
+  let dirsWs: WriteStream;
+  let filesWs: WriteStream;
+
   dirPaths = getScanDirArgs(parsedArgv.args);
   opts = getScanDirOpts(parsedArgv.opts);
 
   nowDate = new Date;
+  dirCount = 0;
+  fileCount = 0;
 
-  files = [];
-  dirs = [];
+  const dirsDataFilePath = getDirsDataFilePath(nowDate);
+  dirsWs = createWriteStream(dirsDataFilePath);
+  const filesDataFilePath = getFilesDataFilePath(nowDate);
+  filesWs = createWriteStream(filesDataFilePath);
+
   const scanDirCb = (params: ScanDirCbParams) => {
     if(params.isDir) {
-      dirs.push(params.fullPath);
+      dirCount++;
+      dirsWs.write(`${params.fullPath}\n`);
       let skipDir = (
         (opts.find_dirs !== undefined)
         && opts.find_dirs.some(findDirPath => {
@@ -48,7 +60,8 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
         };
       }
     } else {
-      files.push(params.fullPath);
+      filesWs.write(`${params.fullPath}\n`);
+      fileCount++;
     }
   };
 
@@ -63,36 +76,19 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
     });
   }
   scanMs = timer.stop();
-  console.log(`files: ${files.length}`);
-  console.log(`dirs: ${dirs.length}`);
+  console.log(`# files: ${fileCount}`);
+  console.log(`# dirs: ${dirCount}`);
   console.log(`Scan took: ${getIntuitiveTimeString(scanMs)}`);
 
   mkdirIfNotExist(OUT_DATA_DIR_PATH);
   mkdirIfNotExist(SCANDIR_OUT_DATA_DIR_PATH);
-
-  const dirsDataFileName = `${getDateFileStr(nowDate)}_dirs.txt`;
-  const dirsDataFilePath = joinPath([
-    SCANDIR_OUT_DATA_DIR_PATH,
-    dirsDataFileName,
-  ]);
-  const filesDataDirName = `${getDateFileStr(nowDate)}_files.txt`;
-  const filesDataFilePath = joinPath([
-    SCANDIR_OUT_DATA_DIR_PATH,
-    filesDataDirName,
-  ]);
-  writeFileSync(dirsDataFilePath, dirs.join('\n'));
-  let ws = createWriteStream(filesDataFilePath);
-  files.forEach(filePath => {
-    ws.write(`${filePath}\n`);
-  });
-  ws.close();
 
   if(opts.find_duplicates === undefined) {
     return;
   }
   timer = Timer.start();
   const duplicateFiles = await findDuplicateFiles({
-    filePaths: files,
+    filesDataFilePath,
     nowDate
   });
   let fileDupeCount: number;
@@ -124,4 +120,21 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   findDuplicatesMs = timer.stop();
   console.log(`findDuplicates took: ${getIntuitiveTimeString(findDuplicatesMs)}`);
 
+}
+
+function getDirsDataFilePath(date: Date): string {
+  const dirsDataFileName = `${getDateFileStr(date)}_dirs.txt`;
+  const dirsDataFilePath = joinPath([
+    SCANDIR_OUT_DATA_DIR_PATH,
+    dirsDataFileName,
+  ]);
+  return dirsDataFilePath;
+}
+function getFilesDataFilePath(date: Date): string {
+  const filesDataDirName = `${getDateFileStr(date)}_files.txt`;
+  const filesDataFilePath = joinPath([
+    SCANDIR_OUT_DATA_DIR_PATH,
+    filesDataDirName,
+  ]);
+  return filesDataFilePath;
 }
