@@ -5,16 +5,15 @@ import { isObject, isString } from '../../util/validate-primitives';
 import { logger } from '../../logger';
 import { joinPath } from '../../util/files';
 import assert from 'assert';
-import { lstat, readdir } from 'fs/promises';
 import path from 'path';
+import { Dll } from '../../models/lists/dll';
+import { Timer } from '../../util/timer';
+
+const INTERRUPT_MS = 1_000;
 
 export type ScanDirCbParams = {
   isDir: boolean;
   fullPath: string;
-};
-
-export type DirScannerRes = ScanDirCbParams & {
-  pathCount: number;
 };
 
 type ScanDirOutStream = {
@@ -45,7 +44,7 @@ export async function scanDir(opts: ScanDirOpts) {
   let outStream: ScanDirOutStream;
   let progressMod: number;
   let currDirents: Dirent[];
-  let dirQueue: string[];
+  let dirQueue: Dll<string>;
   let currDirPath: string;
 
   let pathCount: number;
@@ -53,16 +52,17 @@ export async function scanDir(opts: ScanDirOpts) {
   outStream = opts.outStream ?? process.stdout;
   progressMod = opts.progressMod ?? 1e4;
 
-  dirQueue = [
-    ...opts.dirPaths,
-  ];
+  dirQueue = new Dll([ ...opts.dirPaths ]);
+  // dirQueue = [
+  //   ...opts.dirPaths,
+  // ];
 
   pathCount = 0;
 
   while(dirQueue.length > 0) {
     let rootDirent: Stats | undefined;
     let scanDirCbResult: ScanDirCbResult;
-    currDirPath = dirQueue.shift()!;
+    currDirPath = dirQueue.popFront()!;
     try {
       rootDirent = lstatSync(currDirPath);
     } catch(e) {
@@ -102,7 +102,7 @@ export async function scanDir(opts: ScanDirOpts) {
         }
       }
       currDirents.forEach(currDirent => {
-        dirQueue.unshift(
+        dirQueue.pushFront(
           joinPath([
             currDirent.path,
             currDirent.name,
@@ -121,43 +121,64 @@ export async function scanDir(opts: ScanDirOpts) {
 }
 
 export async function scanDir2(opts: ScanDirOpts) {
-  let dirScanner: Generator<DirScannerRes>;
-  let iterRes: IteratorResult<DirScannerRes>;
+  let dirScanner: Generator<ScanDirCbParams>;
+  let iterRes: IteratorResult<ScanDirCbParams>;
   let progressMod: number;
   let outStream: ScanDirOutStream;
+  let pathCount: number;
+  let scanDirCbResult: ScanDirCbResult | undefined;
+  let timer: Timer;
   progressMod = opts.progressMod ?? 1e4;
   outStream = opts.outStream ?? process.stdout;
 
-  dirScanner = getDirScanner(opts);
+  pathCount = 0;
+  timer = Timer.start();
 
-  while(!(iterRes = dirScanner.next()).done) {
-    let currRes: DirScannerRes;
-    currRes = iterRes.value;
-    opts.scanDirCb({
-      isDir: currRes.isDir,
-      fullPath: currRes.fullPath,
-    });
-    if((currRes.pathCount % progressMod) === 0) {
-      outStream.write('.');
-    }
-  }
+  dirScanner = getDirScanner(opts);
+  /*
+    We need to interrupt the synchronous while() loop so that the
+      main process can exit gracefully (e.g. SIGTERM)
+  */
+  return new Promise<void>((resolve) => {
+    (function doIter() {
+      while(
+        !(iterRes = dirScanner.next(scanDirCbResult)).done
+        && (process.exitCode === undefined)
+      ) {
+        let currRes: ScanDirCbParams;
+        currRes = iterRes.value;
+        scanDirCbResult = opts.scanDirCb({
+          isDir: currRes.isDir,
+          fullPath: currRes.fullPath,
+        });
+        if((pathCount++ % progressMod) === 0) {
+          outStream.write('.');
+        }
+        if(timer.currentMs() > INTERRUPT_MS) {
+          timer.reset();
+          outStream.write('!');
+          setImmediate(doIter);
+          return;
+        }
+      }
+      outStream.write('\n');
+      resolve();
+    })();
+  });
 }
 
-function *getDirScanner(opts: ScanDirOpts): Generator<DirScannerRes> {
+function *getDirScanner(opts: ScanDirOpts): Generator<ScanDirCbParams, undefined, ScanDirCbResult> {
   let currDirents: Dirent[];
-  let dirQueue: string[];
+  let dirQueue: Dll<string>;
   let currDirPath: string | undefined;
 
-  let pathCount = 0;
-
-  dirQueue = [ ...opts.dirPaths ];
-
-  pathCount = 0;
+  dirQueue = new Dll([ ...opts.dirPaths ]);
 
   while(dirQueue.length > 0) {
     let rootDirent: Stats | undefined;
-    let currRes: DirScannerRes;
-    currDirPath = dirQueue.shift();
+    let currRes: ScanDirCbParams;
+    let scanDirCbResult: ScanDirCbResult | undefined;
+    currDirPath = dirQueue.popFront();
     assert(currDirPath !== undefined, 'Path undefined in queue unexpectedly while scanning dir');
     try {
       rootDirent = lstatSync(currDirPath);
@@ -175,18 +196,20 @@ function *getDirScanner(opts: ScanDirOpts): Generator<DirScannerRes> {
         throw e;
       }
     }
-    pathCount++;
     currRes = {
       isDir: rootDirent?.isDirectory() ?? false,
       fullPath: currDirPath,
-      pathCount,
     };
 
-    yield currRes;
+    scanDirCbResult = yield currRes;
+    if(scanDirCbResult === undefined) {
+      scanDirCbResult = undefined;
+    }
 
     if(
       (rootDirent !== undefined)
       && rootDirent.isDirectory()
+      && !scanDirCbResult?.skip
     ) {
       try {
         currDirents = readdirSync(currDirPath, {
@@ -210,7 +233,7 @@ function *getDirScanner(opts: ScanDirOpts): Generator<DirScannerRes> {
           currDirent.path,
           currDirent.name,
         ].join(path.sep);
-        dirQueue.unshift(direntPath);
+        dirQueue.pushFront(direntPath);
       }
     }
   }
