@@ -1,6 +1,5 @@
 
 import { describe, it, expect, beforeEach  } from 'vitest';
-import { DllNode } from './dll-node';
 import { Sll } from './sll';
 
 describe('singly linked list (SLL) tests', () => {
@@ -13,8 +12,7 @@ describe('singly linked list (SLL) tests', () => {
     let sll: Sll<number>;
     sll = new Sll();
     for(let i = 0; i < testNums.length; ++i) {
-      let nextNode = DllNode.init(testNums[i]);
-      sll.pushFront(nextNode);
+      sll.pushFront(testNums[i]);
     }
     let reversedNums = testNums.slice();
     reversedNums.reverse();
@@ -32,8 +30,7 @@ describe('singly linked list (SLL) tests', () => {
     let reversedNums: number[];
     sll = new Sll();
     for(let i = 0; i < testNums.length; ++i) {
-      let nextNode = DllNode.init(testNums[i]);
-      sll.pushFront(nextNode);
+      sll.pushFront(testNums[i]);
     }
     reversedNums = testNums.slice();
     reversedNums.reverse();
@@ -44,8 +41,7 @@ describe('singly linked list (SLL) tests', () => {
     let sll: Sll<number>;
     sll = new Sll();
     for(let i = 0; i < testNums.length; ++i) {
-      let nextNode = DllNode.init(testNums[i]);
-      sll.pushFront(nextNode);
+      sll.pushFront(testNums[i]);
     }
 
     for(let i = 0; i < testNums.length; ++i) {
@@ -65,8 +61,7 @@ describe('singly linked list (SLL) tests', () => {
     let sll: Sll<number>;
     sll = new Sll();
     for(let i = 0; i < testNums.length; ++i) {
-      let nextNode = DllNode.init(testNums[i]);
-      sll.pushFront(nextNode);
+      sll.pushFront(testNums[i]);
     }
     expect(sll.length).toEqual(testNums.length);
   });
@@ -74,8 +69,7 @@ describe('singly linked list (SLL) tests', () => {
     let sll: Sll<number>;
     sll = new Sll();
     for(let i = 0; i < testNums.length; ++i) {
-      let nextNode = DllNode.init(testNums[i]);
-      sll.pushFront(nextNode);
+      sll.pushFront(testNums[i]);
     }
     sll.popFront();
     expect(sll.length).toEqual(testNums.length - 1);

@@ -1,12 +1,15 @@
 
-import { DllNode } from './dll-node';
+import { SllNode } from './sll-node';
 
 export class Sll<TVal> {
   private _length: number;
-  head: DllNode<TVal> | undefined;
+  head: SllNode<TVal> | undefined;
 
-  constructor() {
+  constructor(vals: TVal[] = []) {
     this._length = 0;
+    for(let i = 0; i < vals.length; ++i) {
+      this.pushFront(vals[i]);
+    }
   }
 
   get length(): number {
@@ -16,16 +19,17 @@ export class Sll<TVal> {
   /*
     Inserts new node as head
   */
-  pushFront(dllNode: DllNode<TVal>) {
+  pushFront(val: TVal) {
+    let nextNode: SllNode<TVal>;
+    nextNode = SllNode.init(val);
     if(this.head !== undefined) {
-      dllNode.next = this.head;
+      nextNode.next = this.head;
     }
-    this.head = dllNode;
-    delete this.head.prev;
+    this.head = nextNode;
     this._length++;
   }
-  popFront(): DllNode<TVal> | undefined {
-    let currHead: DllNode<TVal>;
+  popFront(): SllNode<TVal> | undefined {
+    let currHead: SllNode<TVal>;
     if(this.head === undefined) {
       return undefined;
     }
@@ -33,12 +37,11 @@ export class Sll<TVal> {
     this.head = currHead.next;
     this._length--;
     delete currHead.next;
-    delete currHead.prev;
     return currHead;
   }
 
   *[Symbol.iterator]() {
-    let currNode: DllNode<TVal> | undefined;
+    let currNode: SllNode<TVal> | undefined;
     currNode = this.head;
     while(currNode !== undefined) {
       yield currNode.val;
