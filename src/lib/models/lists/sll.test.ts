@@ -45,15 +45,15 @@ describe('singly linked list (SLL) tests', () => {
     }
 
     for(let i = 0; i < testNums.length; ++i) {
-      const poppedNode = sll.popFront();
+      const poppedNodeVal = sll.popFront();
       const poppedNum = testNums.pop();
-      if(poppedNode === undefined) {
+      if(poppedNodeVal === undefined) {
         throw new Error(`Unexpect undefined node, i: ${i}`);
       }
       if(poppedNum === undefined) {
         throw new Error(`Unexpect undefined num, i: ${i}`);
       }
-      expect(poppedNode.val).toEqual(poppedNum);
+      expect(poppedNodeVal).toEqual(poppedNum);
     }
   });
 

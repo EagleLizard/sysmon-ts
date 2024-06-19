@@ -28,7 +28,7 @@ export class Sll<TVal> {
     this.head = nextNode;
     this._length++;
   }
-  popFront(): SllNode<TVal> | undefined {
+  popFront(): TVal | undefined {
     let currHead: SllNode<TVal>;
     if(this.head === undefined) {
       return undefined;
@@ -37,7 +37,7 @@ export class Sll<TVal> {
     this.head = currHead.next;
     this._length--;
     delete currHead.next;
-    return currHead;
+    return currHead.val;
   }
 
   *[Symbol.iterator]() {
