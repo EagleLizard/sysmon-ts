@@ -1,12 +1,13 @@
 
 import { Dirent, Stats, WriteStream, lstatSync, readdirSync } from 'fs';
+import assert from 'assert';
+import path from 'path';
 
 import { isObject, isString } from '../../util/validate-primitives';
 import { logger } from '../../logger';
 import { joinPath } from '../../util/files';
-import assert from 'assert';
-import path from 'path';
 import { Dll } from '../../models/lists/dll';
+import { Sll } from '../../models/lists/sll';
 
 const INTERRUPT_MS = 1e3;
 const INTERRUPT_NSECS = BigInt(INTERRUPT_MS * 1e6);
@@ -172,10 +173,10 @@ export async function scanDir2(opts: ScanDirOpts) {
 
 function *getDirScanner(opts: ScanDirOpts): Generator<ScanDirCbParams, undefined, ScanDirCbResult> {
   let currDirents: Dirent[];
-  let dirQueue: Dll<string>;
+  let dirQueue: Sll<string>;
   let currDirPath: string | undefined;
 
-  dirQueue = new Dll([ opts.dirPath ]);
+  dirQueue = new Sll([ opts.dirPath ]);
 
   while(dirQueue.length > 0) {
     let rootDirent: Stats | undefined;
