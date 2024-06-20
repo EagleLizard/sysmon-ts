@@ -1,13 +1,16 @@
 
-import { OUT_DATA_DIR_PATH, SCANDIR_OUT_DATA_DIR_PATH } from '../../../constants';
-import { joinPath, mkdirIfNotExist } from '../../util/files';
-import { getIntuitiveTimeString } from '../../util/format-util';
-import { Timer } from '../../util/timer';
 import {
   WriteStream,
   createWriteStream,
+  readdirSync,
   writeFileSync
 } from 'fs';
+import path from 'path';
+
+import { OUT_DATA_DIR_PATH, SCANDIR_OUT_DATA_DIR_PATH } from '../../../constants';
+import { mkdirIfNotExist } from '../../util/files';
+import { getIntuitiveTimeString } from '../../util/format-util';
+import { Timer } from '../../util/timer';
 import { getDateFileStr } from '../../util/datetime-util';
 import { findDuplicateFiles } from './find-duplicate-files';
 import { ScanDirCbParams, scanDir, scanDir2 } from './scan-dir';
@@ -38,6 +41,9 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   nowDate = new Date;
   dirCount = 0;
   fileCount = 0;
+
+  mkdirIfNotExist(OUT_DATA_DIR_PATH);
+  mkdirIfNotExist(SCANDIR_OUT_DATA_DIR_PATH);
 
   dirsDataFilePath = getDirsDataFilePath(nowDate);
   dirsWs = createWriteStream(dirsDataFilePath);
@@ -76,13 +82,12 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
       scanDirCb
     });
   }
+  dirsWs.close();
+  filesWs.close();
   scanMs = timer.stop();
   console.log(`# files: ${fileCount}`);
   console.log(`# dirs: ${dirCount}`);
   console.log(`Scan took: ${getIntuitiveTimeString(scanMs)}`);
-
-  mkdirIfNotExist(OUT_DATA_DIR_PATH);
-  mkdirIfNotExist(SCANDIR_OUT_DATA_DIR_PATH);
 
   if(opts.find_duplicates === undefined) {
     return;
@@ -95,10 +100,10 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   let fileDupeCount: number;
   let dupeMapKeys: string[];
   const fileDupesDirName = `${getDateFileStr(nowDate)}_dupes.txt`;
-  const fileDupesFilePath = joinPath([
+  const fileDupesFilePath = [
     SCANDIR_OUT_DATA_DIR_PATH,
     fileDupesDirName,
-  ]);
+  ].join(path.sep);
 
   let dupeFileLines: string[];
   dupeFileLines = [];
@@ -125,17 +130,17 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
 
 function getDirsDataFilePath(date: Date): string {
   const dirsDataFileName = `${getDateFileStr(date)}_dirs.txt`;
-  const dirsDataFilePath = joinPath([
+  const dirsDataFilePath = [
     SCANDIR_OUT_DATA_DIR_PATH,
     dirsDataFileName,
-  ]);
+  ].join(path.sep);
   return dirsDataFilePath;
 }
 function getFilesDataFilePath(date: Date): string {
   const filesDataDirName = `${getDateFileStr(date)}_files.txt`;
-  const filesDataFilePath = joinPath([
+  const filesDataFilePath = [
     SCANDIR_OUT_DATA_DIR_PATH,
     filesDataDirName,
-  ]);
+  ].join(path.sep);
   return filesDataFilePath;
 }

@@ -53,7 +53,7 @@ export type FindDuplicateFilesOpts = {
   dupesWs?: FindDuplicatesWriteStream;
 };
 
-export async function findDuplicateFiles(opts: FindDuplicateFilesOpts) {
+export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<Map<string, string[]>> {
   let outStream: FindDuplicatesOutStream;
   let hashMap: Map<string, string[]>;
 
@@ -101,10 +101,10 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts) {
   */
 
   possibleDupesFileName = `${getDateFileStr(opts.nowDate)}_possible-dupes.txt`;
-  possibleDupesFilePath = joinPath([
+  possibleDupesFilePath = [
     SCANDIR_OUT_DATA_DIR_PATH,
     possibleDupesFileName,
-  ]);
+  ].join(path.sep);
   possibleDupesWs = opts.possibleDupesWs ?? createWriteStream(possibleDupesFilePath);
   writePotentialDupes(possibleDupesWs, pathMapEntries);
   possibleDupesWs.close();

@@ -8,6 +8,7 @@ export type GenTestDirRes = {
   numFiles: number;
   numDirs: number;
   numFileDupes: number;
+  files: string[];
 };
 
 type GenTestDirsOpts = {
@@ -21,9 +22,13 @@ export function genTestDirs(fs: IFs, opts: GenTestDirsOpts): GenTestDirRes {
   let dupeMap: Map<string, number>;
   let dupeMapKeys: string[];
   let dupeCount: number;
+  let files: string[];
+
   let fileCount = 0;
   let dirCount = 0;
   dupeMap = new Map;
+  files = [];
+
   _genTestDirs([], 0);
   function _genTestDirs(soFar: string[], depth: number) {
     if(depth > opts.dirDepth) {
@@ -65,6 +70,7 @@ export function genTestDirs(fs: IFs, opts: GenTestDirsOpts): GenTestDirRes {
       dupeMap.set(currFileData, currDupeCount + 1);
 
       fs.writeFileSync(currFilePath, currFileData);
+      files.push(currFilePath);
       fileCount++;
     }
   }
@@ -81,5 +87,6 @@ export function genTestDirs(fs: IFs, opts: GenTestDirsOpts): GenTestDirRes {
     numFiles: fileCount,
     numDirs: dirCount,
     numFileDupes: dupeCount,
+    files,
   };
 }
