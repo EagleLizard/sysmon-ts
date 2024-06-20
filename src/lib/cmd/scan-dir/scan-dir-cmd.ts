@@ -2,7 +2,6 @@
 import {
   WriteStream,
   createWriteStream,
-  readdirSync,
   writeFileSync
 } from 'fs';
 import path from 'path';
@@ -34,6 +33,10 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   let filesDataFilePath: string;
   let dirsWs: WriteStream;
   let filesWs: WriteStream;
+
+  let totalTimer: Timer;
+
+  totalTimer = Timer.start();
 
   dirPaths = getScanDirArgs(parsedArgv.args);
   opts = getScanDirOpts(parsedArgv.opts);
@@ -67,7 +70,13 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
           skip: true,
         };
       }
-    } else {
+    } else if(!params.isSymLink) {
+      /*
+        Skip symlinks for now, because they will throw a
+          ENOENT in find-duplicates.
+        TODO: Explore resolving symlinks, research best
+          practices for dealing with them.
+      */
       filesWs.write(`${params.fullPath}\n`);
       fileCount++;
     }
@@ -90,6 +99,7 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   console.log(`Scan took: ${getIntuitiveTimeString(scanMs)}`);
 
   if(opts.find_duplicates === undefined) {
+    logTotalTime(totalTimer.stop());
     return;
   }
   timer = Timer.start();
@@ -125,7 +135,11 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   console.log({ duplicateFiles: fileDupeCount });
   findDuplicatesMs = timer.stop();
   console.log(`findDuplicates took: ${getIntuitiveTimeString(findDuplicatesMs)}`);
+  logTotalTime(totalTimer.stop());
+}
 
+function logTotalTime(ms: number) {
+  console.log(`Total time: ${getIntuitiveTimeString(ms)}`);
 }
 
 function getDirsDataFilePath(date: Date): string {

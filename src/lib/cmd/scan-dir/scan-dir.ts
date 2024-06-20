@@ -14,6 +14,7 @@ const INTERRUPT_NSECS = BigInt(INTERRUPT_MS * 1e6);
 
 export type ScanDirCbParams = {
   isDir: boolean;
+  isSymLink: boolean;
   fullPath: string;
 };
 
@@ -78,6 +79,7 @@ export async function scanDir(opts: ScanDirOpts) {
     }
     scanDirCbResult = opts.scanDirCb({
       isDir: rootDirent?.isDirectory() ?? false,
+      isSymLink: rootDirent?.isSymbolicLink() ?? false,
       fullPath: currDirPath,
     });
     if(
@@ -149,6 +151,7 @@ export async function scanDir2(opts: ScanDirOpts) {
         currRes = iterRes.value;
         scanDirCbResult = opts.scanDirCb({
           isDir: currRes.isDir,
+          isSymLink: currRes.isSymLink,
           fullPath: currRes.fullPath,
         });
         if((pathCount++ % progressMod) === 0) {
@@ -202,6 +205,7 @@ function *getDirScanner(opts: ScanDirOpts): Generator<ScanDirCbParams, undefined
     }
     currRes = {
       isDir: rootDirent?.isDirectory() ?? false,
+      isSymLink: rootDirent?.isSymbolicLink() ?? false,
       fullPath: currDirPath,
     };
 

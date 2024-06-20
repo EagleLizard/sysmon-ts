@@ -9,7 +9,7 @@ import {
 import { getDateFileStr } from '../../util/datetime-util';
 import { SCANDIR_OUT_DATA_DIR_PATH } from '../../../constants';
 import { HashFileResult, hashFile } from '../../util/hasher';
-import { isObject } from '../../util/validate-primitives';
+import { isObject, isString } from '../../util/validate-primitives';
 import { sleep } from '../../util/sleep';
 import { joinPath, readFileByLine } from '../../util/files';
 import { Timer } from '../../util/timer';
@@ -28,10 +28,10 @@ let maxConcurrentHashPromises: number;
 // maxConcurrentHashPromises = 48;
 // maxConcurrentHashPromises = 96;
 
-maxConcurrentHashPromises = 32;
+// maxConcurrentHashPromises = 32;
 // maxConcurrentHashPromises = 64;
 // maxConcurrentHashPromises = 128;
-// maxConcurrentHashPromises = 256; // best 36s
+maxConcurrentHashPromises = 256; // best 36s
 // maxConcurrentHashPromises = 512; // best 36s
 
 // maxConcurrentHashPromises = 1;
@@ -60,6 +60,7 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
   let filePaths: string[];
   let pathMapEntries: [ number, string[] ][];
   let hashCount: number;
+  let sizeMap: Map<number, string[]>;
   let possibleDupesFileName: string;
   let possibleDupesFilePath: string;
   let possibleDupesWs: FindDuplicatesWriteStream;
@@ -82,11 +83,9 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
   */
   let potentialDupesTimer = Timer.start();
   filePaths = [];
+  sizeMap = new Map();
   const filesDataFileLineCb = (line: string) => {
-    line = line.trim();
-    if(line.length > 0) {
-      filePaths.push(line);
-    }
+    filePaths.push(line);
   };
   await readFileByLine(opts.filesDataFilePath, {
     lineCb: filesDataFileLineCb,
@@ -218,12 +217,25 @@ function getPotentialDupes(filePaths: string[]): [ number, string[] ][] {
   let pathMapEntries: [ number, string[] ][];
   pathMap = new Map;
   for(let i = 0; i < filePaths.length; ++i) {
-    let stat: Stats;
+    let stat: Stats | undefined;
     let size: number;
     let sizePaths: string[];
     let filePath = filePaths[i];
-    stat = lstatSync(filePath);
-    size = stat.size;
+    try {
+      stat = lstatSync(filePath);
+    } catch(e) {
+      if(
+        isObject(e)
+        && isString(e.code)
+        && (e.code === 'ENOENT')
+      ) {
+        logger.error(`getPotentialDupes() lstatSync: ${e.code} ${filePath}`);
+      } else {
+        console.error(e);
+        throw e;
+      }
+    }
+    size = stat?.size ?? -1;
     // size = 0;
     if(!pathMap.has(size)) {
       pathMap.set(size, []);
