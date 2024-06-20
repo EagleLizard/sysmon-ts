@@ -65,3 +65,24 @@ export function hashFile(filePath: string): HashFileResult {
     fileReadPromise: readPromise,
   };
 }
+
+export async function hashFile2(filePath: string): Promise<string> {
+  let hashStr: string;
+  let hasher: Hasher;
+  let rs: ReadStream;
+  hasher = getHasher();
+  rs = createReadStream(filePath);
+
+  const chunkCb = (chunk: string | Buffer) => {
+    hasher.update(chunk);
+  };
+
+  await new Promise((resolve, reject) => {
+    rs.on('error', reject);
+    rs.on('close', resolve);
+    rs.on('data', chunkCb);
+  });
+
+  hashStr = hasher.digest();
+  return hashStr;
+}
