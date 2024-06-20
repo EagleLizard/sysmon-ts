@@ -27,6 +27,8 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   let findDuplicatesMs: number;
   let nowDate: Date;
 
+  let dirsDataFilePath: string;
+  let filesDataFilePath: string;
   let dirsWs: WriteStream;
   let filesWs: WriteStream;
 
@@ -37,9 +39,9 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   dirCount = 0;
   fileCount = 0;
 
-  const dirsDataFilePath = getDirsDataFilePath(nowDate);
+  dirsDataFilePath = getDirsDataFilePath(nowDate);
   dirsWs = createWriteStream(dirsDataFilePath);
-  const filesDataFilePath = getFilesDataFilePath(nowDate);
+  filesDataFilePath = getFilesDataFilePath(nowDate);
   filesWs = createWriteStream(filesDataFilePath);
 
   const scanDirCb = (params: ScanDirCbParams) => {
@@ -64,12 +66,11 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
       fileCount++;
     }
   };
-
+  console.log(`Scanning:\n${dirPaths.join('\n')}`);
   timer = Timer.start();
   for(let i = 0; i < dirPaths.length; ++i) {
     let dirPath: string;
     dirPath = dirPaths[i];
-    console.log(`Scanning: ${dirPath}`);
     await scanDir2({
       dirPath,
       scanDirCb
