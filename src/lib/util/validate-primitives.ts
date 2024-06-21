@@ -6,7 +6,7 @@ export function isObject(val: unknown): val is Record<string, unknown> {
   );
 }
 
-export function isPromise(val: unknown): val is Promise<unknown> {
+export function isPromise<T>(val: unknown): val is Promise<T> {
   if(!isObject(val)) {
     return false;
   }

@@ -1,5 +1,5 @@
 
-export class Deferred<T> {
+export class Deferred<T = void> {
   private constructor(
     public promise: Promise<T>,
     public resolve: (val: T | PromiseLike<T>) => void,

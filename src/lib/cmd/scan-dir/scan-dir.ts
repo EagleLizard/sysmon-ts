@@ -3,7 +3,7 @@ import { Dirent, Stats, WriteStream, lstatSync, readdirSync } from 'fs';
 import assert from 'assert';
 import path from 'path';
 
-import { isObject, isString } from '../../util/validate-primitives';
+import { isObject, isPromise, isString } from '../../util/validate-primitives';
 import { logger } from '../../logger';
 import { joinPath } from '../../util/files';
 import { Dll } from '../../models/lists/dll';
@@ -24,7 +24,7 @@ type ScanDirOutStream = {
 
 export type ScanDirOpts = {
   dirPath: string;
-  scanDirCb: (scanDirCbParams: ScanDirCbParams) => ScanDirCbResult;
+  scanDirCb: (scanDirCbParams: ScanDirCbParams) => ScanDirCbResult | Promise<ScanDirCbResult>;
   outStream?: ScanDirOutStream;
   progressMod?: number;
 };
@@ -60,7 +60,7 @@ export async function scanDir(opts: ScanDirOpts) {
 
   while(dirQueue.length > 0) {
     let rootDirent: Stats | undefined;
-    let scanDirCbResult: ScanDirCbResult;
+    let scanDirCbResult: ScanDirCbResult | Promise<ScanDirCbResult>;
     currDirPath = dirQueue.popFront()!;
     try {
       rootDirent = lstatSync(currDirPath);
@@ -82,6 +82,9 @@ export async function scanDir(opts: ScanDirOpts) {
       isSymLink: rootDirent?.isSymbolicLink() ?? false,
       fullPath: currDirPath,
     });
+    if(isPromise(scanDirCbResult)) {
+      scanDirCbResult = await scanDirCbResult;
+    }
     if(
       (rootDirent !== undefined)
       && rootDirent.isDirectory()
@@ -126,7 +129,7 @@ export async function scanDir2(opts: ScanDirOpts) {
   let progressMod: number;
   let outStream: ScanDirOutStream;
   let pathCount: number;
-  let scanDirCbResult: ScanDirCbResult | undefined;
+  let scanDirCbResult: ScanDirCbResult | undefined | Promise<ScanDirCbResult | undefined>;
   let iterCount: number;
   let startTime: bigint;
   progressMod = opts.progressMod ?? 1e4;
@@ -142,7 +145,7 @@ export async function scanDir2(opts: ScanDirOpts) {
       main process can exit gracefully (e.g. SIGTERM)
   */
   return new Promise<void>((resolve) => {
-    (function doIter() {
+    (async function doIter() {
       while(
         !(iterRes = dirScanner.next(scanDirCbResult)).done
         && (process.exitCode === undefined)
@@ -154,6 +157,9 @@ export async function scanDir2(opts: ScanDirOpts) {
           isSymLink: currRes.isSymLink,
           fullPath: currRes.fullPath,
         });
+        if(isPromise(scanDirCbResult)) {
+          scanDirCbResult = await scanDirCbResult;
+        }
         if((pathCount++ % progressMod) === 0) {
           outStream.write('.');
         }

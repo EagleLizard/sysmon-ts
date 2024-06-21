@@ -11,12 +11,13 @@ import { SCANDIR_OUT_DATA_DIR_PATH } from '../../../constants';
 import { HashFileResult, hashFile, hashFile2 } from '../../util/hasher';
 import { isObject, isString } from '../../util/validate-primitives';
 import { sleep } from '../../util/sleep';
-import { joinPath, readFileByLine } from '../../util/files';
+import { readFileByLine } from '../../util/files';
 import { Timer } from '../../util/timer';
 import { getIntuitiveTimeString } from '../../util/format-util';
 import { logger } from '../../logger';
 import path, { ParsedPath } from 'path';
 import assert from 'assert';
+import { Deferred } from '../../../test/deferred';
 
 let maxConcurrentHashPromises: number;
 
@@ -37,12 +38,15 @@ maxConcurrentHashPromises = 256; // best 3.334m
 
 // maxConcurrentHashPromises = 1;
 
+const rflMod = 500;
+
 type FindDuplicatesOutStream = {
   write: WriteStream['write'];
 };
 type FindDuplicatesWriteStream = {
   write: WriteStream['write'];
   close: WriteStream['close'];
+  once: WriteStream['once']
 };
 
 export type FindDuplicateFilesOpts = {
@@ -85,6 +89,8 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
   */
   let potentialDupesTimer = Timer.start();
   sizeMap = new Map();
+  let rflTimer: Timer;
+
   const filesDataFileLineCb = (line: string) => {
     let stat: Stats | undefined;
     let size: number;
@@ -104,15 +110,35 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
       }
     }
     size = stat?.size ?? -1;
-    if((sizePaths = sizeMap.get(size)) === undefined) {
-      sizePaths = [];
-      sizeMap.set(size, sizePaths);
+    if(size === 0) {
+      /*
+        There is no point in hashing files with zero length,
+          they will deterministically be duplicates because
+          the hash of nothing is the same as the hash of
+          nothing.
+        I'm mot sure how to report them. I don't consider reporting
+          zero-length files helpful, because they are not truly
+          duplicates, and deleting them could cause loss of
+          information (file name)
+      */
+    } else {
+      if((sizePaths = sizeMap.get(size)) === undefined) {
+        sizePaths = [];
+        sizeMap.set(size, sizePaths);
+      }
+      sizePaths.push(line);
     }
-    sizePaths.push(line);
+
+    if(rflTimer.currentMs() > rflMod) {
+      outStream.write('.');
+      rflTimer.reset();
+    }
   };
+  rflTimer = Timer.start();
   await readFileByLine(opts.filesDataFilePath, {
     lineCb: filesDataFileLineCb,
   });
+  outStream.write('\n');
   possibleDupes = new Map;
 
   currSizeKeyIter = sizeMap.keys();
@@ -122,12 +148,12 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
     let currSizeVal: string[] | undefined;
     currSizeKey = currSizeKeyRes.value;
     currSizeVal = sizeMap.get(currSizeKey);
+    sizeMap.delete(currSizeKey);
     assert(currSizeVal !== undefined, 'unexpected empty paths arr in sizeMap');
     if(currSizeVal.length > 1) {
       possibleDupes.set(currSizeKey, currSizeVal);
       totalFileCount += currSizeVal.length;
     }
-    sizeMap.delete(currSizeKey);
   }
   // for(let i = 0; i < pathMapEntries.length; ++i) {
   //   if(pathMapEntries[i][1].length > 1) {
@@ -148,12 +174,8 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
     possibleDupesFileName,
   ].join(path.sep);
   possibleDupesWs = opts.possibleDupesWs ?? createWriteStream(possibleDupesFilePath);
-  writePotentialDupes(possibleDupesWs, possibleDupes);
+  await writePotentialDupes(possibleDupesWs, possibleDupes);
   possibleDupesWs.close();
-  // totalFileCount = 0;
-  // for(let i = 0; i < pathMapEntries.length; ++i) {
-  //   totalFileCount += pathMapEntries[i][1].length;
-  // }
 
   hashProgess = 0;
   hashProgessLong = 0;
@@ -166,7 +188,7 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
   let currPathMapIter: IterableIterator<number>;
   let currPathMapRes: IteratorResult<number>;
   currPathMapIter = possibleDupes.keys();
-  // for(let i = 0; i < pathMapEntries.length; ++i) {
+
   hashMap = await getDupes(possibleDupes, totalFileCount, outStream);
 
   dupesFileName = `${getDateFileStr(opts.nowDate)}_dupes.txt`;
@@ -175,7 +197,7 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
     dupesFileName,
   ].join(path.sep);
   dupesWs = opts.dupesWs ?? createWriteStream(dupesFilePath);
-  writeDupes(dupesWs, hashMap);
+  await writeDupes(dupesWs, hashMap);
   dupesWs.close();
 
   outStream.write('\n');
@@ -295,14 +317,33 @@ async function getDupes(possibleDupes: Map<number, string[]>, totalFileCount: nu
     assert(filePaths !== undefined, 'unexpected undefined filePaths in getDupes()');
     for(let i = 0; i < filePaths.length; ++i) {
       let filePath: string;
-      let hashFileRes: HashFileResult;
-      let fileHash: string;
+      let fileHash: string | undefined;
       let dupesArr: string[] | undefined;
 
       let nextHashProgress: number;
 
       filePath = filePaths[i];
-      fileHash = await hashFile2(filePath);
+      try {
+        fileHash = await hashFile2(filePath);
+      } catch(e) {
+        if(isObject(e) && (
+          (e.code === 'EISDIR')
+          || (e.code === 'ENOENT')
+        )) {
+          let stackStr = (new Error).stack;
+          let errMsg = `${e.code}: ${filePath}`;
+          let errObj = Object.assign({}, {
+            errMsg,
+            stackStr,
+          }, e);
+          logger.warn(errObj);
+          continue;
+        } else {
+          console.error(e);
+          logger.error(e);
+          throw e;
+        }
+      }
       if((dupesArr = hashMap.get(fileHash)) === undefined) {
         dupesArr = [];
         hashMap.set(fileHash, dupesArr);
@@ -378,70 +419,81 @@ function getPotentialDupes(filePaths: string[]): [ number, string[] ][] {
   return pathMapEntries;
 }
 
-function writePotentialDupes(ws: FindDuplicatesWriteStream, sizeMap: Map<number, string[]>) {
+async function writePotentialDupes(ws: FindDuplicatesWriteStream, sizeMap: Map<number, string[]>) {
   let currSizeKeyIter: IterableIterator<number>;
   let currSizeKeyRes: IteratorResult<number>;
+  let wsRes: boolean;
+  wsRes = true;
   currSizeKeyIter = sizeMap.keys();
   while(!(currSizeKeyRes = currSizeKeyIter.next()).done) {
     let size: number;
     let dupeFilePaths: string[] | undefined;
+    let deferred: Deferred<void>;
     size = currSizeKeyRes.value;
     dupeFilePaths = sizeMap.get(size);
     assert(dupeFilePaths !== undefined, 'unexpect expty dupeFilePaths in sizeMap');
-    ws.write(`${size}\n`);
+    wsRes = ws.write(`${size}\n`);
+    if(!wsRes) {
+      deferred = Deferred.init();
+      ws.once('drain', deferred.resolve);
+      await deferred.promise;
+    }
     for(let i = 0; i < dupeFilePaths.length; ++i) {
-      ws.write(`${dupeFilePaths[i]}\n`);
+      wsRes = ws.write(`${dupeFilePaths[i]}\n`);
+      if(!wsRes) {
+        deferred = Deferred.init();
+        ws.once('drain', deferred.resolve);
+        await deferred.promise;
+      }
     }
   }
-  // [ ...sizeMap ].forEach((curr) => {
-  //   let [ size, dupeFilePaths ] = curr;
-  //   ws.write(`${size}\n`);
-  //   dupeFilePaths.forEach(dupeFilePath => {
-  //     ws.write(`${dupeFilePath}\n`);
-  //   });
-  // });
 }
 
-function writeDupes(ws: FindDuplicatesWriteStream, hashMap: Map<string, string[]>) {
+async function writeDupes(ws: FindDuplicatesWriteStream, hashMap: Map<string, string[]>) {
   let hashMapKeyIter: IterableIterator<string>;
-  hashMapKeyIter = hashMap.keys();
   let currRes: IteratorResult<string> | undefined;
+  let wsRes: boolean;
+
+  wsRes = true;
+
+  hashMapKeyIter = hashMap.keys();
 
   while(!(currRes = hashMapKeyIter.next()).done) {
     let parsedPaths: ParsedPath[];
     let curr: string;
+    let deferred: Deferred<void>;
     curr = currRes.value;
     parsedPaths = [];
     let dupeFilePaths: string[] | undefined;
     if((dupeFilePaths = hashMap.get(curr)) === undefined) {
       throw new Error(`unexpected empty dupeFilePaths for hash: ${curr}`);
     }
-    ws.write(`\n${curr}\n`);
+    wsRes = ws.write(`\n${curr}\n`);
+    if(!wsRes) {
+      deferred = Deferred.init();
+      ws.once('drain', deferred.resolve);
+      await deferred.promise;
+    }
     for(let i = 0; i < dupeFilePaths.length; ++i) {
       let dupeFilePath: string;
       let parsedFilePath: ParsedPath;
       dupeFilePath = dupeFilePaths[i];
       parsedFilePath = path.parse(dupeFilePath);
       parsedPaths.push(parsedFilePath);
-      ws.write(`${dupeFilePath}\n`);
+      wsRes = ws.write(`${dupeFilePath}\n`);
+      if(!wsRes) {
+        deferred = Deferred.init();
+        ws.once('drain', deferred.resolve);
+        await deferred.promise;
+      }
     }
     for(let i = 0; i < parsedPaths.length; ++i) {
-      ws.write(`  ${parsedPaths[i].base}\n`);
+      wsRes = ws.write(`  ${parsedPaths[i].base}\n`);
+      if(!wsRes) {
+        deferred = Deferred.init();
+        ws.once('drain', deferred.resolve);
+        await deferred.promise;
+      }
     }
   }
-  // [ ...hashMap.entries() ].forEach((curr) => {
-  //   let parsedPaths: ParsedPath[];
-  //   let [ hash, dupeFilePaths ] = curr;
-  //   parsedPaths = [];
-  //   ws.write(`\n${hash}\n`);
-  //   dupeFilePaths.forEach(dupeFilePath => {
-  //     let parsedFilePath: ParsedPath;
-  //     parsedFilePath = path.parse(dupeFilePath);
-  //     parsedPaths.push(parsedFilePath);
-  //     ws.write(`${dupeFilePath}\n`);
-  //   });
-  //   parsedPaths.forEach(parsedPath => {
-  //     ws.write(`  ${parsedPath.base}\n`);
-  //   });
-  // });
 }
