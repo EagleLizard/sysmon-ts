@@ -97,7 +97,7 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
     let size: number;
     let sizePaths: string[] | undefined;
     try {
-      // stat = lstatSync(line);
+      stat = lstatSync(line);
     } catch(e) {
       if(
         isObject(e)
@@ -130,7 +130,7 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
         sizePaths = [];
         sizeMap.set(size, sizePaths);
       }
-      // sizePaths.push(line);
+      sizePaths.push(line);
     }
 
     if(rflTimer.currentMs() > rflMod) {
@@ -143,9 +143,6 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
     lineCb: filesDataFileLineCb,
   });
   outStream.write('\n');
-  let sizeMapEntries = [ ...sizeMap.entries() ];
-  console.log(sizeMapEntries.length);
-  return;
   possibleDupes = new Map;
 
   currSizeKeyIter = sizeMap.keys();
