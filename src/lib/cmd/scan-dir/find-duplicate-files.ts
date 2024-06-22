@@ -31,10 +31,11 @@ let maxConcurrentHashPromises: number;
 // maxConcurrentHashPromises = 96;
 
 // maxConcurrentHashPromises = 32;  // 3.394m
-// maxConcurrentHashPromises = 64;
+maxConcurrentHashPromises = 64;
 // maxConcurrentHashPromises = 128;
-maxConcurrentHashPromises = 256; // best 3.334m
+// maxConcurrentHashPromises = 256; // best 3.334m
 // maxConcurrentHashPromises = 512; // best 36s
+// maxConcurrentHashPromises = 1024;
 
 // maxConcurrentHashPromises = 1;
 
@@ -96,12 +97,15 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
     let size: number;
     let sizePaths: string[] | undefined;
     try {
-      stat = lstatSync(line);
+      // stat = lstatSync(line);
     } catch(e) {
       if(
         isObject(e)
         && isString(e.code)
-        && (e.code === 'ENOENT')
+        && (
+          (e.code === 'ENOENT')
+          || (e.code === 'EACCES')
+        )
       ) {
         logger.error(`getPotentialDupes lstatSync: ${e.code} ${line}`);
       } else {
@@ -126,7 +130,7 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
         sizePaths = [];
         sizeMap.set(size, sizePaths);
       }
-      sizePaths.push(line);
+      // sizePaths.push(line);
     }
 
     if(rflTimer.currentMs() > rflMod) {
@@ -139,6 +143,9 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
     lineCb: filesDataFileLineCb,
   });
   outStream.write('\n');
+  let sizeMapEntries = [ ...sizeMap.entries() ];
+  console.log(sizeMapEntries.length);
+  return;
   possibleDupes = new Map;
 
   currSizeKeyIter = sizeMap.keys();
@@ -301,10 +308,12 @@ async function getDupes(possibleDupes: Map<number, string[]>, totalFileCount: nu
   let hashMapIt: IterableIterator<string>;
   let hashMapRes: IteratorResult<string>;
 
+  let runningPromises: number;
   let hashCount: number;
   let hashProgess: number;
   let hashProgessLong: number;
 
+  runningPromises = 0;
   hashMap = new Map;
   hashCount = 0;
   hashProgess = 0;
@@ -322,45 +331,64 @@ async function getDupes(possibleDupes: Map<number, string[]>, totalFileCount: nu
 
       let nextHashProgress: number;
 
-      filePath = filePaths[i];
-      try {
-        fileHash = await hashFile2(filePath);
-      } catch(e) {
-        if(isObject(e) && (
-          (e.code === 'EISDIR')
-          || (e.code === 'ENOENT')
-        )) {
-          let stackStr = (new Error).stack;
-          let errMsg = `${e.code}: ${filePath}`;
-          let errObj = Object.assign({}, {
-            errMsg,
-            stackStr,
-          }, e);
-          logger.warn(errObj);
-          continue;
-        } else {
-          console.error(e);
-          logger.error(e);
-          throw e;
-        }
-      }
-      if((dupesArr = hashMap.get(fileHash)) === undefined) {
-        dupesArr = [];
-        hashMap.set(fileHash, dupesArr);
-      }
-      dupesArr.push(filePath);
-      hashCount++;
-      // possibleDupes.delete(currPathMapRes.value);
+      let hashPromise: Promise<void>;
 
-      nextHashProgress = (hashCount / totalFileCount) * 100;
-      if((nextHashProgress - hashProgess) > 0.5) {
-        hashProgess = nextHashProgress;
-        outStream.write('.');
+      filePath = filePaths[i];
+
+      while(runningPromises > maxConcurrentHashPromises) {
+        await sleep(0);
       }
-      if((nextHashProgress - hashProgessLong) > 2) {
-        hashProgessLong = nextHashProgress;
-        outStream.write(`${Math.round((hashCount / totalFileCount) * 100)}`);
-      }
+      runningPromises++;
+
+      hashPromise = (async () => {
+        try {
+          fileHash = await hashFile2(filePath);
+        } catch(e) {
+          if(isObject(e) && (
+            (e.code === 'EISDIR')
+            || (e.code === 'ENOENT')
+          )) {
+            let stackStr = (new Error).stack;
+            let errMsg = `${e.code}: ${filePath}`;
+            let errObj = Object.assign({}, {
+              errMsg,
+              stackStr,
+            }, e);
+            logger.warn(errObj);
+            return;
+          } else {
+            console.error(e);
+            logger.error(e);
+            throw e;
+          }
+        }
+        if((dupesArr = hashMap.get(fileHash)) === undefined) {
+          dupesArr = [];
+          hashMap.set(fileHash, dupesArr);
+        }
+        dupesArr.push(filePath);
+        hashCount++;
+        // possibleDupes.delete(currPathMapRes.value);
+        /*
+          print progress
+        */
+        nextHashProgress = (hashCount / totalFileCount) * 100;
+        if((nextHashProgress - hashProgess) > 0.5) {
+          hashProgess = nextHashProgress;
+          outStream.write('.');
+        }
+        if((nextHashProgress - hashProgessLong) > 2) {
+          hashProgessLong = nextHashProgress;
+          outStream.write(`${Math.round((hashCount / totalFileCount) * 100)}`);
+        }
+      })();
+
+      hashPromise.finally(() => {
+        runningPromises--;
+      });
+    }
+    while(runningPromises > 0) {
+      await sleep(0);
     }
   }
 
