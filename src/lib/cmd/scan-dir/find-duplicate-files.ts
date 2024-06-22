@@ -8,7 +8,7 @@ import {
 
 import { getDateFileStr } from '../../util/datetime-util';
 import { SCANDIR_OUT_DATA_DIR_PATH } from '../../../constants';
-import { HashFileResult, hashFile, hashFile2 } from '../../util/hasher';
+import { hashFile2 } from '../../util/hasher';
 import { isObject, isString } from '../../util/validate-primitives';
 import { sleep } from '../../util/sleep';
 import { readFileByLine } from '../../util/files';
@@ -63,7 +63,6 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
   let outStream: FindDuplicatesOutStream;
   let hashMap: Map<string, string[]>;
 
-  let hashCount: number;
   let sizeMap: Map<number, string[]>;
   let possibleDupes: Map<number, string[]>;
   let possibleDupesFileName: string;
@@ -73,10 +72,6 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
   let currSizeKeyRes: IteratorResult<number>;
 
   let totalFileCount: number;
-  let hashProgess: number;
-  let hashProgessLong: number;
-  let promiseQueue: [number, Promise<void>][];
-  let promiseIdCounter: number;
 
   let dupesFileName: string;
   let dupesFilePath: string;
@@ -181,18 +176,6 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
   await writePotentialDupes(possibleDupesWs, possibleDupes);
   possibleDupesWs.close();
 
-  hashProgess = 0;
-  hashProgessLong = 0;
-
-  promiseQueue = [];
-  promiseIdCounter = 0;
-
-  hashMap = new Map;
-  hashCount = 0;
-  let currPathMapIter: IterableIterator<number>;
-  let currPathMapRes: IteratorResult<number>;
-  currPathMapIter = possibleDupes.keys();
-
   hashMap = await getDupes(possibleDupes, totalFileCount, outStream);
 
   dupesFileName = `${getDateFileStr(opts.nowDate)}_dupes.txt`;
@@ -207,93 +190,6 @@ export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<
   outStream.write('\n');
   outStream.write(`hashMap.keys().length: ${[ ...hashMap.keys() ].length}\n`);
 
-  return hashMap;
-  while(!(currPathMapRes = currPathMapIter.next()).done) {
-    let filePaths: string[] | undefined;
-    filePaths = possibleDupes.get(currPathMapRes.value);
-    assert(filePaths !== undefined, 'unexpected undefined possibleDupes filesPaths');
-    assert(filePaths.length > 1, `unexpected possibleDupes filePaths length: ${filePaths.length}`)
-    for(let k = 0; k < filePaths.length; ++k) {
-      let hashFileRes: HashFileResult;
-      let hashPromiseId: number;
-      let hashPromise: Promise<void>;
-
-      while(promiseQueue.length >= maxConcurrentHashPromises) {
-        await sleep(0);
-      }
-
-      const filePath = filePaths[k];
-
-      hashFileRes = hashFile(filePath);
-
-      hashPromiseId = promiseIdCounter++;
-      hashPromise = (async () => {
-        let hashStr: string;
-        let hashArr: string[];
-        let foundQueuedIdx: number;
-        let nextHashProgress: number;
-
-        try {
-          await hashFileRes.fileReadPromise;
-        } catch(e) {
-          if(isObject(e) && (
-            (e.code === 'EISDIR')
-            || (e.code === 'ENOENT')
-          )) {
-            let stackStr = (new Error).stack;
-            let errMsg = `${e.code}: ${filePath}`;
-            let errObj = Object.assign({}, {
-              errMsg,
-              stackStr,
-            }, e);
-            logger.warn(errObj);
-          } else {
-            throw e;
-          }
-        }
-        hashStr = hashFileRes.hasher.digest();
-        if(!hashMap.has(hashStr)) {
-          hashMap.set(hashStr, []);
-        }
-        hashArr = hashMap.get(hashStr)!;
-        hashArr.push(filePath);
-        hashCount++;
-        nextHashProgress = (hashCount / totalFileCount) * 100;
-        if((nextHashProgress - hashProgess) > 0.5) {
-          hashProgess = nextHashProgress;
-          outStream.write('.');
-        }
-        if((nextHashProgress - hashProgessLong) > 2) {
-          hashProgessLong = nextHashProgress;
-          outStream.write(`${Math.round((hashCount / totalFileCount) * 100)}`);
-        }
-        foundQueuedIdx = promiseQueue.findIndex(queuedPromise => {
-          return queuedPromise[0] === hashPromiseId;
-        });
-        promiseQueue.splice(foundQueuedIdx, 1);
-      })();
-      promiseQueue.push([
-        hashPromiseId,
-        hashPromise,
-      ]);
-    }
-  }
-
-  while(promiseQueue.length > 0) {
-    await sleep(0);
-  }
-
-  dupesFileName = `${getDateFileStr(opts.nowDate)}_dupes.txt`;
-  dupesFilePath = [
-    SCANDIR_OUT_DATA_DIR_PATH,
-    dupesFileName,
-  ].join(path.sep);
-  dupesWs = opts.dupesWs ?? createWriteStream(dupesFilePath);
-  writeDupes(dupesWs, hashMap);
-  dupesWs.close();
-
-  outStream.write('\n');
-  outStream.write(`hashMap.keys().length: ${[ ...hashMap.keys() ].length}\n`);
   return hashMap;
 }
 
@@ -403,45 +299,6 @@ async function getDupes(possibleDupes: Map<number, string[]>, totalFileCount: nu
   }
 
   return dupeHashMap;
-}
-
-function getPotentialDupes(filePaths: string[]): [ number, string[] ][] {
-  let pathMap: Map<number, string[]>;
-  let pathMapEntries: [ number, string[] ][];
-  pathMap = new Map;
-  for(let i = 0; i < filePaths.length; ++i) {
-    let stat: Stats | undefined;
-    let size: number;
-    let sizePaths: string[];
-    let filePath = filePaths[i];
-    try {
-      stat = lstatSync(filePath);
-    } catch(e) {
-      if(
-        isObject(e)
-        && isString(e.code)
-        && (e.code === 'ENOENT')
-      ) {
-        logger.error(`getPotentialDupes() lstatSync: ${e.code} ${filePath}`);
-      } else {
-        console.error(e);
-        throw e;
-      }
-    }
-    size = stat?.size ?? -1;
-    // size = 0;
-    if(!pathMap.has(size)) {
-      pathMap.set(size, []);
-    }
-    sizePaths = pathMap.get(size)!;
-    sizePaths.push(filePath);
-  }
-  pathMapEntries = [
-    ...pathMap.entries()
-  ].filter(pathMapEntry => {
-    return pathMapEntry[1].length > 1;
-  });
-  return pathMapEntries;
 }
 
 async function writePotentialDupes(ws: FindDuplicatesWriteStream, sizeMap: Map<number, string[]>) {
