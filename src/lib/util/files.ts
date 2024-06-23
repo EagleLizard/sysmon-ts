@@ -42,10 +42,10 @@ export function joinPath(pathParts: string[]): string {
   return pathParts.join(path.sep);
 }
 
-type ReadFileByLineSignal = void | 'finish';
+type ReadFileByLineSignal = void | 'finish' | 'pause';
 
 export type ReadFileByLineOpts = {
-  lineCb: (line: string) => ReadFileByLineSignal;
+  lineCb: (line: string, resumeCb: () => void) => ReadFileByLineSignal;
 };
 
 export function readFileByLine(filePath: string, opts: ReadFileByLineOpts): Promise<void> {
@@ -53,20 +53,28 @@ export function readFileByLine(filePath: string, opts: ReadFileByLineOpts): Prom
   let rl: readline.Interface;
   let readFilePromise: Promise<void>;
   let readFileSignal: ReadFileByLineSignal;
-  rs = fs.createReadStream(filePath);
+  rs = fs.createReadStream(filePath, {
+    // highWaterMark: 256,
+  });
   rl = readline.createInterface({
     input: rs,
   });
+  const resumeCb = () => {
+    rl.resume();
+  };
   readFilePromise = new Promise((resolve, reject) => {
     rs.on('error', reject);
     rs.on('close', resolve);
     rl.on('line', (line) => {
-      readFileSignal = opts.lineCb(line);
+      readFileSignal = opts.lineCb(line, resumeCb);
       if(readFileSignal === 'finish') {
         /*
           see: https://stackoverflow.com/a/29806007/4677252
         */
         rs.destroy();
+      }
+      if(readFileSignal === 'pause') {
+        rl.pause();
       }
     });
   });

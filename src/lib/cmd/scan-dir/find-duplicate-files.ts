@@ -11,7 +11,7 @@ import { SCANDIR_OUT_DATA_DIR_PATH } from '../../../constants';
 import { hashFile2 } from '../../util/hasher';
 import { isObject, isString } from '../../util/validate-primitives';
 import { sleep } from '../../util/sleep';
-import { readFileByLine } from '../../util/files';
+import { ReadFileByLineOpts, readFileByLine } from '../../util/files';
 import { Timer } from '../../util/timer';
 import { getIntuitiveTimeString } from '../../util/format-util';
 import { logger } from '../../logger';
@@ -30,12 +30,15 @@ let maxConcurrentHashPromises: number;
 // maxConcurrentHashPromises = 48;
 // maxConcurrentHashPromises = 96;
 
+// maxConcurrentHashPromises = 8;
+// maxConcurrentHashPromises = 16;
 // maxConcurrentHashPromises = 32;  // 3.394m
-maxConcurrentHashPromises = 64;
+// maxConcurrentHashPromises = 64;
 // maxConcurrentHashPromises = 128;
-// maxConcurrentHashPromises = 256; // best 3.334m
+maxConcurrentHashPromises = 256; // best 3.334m
 // maxConcurrentHashPromises = 512; // best 36s
 // maxConcurrentHashPromises = 1024;
+// maxConcurrentHashPromises = 2048;
 
 // maxConcurrentHashPromises = 1;
 
@@ -47,7 +50,7 @@ type FindDuplicatesOutStream = {
 type FindDuplicatesWriteStream = {
   write: WriteStream['write'];
   close: WriteStream['close'];
-  once: WriteStream['once']
+  once: WriteStream['once'];
 };
 
 export type FindDuplicateFilesOpts = {
@@ -58,6 +61,110 @@ export type FindDuplicateFilesOpts = {
   possibleDupesWs?: FindDuplicatesWriteStream;
   dupesWs?: FindDuplicatesWriteStream;
 };
+
+export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
+  let runningHashPromises: number;
+  let lineCount: number;
+  let hashFileName: string;
+  let hashFilePath: string;
+  let hashWs: WriteStream;
+  let drainDeferred: Deferred | undefined;
+  let rflTimer: Timer;
+
+  lineCount = 0;
+  runningHashPromises = 0;
+  rflTimer = Timer.start();
+
+  // hashFileName = `${getDateFileStr(opts.nowDate)}_hashes.txt`;
+  hashFileName = 'hashes.txt';
+  hashFilePath = [
+    SCANDIR_OUT_DATA_DIR_PATH,
+    hashFileName,
+  ].join(path.sep);
+  hashWs = createWriteStream(hashFilePath);
+
+  const fileDataFileLineCb: ReadFileByLineOpts['lineCb'] = (line: string, resumeCb: () => void) => {
+    let hashPromise: Promise<void>;
+    runningHashPromises++;
+    hashPromise = (async () => {
+      let fileHash: string;
+      let hashFileLine: string;
+      let wsRes: boolean;
+      fileHash = await getFileHash(line);
+      hashFileLine = `${fileHash} ${line}`;
+      wsRes = hashWs.write(`${hashFileLine}\n`);
+      if(!wsRes) {
+        if(drainDeferred === undefined) {
+          /*
+            use one deferred promise across all async
+              hash promises to ensure only one drain
+              event gets scheduled
+          */
+          drainDeferred = Deferred.init();
+          hashWs.once('drain', drainDeferred.resolve);
+          drainDeferred.promise.finally(() => {
+            drainDeferred = undefined;
+          });
+        }
+        await drainDeferred.promise;
+      }
+
+      lineCount++;
+    })();
+    hashPromise.finally(() => {
+      runningHashPromises--;
+      if(runningHashPromises < maxConcurrentHashPromises) {
+        // process.stdout.write(`_${runningHashPromises}_`);
+        resumeCb();
+      }
+      if(rflTimer.currentMs() > rflMod) {
+        process.stdout.write('.');
+        rflTimer.reset();
+      }
+    });
+    if(runningHashPromises >= maxConcurrentHashPromises) {
+      // console.log({ runningHashPromises });
+      // process.stdout.write('^');
+      return 'pause';
+    }
+  };
+
+  await readFileByLine(opts.filesDataFilePath, {
+    lineCb: fileDataFileLineCb,
+  });
+  console.log('rfl done');
+  while(runningHashPromises > 0) {
+    await sleep(0);
+  }
+  console.log({ lineCount });
+  return new Map<string, string[]>();
+}
+
+async function getFileHash(filePath: string): Promise<string> {
+  let fileHash: string;
+  try {
+    fileHash = await hashFile2(filePath);
+  } catch(e) {
+    if(isObject(e) && (
+      (e.code === 'EISDIR')
+      || (e.code === 'ENOENT')
+    )) {
+      let stackStr = (new Error).stack;
+      let errMsg = `${e.code}: ${filePath}`;
+      let errObj = Object.assign({}, {
+        errMsg,
+        stackStr,
+      }, e);
+      logger.warn(errObj);
+      return;
+    } else {
+      console.error(e);
+      logger.error(e);
+      throw e;
+    }
+  }
+  return fileHash;
+}
 
 export async function findDuplicateFiles(opts: FindDuplicateFilesOpts): Promise<Map<string, string[]>> {
   let outStream: FindDuplicatesOutStream;

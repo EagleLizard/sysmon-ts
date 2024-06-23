@@ -4,6 +4,7 @@ import { createReadStream, ReadStream } from 'fs';
 
 // const alg = 'sha256';
 // const alg = 'md5';
+// const alg = 'blake2s256';
 const alg = 'sha1';
 // const outputFormat = 'base64';
 const outputFormat = 'hex';
@@ -71,7 +72,9 @@ export async function hashFile2(filePath: string): Promise<string> {
   let hasher: Hasher;
   let rs: ReadStream;
   hasher = getHasher();
-  rs = createReadStream(filePath);
+  rs = createReadStream(filePath, {
+    // highWaterMark: 16 * 1024,
+  });
 
   const chunkCb = (chunk: string | Buffer) => {
     hasher.update(chunk);
