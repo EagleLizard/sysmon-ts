@@ -33,6 +33,9 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   let filesDataFilePath: string;
   let dirsWs: WriteStream;
   let filesWs: WriteStream;
+  let scanDirPromises: Promise<void>[];
+  let dirsDrainDeferred: Deferred<void> | undefined;
+  let filesDrainDeferred: Deferred<void> | undefined;
 
   let totalTimer: Timer;
 
@@ -55,14 +58,18 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
 
   const scanDirCb = async (params: ScanDirCbParams) => {
     let wsRes: boolean;
-    let deferred: Deferred<void>;
     if(params.isDir) {
       dirCount++;
       wsRes = dirsWs.write(`${params.fullPath}\n`);
       if(!wsRes) {
-        deferred = Deferred.init();
-        dirsWs.once('drain', deferred.resolve);
-        await deferred.promise;
+        if(dirsDrainDeferred === undefined) {
+          dirsDrainDeferred = Deferred.init();
+          dirsWs.once('drain', dirsDrainDeferred.resolve);
+          dirsDrainDeferred.promise.finally(() => {
+            dirsDrainDeferred = undefined;
+          });
+        }
+        await dirsDrainDeferred.promise;
       }
       let skipDir = (
         (opts.find_dirs !== undefined)
@@ -86,23 +93,33 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
       */
       wsRes = filesWs.write(`${params.fullPath}\n`);
       if(!wsRes) {
-        deferred = Deferred.init();
-        filesWs.once('drain', deferred.resolve);
-        await deferred.promise;
+        if(filesDrainDeferred === undefined) {
+          filesDrainDeferred = Deferred.init();
+          filesWs.once('drain', filesDrainDeferred.resolve);
+          filesDrainDeferred.promise.finally(() => {
+            filesDrainDeferred = undefined;
+          });
+        }
+        await filesDrainDeferred.promise;
       }
       fileCount++;
     }
   };
   console.log(`Scanning:\n${dirPaths.join('\n')}`);
   timer = Timer.start();
+  scanDirPromises = [];
   for(let i = 0; i < dirPaths.length; ++i) {
+    let scanDirPromise: Promise<void>;
     let dirPath: string;
     dirPath = dirPaths[i];
-    await scanDir2({
+    scanDirPromise = scanDir2({
       dirPath,
       scanDirCb
     });
+    scanDirPromises.push(scanDirPromise);
+    // await scanDirPromise;
   }
+  await Promise.all(scanDirPromises);
   dirsWs.close();
   filesWs.close();
   scanMs = timer.stop();
