@@ -171,9 +171,10 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   console.log(`sizeMap.size: ${sizeMap.size}`);
   let sizeMapIter: IterableIterator<number>;
   let sizeMapIterRes: IteratorResult<number>;
-  let possibleDupeSizes: number;
-  possibleDupeSizes = 0;
+  let possibleDupeSizeMap: Map<number, number>;
+
   sizeMapIter = sizeMap.keys();
+  possibleDupeSizeMap = new Map();
   while(!(sizeMapIterRes = sizeMapIter.next()).done) {
     let size: number;
     let fileCount: number | undefined;
@@ -181,18 +182,127 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
     fileCount = sizeMap.get(size);
     assert(fileCount !== undefined);
     if(
-      (size !== 0)
+      1
+      // && (size !== 0)
+      && (size > 0)
       && (fileCount > 1)
     ) {
-      possibleDupeSizes++;
+      possibleDupeSizeMap.set(size, fileCount);
     }
+    sizeMap.delete(size);
   }
-  console.log({ possibleDupeSizes });
+  sizeMap.clear();
+  // console.log({ possibleDupeSizes: possibleDupeSizeMap.size });
   console.log({ lineCount });
+
+  let possibleDupeCount: number;
+  possibleDupeCount = 0;
+
+  let hashFileName: string;
+  let hashFilePath: string;
+  let hashWs: WriteStream;
+  let runningHashPromises: number;
+  let hashMap: Map<string, number>;
+  hashFileName = `${getDateFileStr(opts.nowDate)}_hashes.txt`;
+  hashFilePath = [
+    SCANDIR_OUT_DATA_DIR_PATH,
+    hashFileName,
+  ].join(path.sep);
+  hashWs = createWriteStream(hashFilePath);
+  runningHashPromises = 0;
+  drainDeferred = undefined;
+  hashMap = new Map();
+  rflTimer = Timer.start();
+
+  const fileSizesFileLineCb: ReadFileByLineOpts['lineCb'] = (line, resumeCb) => {
+    let sizeStr: string;
+    let filePath: string;
+    let fileSize: number;
+    let hashPromise: Promise<void>;
+    [ sizeStr, filePath ] = line.split(' ');
+    fileSize = +sizeStr;
+    if(!possibleDupeSizeMap.has(fileSize)) {
+      return;
+    }
+    runningHashPromises++;
+    hashPromise = (async () => {
+      let fileHash: string | undefined;
+      let hashFileLine: string;
+      let wsRes: boolean;
+      let hashCount: number | undefined;
+      fileHash = await getFileHash(filePath);
+      if(fileHash === undefined) {
+        return;
+      }
+      if((hashCount = hashMap.get(fileHash)) === undefined) {
+        hashCount = 0;
+      }
+      hashMap.set(fileHash, hashCount + 1);
+      hashFileLine = `${fileHash} ${filePath}`;
+      wsRes = hashWs.write(`${hashFileLine}\n`);
+      if(!wsRes) {
+        if(drainDeferred === undefined) {
+          drainDeferred = Deferred.init();
+          hashWs.once('drain', drainDeferred.resolve);
+          drainDeferred.promise.finally(() => {
+            drainDeferred = undefined;
+          });
+        }
+        await drainDeferred.promise;
+      }
+    })();
+    hashPromise.finally(() => {
+      runningHashPromises--;
+      if(runningHashPromises < maxConcurrentHashPromises) {
+        resumeCb();
+      }
+    });
+    if(rflTimer.currentMs() > rflMod) {
+      process.stdout.write('.');
+      rflTimer.reset();
+    }
+    if(runningHashPromises >= maxConcurrentHashPromises) {
+      return 'pause';
+    }
+  };
+  await readFileByLine(sizeFilePath, {
+    lineCb: fileSizesFileLineCb,
+  });
+  console.log('rfl done');
+  while(runningHashPromises > 0) {
+    await sleep(0);
+  }
+  console.log({ possibleDupeCount });
+  console.log({ hashMapSize: hashMap.size });
+
+  let dupeMap: Map<string, number>;
+  let hashMapIter: IterableIterator<string>;
+  let hashMapIterRes: IteratorResult<string>;
+  let dupeCount: number;
+
+  dupeMap = new Map();
+  dupeCount = 0;
+
+  hashMapIter = hashMap.keys();
+  while(!(hashMapIterRes = hashMapIter.next()).done) {
+    let fileHash: string;
+    let hashFileCount: number | undefined;
+    fileHash = hashMapIterRes.value;
+    hashFileCount = hashMap.get(fileHash);
+    assert(hashFileCount !== undefined);
+    if(hashFileCount > 1) {
+      dupeCount += hashFileCount;
+      dupeMap.set(fileHash, hashFileCount);
+    }
+    hashMap.delete(fileHash);
+  }
+  hashMap.clear();
+  console.log({ dupeCount });
+
   return new Map<string, string[]>();
 }
 
-async function getFileHash(filePath: string): Promise<string> {
+async function getFileHash(filePath: string): Promise<string | undefined> {
   let fileHash: string;
   try {
     fileHash = await hashFile2(filePath);
