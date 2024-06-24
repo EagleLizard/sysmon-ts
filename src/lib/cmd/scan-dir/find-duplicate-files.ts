@@ -8,7 +8,7 @@ import {
 
 import { getDateFileStr } from '../../util/datetime-util';
 import { SCANDIR_OUT_DATA_DIR_PATH } from '../../../constants';
-import { hashFile2 } from '../../util/hasher';
+import { HashFile2Opts, hashFile2 } from '../../util/hasher';
 import { isObject, isString } from '../../util/validate-primitives';
 import { sleep } from '../../util/sleep';
 import { ReadFileByLineOpts, readFileByLine } from '../../util/files';
@@ -44,9 +44,12 @@ maxConcurrentHashPromises = 256; // best 3.334m
 
 // maxConcurrentHashPromises = 1;
 
-maxSizePromises = 64;
+maxSizePromises = 32;
+// maxSizePromises = 64;
 // maxSizePromises = 256;
 // maxSizePromises = 1024;
+
+const HASH_HWM = 32 * 1024;
 
 const rflMod = 500;
 
@@ -203,7 +206,8 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   let hashWs: WriteStream;
   let runningHashPromises: number;
   let hashMap: Map<string, number>;
-  hashFileName = `${getDateFileStr(opts.nowDate)}_hashes.txt`;
+  // hashFileName = `${getDateFileStr(opts.nowDate)}_hashes.txt`;
+  hashFileName = '0_hashes.txt';
   hashFilePath = [
     SCANDIR_OUT_DATA_DIR_PATH,
     hashFileName,
@@ -230,14 +234,18 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
       let hashFileLine: string;
       let wsRes: boolean;
       let hashCount: number | undefined;
-      fileHash = await getFileHash(filePath);
+      fileHash = await getFileHash(filePath, {
+        highWaterMark: HASH_HWM,
+      });
       if(fileHash === undefined) {
         return;
       }
+
       if((hashCount = hashMap.get(fileHash)) === undefined) {
         hashCount = 0;
       }
       hashMap.set(fileHash, hashCount + 1);
+
       hashFileLine = `${fileHash} ${filePath}`;
       wsRes = hashWs.write(`${hashFileLine}\n`);
       if(!wsRes) {
@@ -267,13 +275,18 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   };
   await readFileByLine(sizeFilePath, {
     lineCb: fileSizesFileLineCb,
+    // highWaterMark: 8 * 1024,
+    // highWaterMark: 4  * 1024,
+    // highWaterMark: 2  * 1024,
+    highWaterMark: 1024,
+    // highWaterMark: 512,
   });
   console.log('rfl done');
   while(runningHashPromises > 0) {
     await sleep(0);
   }
   console.log({ possibleDupeCount });
-  console.log({ hashMapSize: hashMap.size });
+  // console.log({ hashMapSize: hashMap.size });
 
   let dupeMap: Map<string, number>;
   let hashMapIter: IterableIterator<string>;
@@ -302,14 +315,15 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   return new Map<string, string[]>();
 }
 
-async function getFileHash(filePath: string): Promise<string | undefined> {
+async function getFileHash(filePath: string, hashOpts: HashFile2Opts = {}): Promise<string | undefined> {
   let fileHash: string;
   try {
-    fileHash = await hashFile2(filePath);
+    fileHash = await hashFile2(filePath, hashOpts);
   } catch(e) {
     if(isObject(e) && (
       (e.code === 'EISDIR')
       || (e.code === 'ENOENT')
+      || (e.code === 'EACCES')
     )) {
       let stackStr = (new Error).stack;
       let errMsg = `${e.code}: ${filePath}`;

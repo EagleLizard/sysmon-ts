@@ -46,6 +46,7 @@ type ReadFileByLineSignal = void | 'finish' | 'pause';
 
 export type ReadFileByLineOpts = {
   lineCb: (line: string, resumeCb: () => void) => ReadFileByLineSignal;
+  highWaterMark?: number;
 };
 
 export function readFileByLine(filePath: string, opts: ReadFileByLineOpts): Promise<void> {
@@ -53,9 +54,12 @@ export function readFileByLine(filePath: string, opts: ReadFileByLineOpts): Prom
   let rl: readline.Interface;
   let readFilePromise: Promise<void>;
   let readFileSignal: ReadFileByLineSignal;
-  rs = fs.createReadStream(filePath, {
-    // highWaterMark: 256,
-  });
+  let rsOpts: { highWaterMark?: number };
+  rsOpts = {};
+  if(opts.highWaterMark !== undefined) {
+    rsOpts.highWaterMark = opts.highWaterMark;
+  }
+  rs = fs.createReadStream(filePath, rsOpts);
   rl = readline.createInterface({
     input: rs,
   });

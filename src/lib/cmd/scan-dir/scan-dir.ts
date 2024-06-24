@@ -199,7 +199,14 @@ function *getDirScanner(opts: ScanDirOpts): Generator<ScanDirCbParams, undefined
       if(
         isObject(e)
         && isString(e.code)
-        && (e.code === 'EACCES')
+        && (
+          e.code === 'EACCES'
+          /*
+            Encountered ENOENT edge case in external drive, during
+              a spotlight reindexing.
+          */
+          || e.code === 'ENOENT'
+        )
       ) {
         logger.error(`${e.code} ${currDirPath}`);
       } else {

@@ -1,13 +1,21 @@
 
-import { createHash, Hash } from 'crypto';
+import { createHash, Hash, HashOptions } from 'crypto';
 import { createReadStream, ReadStream } from 'fs';
 
 // const alg = 'sha256';
 // const alg = 'md5';
 // const alg = 'blake2s256';
-const alg = 'sha1';
+// const alg = 'sha1';
+const DEFAULT_ALG = 'shake256';
 // const outputFormat = 'base64';
 const outputFormat = 'hex';
+
+// ba8d154465f7fd15e2fc2ced6dceec90 - md5
+// 9332f95e8e3ef26980cb7a7787da6d40bc5e9c8a - sha1
+// df6f20944f1ccd20eaad71f9b5e7263702e0179e3623b7f608379814e98736b3 - sha256
+// 570e01980ecb07f9e74c33e22b4acfbf2d7cc5701351177a6747f87da11c5efd - shake256
+// 570e01980ecb07f9e74c33e22b4acfbf - shake256, outputLength: 16
+//  - shake256, outputLength: 8
 
 export interface Hasher {
   update(data: string | Buffer | NodeJS.TypedArray | DataView): void;
@@ -15,9 +23,19 @@ export interface Hasher {
   digest: () => string;
 }
 
-export function getHasher(): Hasher {
+const xofAlgos = [
+  'shake256',
+];
+
+export function getHasher(hashOpts: HashOptions = {}): Hasher {
   let hash: Hash;
-  hash = createHash(alg);
+  let alg: string;
+  alg = DEFAULT_ALG;
+  if(xofAlgos.includes(alg)) {
+    hashOpts.outputLength = 4;
+  }
+
+  hash = createHash(alg, hashOpts);
 
   return {
     update,
@@ -67,14 +85,18 @@ export function hashFile(filePath: string): HashFileResult {
   };
 }
 
-export async function hashFile2(filePath: string): Promise<string> {
+export type HashFile2Opts = {
+  highWaterMark?: number;
+}
+
+export async function hashFile2(filePath: string, opts: HashFile2Opts = {}): Promise<string> {
   let hashStr: string;
   let hasher: Hasher;
   let rs: ReadStream;
-  hasher = getHasher();
-  rs = createReadStream(filePath, {
-    // highWaterMark: 16 * 1024,
+  hasher = getHasher({
+    highWaterMark: opts.highWaterMark,
   });
+  rs = createReadStream(filePath, opts);
 
   const chunkCb = (chunk: string | Buffer) => {
     hasher.update(chunk);
