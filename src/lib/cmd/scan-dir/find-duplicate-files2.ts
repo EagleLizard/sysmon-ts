@@ -91,7 +91,6 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   }
   sizeMap.clear();
   // console.log({ possibleDupeSizes: possibleDupeSizeMap.size });
-
   let possibleDupeIter: IterableIterator<number>;
   let possibleDupeIterRes: IteratorResult<number>;
   let possibleDupeCount: number;
@@ -109,92 +108,13 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
 
   console.log({ possibleDupes: possibleDupeCount });
 
-  let hashFileName: string;
   let hashFilePath: string;
-  let hashWs: WriteStream;
-  let runningHashPromises: number;
   let hashMap: Map<string, number>;
-  // hashFileName = `${getDateFileStr(opts.nowDate)}_hashes.txt`;
-  hashFileName = '0_hashes.txt';
-  hashFilePath = [
-    SCANDIR_OUT_DATA_DIR_PATH,
-    hashFileName,
-  ].join(path.sep);
-  hashWs = createWriteStream(hashFilePath);
-  runningHashPromises = 0;
-  drainDeferred = undefined;
-  hashMap = new Map();
-  rflTimer = Timer.start();
+  let getFileHashesRes: GetFileHashesRes;
 
-  const fileSizesFileLineCb: ReadFileByLineOpts['lineCb'] = (line, resumeCb) => {
-    let sizeStr: string;
-    let filePath: string;
-    let fileSize: number;
-    let hashPromise: Promise<void>;
-    [ sizeStr, filePath ] = line.split(' ');
-    fileSize = +sizeStr;
-    if(!possibleDupeSizeMap.has(fileSize)) {
-      return;
-    }
-    runningHashPromises++;
-    hashPromise = (async () => {
-      let fileHash: string | undefined;
-      let hashFileLine: string;
-      let wsRes: boolean;
-      let hashCount: number | undefined;
-      fileHash = await getFileHash(filePath, {
-        highWaterMark: HASH_HWM,
-      });
-      if(fileHash === undefined) {
-        return;
-      }
-
-      if((hashCount = hashMap.get(fileHash)) === undefined) {
-        hashCount = 0;
-      }
-      hashMap.set(fileHash, hashCount + 1);
-
-      hashFileLine = `${fileHash} ${fileSize} ${filePath}`;
-      wsRes = hashWs.write(`${hashFileLine}\n`);
-      if(!wsRes) {
-        if(drainDeferred === undefined) {
-          drainDeferred = Deferred.init();
-          hashWs.once('drain', drainDeferred.resolve);
-          drainDeferred.promise.finally(() => {
-            drainDeferred = undefined;
-          });
-        }
-        await drainDeferred.promise;
-      }
-    })();
-    hashPromise.finally(() => {
-      runningHashPromises--;
-      if(runningHashPromises < maxConcurrentHashPromises) {
-        resumeCb();
-      }
-    });
-    if(rflTimer.currentMs() > rflMod) {
-      process.stdout.write('.');
-      rflTimer.reset();
-    }
-    if(runningHashPromises >= maxConcurrentHashPromises) {
-      return 'pause';
-    }
-  };
-  await readFileByLine(sizeFilePath, {
-    lineCb: fileSizesFileLineCb,
-    // highWaterMark: 64 * 1024,
-    // highWaterMark: 8 * 1024,
-    // highWaterMark: 4  * 1024,
-    // highWaterMark: 2  * 1024,
-    highWaterMark: 1024,
-    // highWaterMark: 512,
-  });
-  console.log('rfl done');
-  while(runningHashPromises > 0) {
-    await sleep(0);
-  }
-  console.log({ possibleDupeCount });
+  getFileHashesRes = await getFileHashes(sizeFilePath, possibleDupeSizeMap);
+  hashMap = getFileHashesRes.hashMap;
+  hashFilePath = getFileHashesRes.hashFilePath;
 
   let dupeMap: Map<string, number>;
   let hashMapIter: IterableIterator<string>;
@@ -345,6 +265,111 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   console.log(`hashFileRead took: ${hashFileReadMs} - ${getIntuitiveTimeString(hashFileReadMs)}`);
 
   return new Map<string, string[]>();
+}
+
+type GetFileHashesRes = {
+  hashMap: Map<string, number>;
+  hashFilePath: string;
+};
+
+async function getFileHashes(sizeFilePath: string, possibleDupeSizeMap: Map<number, number>): Promise<GetFileHashesRes> {
+  let hashFileName: string;
+  let hashFilePath: string;
+  let hashWs: WriteStream;
+  let runningHashPromises: number;
+  let hashMap: Map<string, number>;
+  let drainDeferred: Deferred | undefined;
+  let rflTimer: Timer;
+  let possibleDupeCount: number;
+
+  let getFileHashesRes: GetFileHashesRes;
+
+  // hashFileName = `${getDateFileStr(opts.nowDate)}_hashes.txt`;
+  hashFileName = '0_hashes.txt';
+  hashFilePath = [
+    SCANDIR_OUT_DATA_DIR_PATH,
+    hashFileName,
+  ].join(path.sep);
+  hashWs = createWriteStream(hashFilePath);
+  runningHashPromises = 0;
+  hashMap = new Map();
+  rflTimer = Timer.start();
+  possibleDupeCount = 0;
+
+  const fileSizesFileLineCb: ReadFileByLineOpts['lineCb'] = (line, resumeCb) => {
+    let sizeStr: string;
+    let filePath: string;
+    let fileSize: number;
+    let hashPromise: Promise<void>;
+    [ sizeStr, filePath ] = line.split(' ');
+    fileSize = +sizeStr;
+    if(!possibleDupeSizeMap.has(fileSize)) {
+      return;
+    }
+    runningHashPromises++;
+    hashPromise = (async () => {
+      let fileHash: string | undefined;
+      let hashFileLine: string;
+      let wsRes: boolean;
+      let hashCount: number | undefined;
+      fileHash = await getFileHash(filePath, {
+        highWaterMark: HASH_HWM,
+      });
+      if(fileHash === undefined) {
+        return;
+      }
+
+      if((hashCount = hashMap.get(fileHash)) === undefined) {
+        hashCount = 0;
+      }
+      hashMap.set(fileHash, hashCount + 1);
+
+      hashFileLine = `${fileHash} ${fileSize} ${filePath}`;
+      wsRes = hashWs.write(`${hashFileLine}\n`);
+      if(!wsRes) {
+        if(drainDeferred === undefined) {
+          drainDeferred = Deferred.init();
+          hashWs.once('drain', drainDeferred.resolve);
+          drainDeferred.promise.finally(() => {
+            drainDeferred = undefined;
+          });
+        }
+        await drainDeferred.promise;
+      }
+    })();
+    hashPromise.finally(() => {
+      runningHashPromises--;
+      if(runningHashPromises < maxConcurrentHashPromises) {
+        resumeCb();
+      }
+    });
+    if(rflTimer.currentMs() > rflMod) {
+      process.stdout.write('.');
+      rflTimer.reset();
+    }
+    if(runningHashPromises >= maxConcurrentHashPromises) {
+      return 'pause';
+    }
+  };
+  await readFileByLine(sizeFilePath, {
+    lineCb: fileSizesFileLineCb,
+    // highWaterMark: 64 * 1024,
+    // highWaterMark: 8 * 1024,
+    // highWaterMark: 4  * 1024,
+    // highWaterMark: 2  * 1024,
+    highWaterMark: 1024,
+    // highWaterMark: 512,
+  });
+  console.log('rfl done');
+  while(runningHashPromises > 0) {
+    await sleep(0);
+  }
+  console.log({ possibleDupeCount });
+  getFileHashesRes = {
+    hashFilePath,
+    hashMap,
+  };
+  return getFileHashesRes;
 }
 
 type GetFileSizesRes = {
