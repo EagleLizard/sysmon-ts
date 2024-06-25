@@ -432,6 +432,28 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   console.log(`unique dupe files: ${unqiueDupeFiles}`);
   console.log(`\nmaxFileSize: ${getIntuitiveByteString(maxFileSize)} (${maxFileSize} bytes)\nhash: ${maxFileSizeHash}\n`);
 
+  let hashFileReadTimer: Timer;
+  let hashFileReadMs: number;
+  let totalBytes: number;
+  totalBytes = 0;
+  const hashFileLineCb: ReadFileByLineOpts['lineCb'] = (line, resumeCb) => {
+    let sizeStr: string;
+    let fileSize: number;
+    [ , sizeStr, ] = line.split(' ');
+    fileSize = +sizeStr;
+    if(isNaN(fileSize)) {
+      return;
+    }
+    totalBytes += fileSize;
+  };
+  hashFileReadTimer = Timer.start();
+  await readFileByLine(hashFilePath, {
+    lineCb: hashFileLineCb,
+  });
+  hashFileReadMs = hashFileReadTimer.stop();
+  console.log(`totalBytes: ${totalBytes} - ${getIntuitiveByteString(totalBytes)}`);
+  console.log(`hashFileRead took: ${hashFileReadMs} - ${getIntuitiveTimeString(hashFileReadMs)}`);
+
   return new Map<string, string[]>();
 }
 
