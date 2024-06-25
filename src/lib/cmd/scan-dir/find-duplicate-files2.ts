@@ -54,11 +54,8 @@ const rflMod = 500;
 
 export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   let sizeFilePath: string;
-  let drainDeferred: Deferred | undefined;
   let getFileSizesRes: GetFileSizesRes;
   let sizeMap: Map<number, number>;
-
-  let rflTimer: Timer;
 
   getFileSizesRes = await getFileSizes(opts.filesDataFilePath, {
     nowDate: opts.nowDate,
@@ -140,26 +137,91 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   hashMap.clear();
   console.log({ dupeCount });
 
+  let dupesFilePath: string;
+  let hashSizeMap: Map<string, number>;
+
+  let getDuplicateFileHashesRes: GetDuplicateFileHashesRes;
+  getDuplicateFileHashesRes = await getDuplicateFileHashes(hashFilePath, dupeMap);
+  hashSizeMap = getDuplicateFileHashesRes.hashSizeMap;
+  dupesFilePath = getDuplicateFileHashesRes.dupesFilePath;
+
+  let hashSizeMapIter: IterableIterator<string>;
+  let hashSizeMapIterRes: IteratorResult<string>;
+  let maxFileSize: number;
+  let maxFileSizeHash: string | undefined;
+  let unqiueDupeFiles: number;
+  hashSizeMapIter = hashSizeMap.keys();
+  maxFileSize = -Infinity;
+  unqiueDupeFiles = 0;
+  while(!(hashSizeMapIterRes = hashSizeMapIter.next()).done) {
+    let currHash: string;
+    let currHashCount: number | undefined;
+    unqiueDupeFiles++;
+    currHash = hashSizeMapIterRes.value;
+    currHashCount = hashSizeMap.get(currHash);
+    assert(currHashCount !== undefined);
+    if(currHashCount > maxFileSize) {
+      maxFileSize = currHashCount;
+      maxFileSizeHash = currHash;
+    }
+  }
+  assert(maxFileSizeHash !== undefined);
+  console.log(`unique dupe files: ${unqiueDupeFiles}`);
+  console.log(`\nmaxFileSize: ${getIntuitiveByteString(maxFileSize)} (${maxFileSize} bytes)\nhash: ${maxFileSizeHash}\n`);
+
+  let hashFileReadTimer: Timer;
+  let hashFileReadMs: number;
+  let totalBytes: number;
+  totalBytes = 0;
+  const hashFileLineCb: ReadFileByLineOpts['lineCb'] = (line, resumeCb) => {
+    let sizeStr: string;
+    let fileSize: number;
+    [ , sizeStr, ] = line.split(' ');
+    fileSize = +sizeStr;
+    if(isNaN(fileSize)) {
+      return;
+    }
+    totalBytes += fileSize;
+  };
+  hashFileReadTimer = Timer.start();
+  await readFileByLine(dupesFilePath, {
+    lineCb: hashFileLineCb,
+  });
+  hashFileReadMs = hashFileReadTimer.stop();
+  console.log(`totalBytes: ${totalBytes} - ${getIntuitiveByteString(totalBytes)}`);
+  console.log(`hashFileRead took: ${hashFileReadMs} - ${getIntuitiveTimeString(hashFileReadMs)}`);
+
+  return new Map<string, string[]>();
+}
+
+type GetDuplicateFileHashesRes = {
+  dupesFilePath: string;
+  hashSizeMap: Map<string, number>;
+};
+
+async function getDuplicateFileHashes(hashFilePath: string, dupeMap: Map<string, number>): Promise<GetDuplicateFileHashesRes> {
+  let getDuplicateFileHashesRes: GetDuplicateFileHashesRes;
+  let totalHashCount: number;
+  let totalDupeHashCount: number;
+  let runningDupePromises: number;
+  let hashSizeMap: Map<string, number>;
   let dupesFileName: string;
   let dupesFilePath: string;
   let dupesWs: WriteStream;
-  let runningDupePromises: number;
-  let totalHashCount: number;
-  let totalDupeHashCount: number;
-  let hashSizeMap: Map<string, number>;
+  let drainDeferred: Deferred | undefined;
+  let rflTimer: Timer;
+
+  totalHashCount = 0;
+  totalDupeHashCount = 0;
+  runningDupePromises = 0;
+  hashSizeMap = new Map();
 
   dupesFileName = '0_dupes.txt';
   dupesFilePath = [
     SCANDIR_OUT_DATA_DIR_PATH,
     dupesFileName,
   ].join(path.sep);
-
   dupesWs = createWriteStream(dupesFilePath);
-  runningDupePromises = 0;
-  drainDeferred = undefined;
-  totalHashCount = 0;
-  totalDupeHashCount = 0;
-  hashSizeMap = new Map();
 
   rflTimer = Timer.start();
 
@@ -217,54 +279,11 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   }
   console.log({ totalHashCount });
   console.log({ totalDupeHashCount });
-
-  let hashSizeMapIter: IterableIterator<string>;
-  let hashSizeMapIterRes: IteratorResult<string>;
-  let maxFileSize: number;
-  let maxFileSizeHash: string | undefined;
-  let unqiueDupeFiles: number;
-  hashSizeMapIter = hashSizeMap.keys();
-  maxFileSize = -Infinity;
-  unqiueDupeFiles = 0;
-  while(!(hashSizeMapIterRes = hashSizeMapIter.next()).done) {
-    let currHash: string;
-    let currHashCount: number | undefined;
-    unqiueDupeFiles++;
-    currHash = hashSizeMapIterRes.value;
-    currHashCount = hashSizeMap.get(currHash);
-    assert(currHashCount !== undefined);
-    if(currHashCount > maxFileSize) {
-      maxFileSize = currHashCount;
-      maxFileSizeHash = currHash;
-    }
-  }
-  assert(maxFileSizeHash !== undefined);
-  console.log(`unique dupe files: ${unqiueDupeFiles}`);
-  console.log(`\nmaxFileSize: ${getIntuitiveByteString(maxFileSize)} (${maxFileSize} bytes)\nhash: ${maxFileSizeHash}\n`);
-
-  let hashFileReadTimer: Timer;
-  let hashFileReadMs: number;
-  let totalBytes: number;
-  totalBytes = 0;
-  const hashFileLineCb: ReadFileByLineOpts['lineCb'] = (line, resumeCb) => {
-    let sizeStr: string;
-    let fileSize: number;
-    [ , sizeStr, ] = line.split(' ');
-    fileSize = +sizeStr;
-    if(isNaN(fileSize)) {
-      return;
-    }
-    totalBytes += fileSize;
+  getDuplicateFileHashesRes = {
+    dupesFilePath,
+    hashSizeMap,
   };
-  hashFileReadTimer = Timer.start();
-  await readFileByLine(hashFilePath, {
-    lineCb: hashFileLineCb,
-  });
-  hashFileReadMs = hashFileReadTimer.stop();
-  console.log(`totalBytes: ${totalBytes} - ${getIntuitiveByteString(totalBytes)}`);
-  console.log(`hashFileRead took: ${hashFileReadMs} - ${getIntuitiveTimeString(hashFileReadMs)}`);
-
-  return new Map<string, string[]>();
+  return getDuplicateFileHashesRes;
 }
 
 type GetFileHashesRes = {
