@@ -13,7 +13,7 @@ import { isObject, isString } from '../../util/validate-primitives';
 import { sleep } from '../../util/sleep';
 import { ReadFileByLineOpts, readFileByLine } from '../../util/files';
 import { Timer } from '../../util/timer';
-import { getIntuitiveTimeString } from '../../util/format-util';
+import { getIntuitiveByteString, getIntuitiveTimeString } from '../../util/format-util';
 import { logger } from '../../logger';
 import path, { ParsedPath } from 'path';
 import assert from 'assert';
@@ -22,6 +22,7 @@ import { lstat } from 'fs/promises';
 
 let maxConcurrentHashPromises: number;
 let maxSizePromises: number;
+let maxDupePromises: number;
 
 // maxConcurrentHashPromises = 200;
 // maxConcurrentHashPromises = 1;
@@ -48,6 +49,8 @@ maxSizePromises = 32;
 // maxSizePromises = 64;
 // maxSizePromises = 256;
 // maxSizePromises = 1024;
+
+maxDupePromises = 1;
 
 const HASH_HWM = 32 * 1024;
 
@@ -187,7 +190,7 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
     if(
       1
       // && (size !== 0)
-      && (size > 0)
+      && (size !== 0)
       && (fileCount > 1)
     ) {
       possibleDupeSizeMap.set(size, fileCount);
@@ -198,8 +201,22 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   // console.log({ possibleDupeSizes: possibleDupeSizeMap.size });
   console.log({ lineCount });
 
+  let possibleDupeIter: IterableIterator<number>;
+  let possibleDupeIterRes: IteratorResult<number>;
   let possibleDupeCount: number;
   possibleDupeCount = 0;
+
+  possibleDupeIter = possibleDupeSizeMap.keys();
+  while(!(possibleDupeIterRes = possibleDupeIter.next()).done) {
+    let size: number;
+    let fileCount: number | undefined;
+    size = possibleDupeIterRes.value;
+    fileCount = possibleDupeSizeMap.get(size);
+    assert(fileCount !== undefined);
+    possibleDupeCount += fileCount;
+  }
+
+  console.log({ possibleDupes: possibleDupeCount });
 
   let hashFileName: string;
   let hashFilePath: string;
@@ -246,7 +263,7 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
       }
       hashMap.set(fileHash, hashCount + 1);
 
-      hashFileLine = `${fileHash} ${filePath}`;
+      hashFileLine = `${fileHash} ${fileSize} ${filePath}`;
       wsRes = hashWs.write(`${hashFileLine}\n`);
       if(!wsRes) {
         if(drainDeferred === undefined) {
@@ -275,6 +292,7 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   };
   await readFileByLine(sizeFilePath, {
     lineCb: fileSizesFileLineCb,
+    // highWaterMark: 64 * 1024,
     // highWaterMark: 8 * 1024,
     // highWaterMark: 4  * 1024,
     // highWaterMark: 2  * 1024,
@@ -286,7 +304,6 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
     await sleep(0);
   }
   console.log({ possibleDupeCount });
-  // console.log({ hashMapSize: hashMap.size });
 
   let dupeMap: Map<string, number>;
   let hashMapIter: IterableIterator<string>;
@@ -304,13 +321,116 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
     hashFileCount = hashMap.get(fileHash);
     assert(hashFileCount !== undefined);
     if(hashFileCount > 1) {
-      dupeCount += hashFileCount;
       dupeMap.set(fileHash, hashFileCount);
+      dupeCount++;
     }
     hashMap.delete(fileHash);
   }
   hashMap.clear();
   console.log({ dupeCount });
+
+  let dupesFileName: string;
+  let dupesFilePath: string;
+  let dupesWs: WriteStream;
+  let runningDupePromises: number;
+  let totalHashCount: number;
+  let totalDupeHashCount: number;
+  let hashSizeMap: Map<string, number>;
+
+  dupesFileName = '0_dupes.txt';
+  dupesFilePath = [
+    SCANDIR_OUT_DATA_DIR_PATH,
+    dupesFileName,
+  ].join(path.sep);
+
+  dupesWs = createWriteStream(dupesFilePath);
+  runningDupePromises = 0;
+  drainDeferred = undefined;
+  totalHashCount = 0;
+  totalDupeHashCount = 0;
+  hashSizeMap = new Map();
+
+  rflTimer = Timer.start();
+
+  const fileHashesFileLineCb: ReadFileByLineOpts['lineCb'] = (line, resumeCb) => {
+    let fileHash: string;
+    let sizeStr: string;
+    let filePath: string;
+    let dupePromise: Promise<void>;
+    [ fileHash, sizeStr, ] = line.split(' ');
+    totalHashCount++;
+    if(!dupeMap.has(fileHash)) {
+      return;
+    }
+    totalDupeHashCount++;
+    runningDupePromises++;
+    dupePromise = (async () => {
+      let wsRes: boolean;
+      let fileSize: number;
+      if(!hashSizeMap.has(fileHash)) {
+        fileSize = +sizeStr;
+        assert(!isNaN(fileSize));
+        hashSizeMap.set(fileHash, fileSize);
+      }
+      wsRes = dupesWs.write(`${line}\n`);
+      if(!wsRes) {
+        if(drainDeferred === undefined) {
+          drainDeferred = Deferred.init();
+          dupesWs.once('drain', drainDeferred.resolve);
+          drainDeferred.promise.finally(() => {
+            drainDeferred = undefined;
+          });
+        }
+        await drainDeferred.promise;
+      }
+    })();
+    dupePromise.finally(() => {
+      runningDupePromises--;
+      if(runningDupePromises < maxDupePromises) {
+        resumeCb();
+      }
+    });
+    if(rflTimer.currentMs() > rflMod) {
+      process.stdout.write('.');
+      rflTimer.reset();
+    }
+    if(runningDupePromises >= maxDupePromises) {
+      return 'pause';
+    }
+  };
+  await readFileByLine(hashFilePath, {
+    lineCb: fileHashesFileLineCb,
+  });
+  console.log('rfl done');
+  while(runningDupePromises > 0) {
+    await sleep(0);
+  }
+  console.log({ totalHashCount });
+  console.log({ totalDupeHashCount });
+
+  let hashSizeMapIter: IterableIterator<string>;
+  let hashSizeMapIterRes: IteratorResult<string>;
+  let maxFileSize: number;
+  let maxFileSizeHash: string | undefined;
+  let unqiueDupeFiles: number;
+  hashSizeMapIter = hashSizeMap.keys();
+  maxFileSize = -Infinity;
+  unqiueDupeFiles = 0;
+  while(!(hashSizeMapIterRes = hashSizeMapIter.next()).done) {
+    let currHash: string;
+    let currHashCount: number | undefined;
+    unqiueDupeFiles++;
+    currHash = hashSizeMapIterRes.value;
+    currHashCount = hashSizeMap.get(currHash);
+    assert(currHashCount !== undefined);
+    if(currHashCount > maxFileSize) {
+      maxFileSize = currHashCount;
+      maxFileSizeHash = currHash;
+    }
+  }
+  assert(maxFileSizeHash !== undefined);
+  console.log(`unique dupe files: ${unqiueDupeFiles}`);
+  console.log(`\nmaxFileSize: ${getIntuitiveByteString(maxFileSize)} (${maxFileSize} bytes)\nhash: ${maxFileSizeHash}\n`);
 
   return new Map<string, string[]>();
 }
