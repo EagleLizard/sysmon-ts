@@ -227,21 +227,30 @@ async function getDuplicateFileHashes(hashFilePath: string, dupeMap: Map<string,
 
   const fileHashesFileLineCb: ReadFileByLineOpts['lineCb'] = (line, resumeCb) => {
     let fileHash: string;
-    let sizeStr: string;
+    let fileSize: number;
     let dupePromise: Promise<void>;
-    [ fileHash, sizeStr, ] = line.split(' ');
-    totalHashCount++;
+    let lineRx: RegExp;
+    let rxExecRes: RegExpExecArray | null;
+    lineRx = /^(?<fileHash>[a-f0-9]+) (?<sizeStr>[0-9]+) .*$/i;
+    rxExecRes = lineRx.exec(line);
+    assert((
+      (rxExecRes !== null)
+      && (rxExecRes.groups?.fileHash !== undefined)
+      && (rxExecRes.groups?.sizeStr !== undefined)
+    ), line);
+    fileHash = rxExecRes.groups.fileHash;
+    // [ fileHash, sizeStr, ] = line.split(' ');
     if(!dupeMap.has(fileHash)) {
       return;
     }
+    fileSize = +rxExecRes.groups.sizeStr;
+    assert(!isNaN(fileSize));
+    totalHashCount++;
     totalDupeHashCount++;
     runningDupePromises++;
     dupePromise = (async () => {
       let wsRes: boolean;
-      let fileSize: number;
       if(!hashSizeMap.has(fileHash)) {
-        fileSize = +sizeStr;
-        assert(!isNaN(fileSize));
         hashSizeMap.set(fileHash, fileSize);
       }
       wsRes = dupesWs.write(`${line}\n`);
@@ -316,15 +325,23 @@ async function getFileHashes(sizeFilePath: string, possibleDupeSizeMap: Map<numb
   possibleDupeCount = 0;
 
   const fileSizesFileLineCb: ReadFileByLineOpts['lineCb'] = (line, resumeCb) => {
-    let sizeStr: string;
     let filePath: string;
     let fileSize: number;
+    let lineRx: RegExp;
+    let rxExecRes: RegExpExecArray | null;
     let hashPromise: Promise<void>;
-    [ sizeStr, filePath ] = line.split(' ');
-    fileSize = +sizeStr;
+    lineRx = /^(?<sizeStr>[0-9]+) (?<filePath>.*)$/i;
+    rxExecRes = lineRx.exec(line);
+    assert((
+      (rxExecRes !== null)
+      && (rxExecRes.groups?.sizeStr !== undefined)
+      && (rxExecRes.groups?.filePath !== undefined)
+    ), line);
+    fileSize = +rxExecRes.groups.sizeStr;
     if(!possibleDupeSizeMap.has(fileSize)) {
       return;
     }
+    filePath = rxExecRes.groups.filePath;
     runningHashPromises++;
     hashPromise = (async () => {
       let fileHash: string | undefined;
@@ -415,7 +432,8 @@ async function getFileSizes(filesDataFilePath: string, opts: {
   rflTimer = Timer.start();
   lineCount = 0;
 
-  sizeFileName = `${getDateFileStr(opts.nowDate)}_sizes.txt`;
+  // sizeFileName = `${getDateFileStr(opts.nowDate)}_sizes.txt`;
+  sizeFileName = '0_sizes.txt';
   // sizeFileName = 'sizes.txt';
   sizeFilePath = [
     SCANDIR_OUT_DATA_DIR_PATH,
