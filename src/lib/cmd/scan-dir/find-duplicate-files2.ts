@@ -53,105 +53,19 @@ maxDupePromises = 1;
 const rflMod = 500;
 
 export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
-  let runningSizePromises: number;
-  let lineCount: number;
-  let sizeFileName: string;
   let sizeFilePath: string;
-  let sizeWs: WriteStream;
   let drainDeferred: Deferred | undefined;
+  let getFileSizesRes: GetFileSizesRes;
   let sizeMap: Map<number, number>;
 
   let rflTimer: Timer;
 
-  lineCount = 0;
-  runningSizePromises = 0;
-  sizeMap = new Map();
-  rflTimer = Timer.start();
-
-  sizeFileName = `${getDateFileStr(opts.nowDate)}_sizes.txt`;
-  // sizeFileName = 'sizes.txt';
-  sizeFilePath = [
-    SCANDIR_OUT_DATA_DIR_PATH,
-    sizeFileName,
-  ].join(path.sep);
-  sizeWs = createWriteStream(sizeFilePath);
-
-  const fileDataFileLineCb: ReadFileByLineOpts['lineCb'] = (line: string, resumeCb: () => void) => {
-    let sizePromise: Promise<void>;
-    runningSizePromises++;
-    sizePromise = (async () => {
-      let fileStats: Stats | undefined;
-      let fileSize: number;
-      let fileSizeCount: number | undefined;
-      let sizeFileLine: string;
-      let wsRes: boolean;
-      try {
-        fileStats = await lstat(line);
-      } catch(e) {
-        if(
-          isObject(e)
-          && isString(e.code)
-          && (
-            (e.code === 'ENOENT')
-            || (e.code === 'EACCES')
-          )
-        ) {
-          logger.error(`findDuplicates lstat: ${e.code} ${line}`);
-        } else {
-          console.error(e);
-          throw e;
-        }
-      }
-      fileSize = fileStats?.size ?? -1;
-      if((fileSizeCount = sizeMap.get(fileSize)) === undefined) {
-        fileSizeCount = 0;
-      }
-      sizeMap.set(fileSize, fileSizeCount + 1);
-      sizeFileLine = `${fileSize} ${line}`;
-      wsRes = sizeWs.write(`${sizeFileLine}\n`);
-      if(!wsRes) {
-        if(drainDeferred === undefined) {
-          /*
-            use one deferred promise across all async
-              hash promises to ensure only one drain
-              event gets scheduled
-          */
-          drainDeferred = Deferred.init();
-          sizeWs.once('drain', drainDeferred.resolve);
-          drainDeferred.promise.finally(() => {
-            drainDeferred = undefined;
-          });
-        }
-        await drainDeferred.promise;
-      }
-
-      lineCount++;
-    })();
-    sizePromise.finally(() => {
-      runningSizePromises--;
-      if(runningSizePromises < maxSizePromises) {
-        // process.stdout.write(`_${runningHashPromises}_`);
-        resumeCb();
-      }
-      if(rflTimer.currentMs() > rflMod) {
-        process.stdout.write('.');
-        rflTimer.reset();
-      }
-    });
-    if(runningSizePromises >= maxSizePromises) {
-      // console.log({ runningHashPromises });
-      // process.stdout.write('^');
-      return 'pause';
-    }
-  };
-
-  await readFileByLine(opts.filesDataFilePath, {
-    lineCb: fileDataFileLineCb,
+  getFileSizesRes = await getFileSizes(opts.filesDataFilePath, {
+    nowDate: opts.nowDate,
   });
-  console.log('rfl done');
-  while(runningSizePromises > 0) {
-    await sleep(0);
-  }
+  sizeMap = getFileSizesRes.sizeMap;
+  sizeFilePath = getFileSizesRes.sizeFilePath;
+
   console.log(`sizeMap.size: ${sizeMap.size}`);
   let sizeMapIter: IterableIterator<number>;
   let sizeMapIterRes: IteratorResult<number>;
@@ -177,7 +91,6 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   }
   sizeMap.clear();
   // console.log({ possibleDupeSizes: possibleDupeSizeMap.size });
-  console.log({ lineCount });
 
   let possibleDupeIter: IterableIterator<number>;
   let possibleDupeIterRes: IteratorResult<number>;
@@ -432,6 +345,122 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   console.log(`hashFileRead took: ${hashFileReadMs} - ${getIntuitiveTimeString(hashFileReadMs)}`);
 
   return new Map<string, string[]>();
+}
+
+type GetFileSizesRes = {
+  sizeFilePath: string;
+  sizeMap: Map<number, number>;
+}
+
+async function getFileSizes(filesDataFilePath: string, opts: {
+  nowDate: Date,
+}): Promise<GetFileSizesRes> {
+  let runningSizePromises: number;
+  let sizeMap: Map<number, number>;
+  let rflTimer: Timer;
+  let sizeFileName: string;
+  let sizeFilePath: string;
+  let sizeWs: WriteStream;
+  let drainDeferred: Deferred | undefined;
+  let lineCount: number;
+
+  let getFileSizeRes: GetFileSizesRes;
+
+  runningSizePromises = 0;
+  sizeMap = new Map();
+  rflTimer = Timer.start();
+  lineCount = 0;
+
+  sizeFileName = `${getDateFileStr(opts.nowDate)}_sizes.txt`;
+  // sizeFileName = 'sizes.txt';
+  sizeFilePath = [
+    SCANDIR_OUT_DATA_DIR_PATH,
+    sizeFileName,
+  ].join(path.sep);
+  sizeWs = createWriteStream(sizeFilePath);
+
+  const fileDataFileLineCb: ReadFileByLineOpts['lineCb'] = (line: string, resumeCb: () => void) => {
+    let sizePromise: Promise<void>;
+    runningSizePromises++;
+    sizePromise = (async () => {
+      let fileStats: Stats | undefined;
+      let fileSize: number;
+      let fileSizeCount: number | undefined;
+      let sizeFileLine: string;
+      let wsRes: boolean;
+      try {
+        fileStats = await lstat(line);
+      } catch(e) {
+        if(
+          isObject(e)
+          && isString(e.code)
+          && (
+            (e.code === 'ENOENT')
+            || (e.code === 'EACCES')
+          )
+        ) {
+          logger.error(`findDuplicates lstat: ${e.code} ${line}`);
+        } else {
+          console.error(e);
+          throw e;
+        }
+      }
+      fileSize = fileStats?.size ?? -1;
+      if((fileSizeCount = sizeMap.get(fileSize)) === undefined) {
+        fileSizeCount = 0;
+      }
+      sizeMap.set(fileSize, fileSizeCount + 1);
+      sizeFileLine = `${fileSize} ${line}`;
+      wsRes = sizeWs.write(`${sizeFileLine}\n`);
+      if(!wsRes) {
+        if(drainDeferred === undefined) {
+          /*
+            use one deferred promise across all async
+              hash promises to ensure only one drain
+              event gets scheduled
+          */
+          drainDeferred = Deferred.init();
+          sizeWs.once('drain', drainDeferred.resolve);
+          drainDeferred.promise.finally(() => {
+            drainDeferred = undefined;
+          });
+        }
+        await drainDeferred.promise;
+      }
+
+      lineCount++;
+    })();
+    sizePromise.finally(() => {
+      runningSizePromises--;
+      if(runningSizePromises < maxSizePromises) {
+        // process.stdout.write(`_${runningHashPromises}_`);
+        resumeCb();
+      }
+      if(rflTimer.currentMs() > rflMod) {
+        process.stdout.write('.');
+        rflTimer.reset();
+      }
+    });
+    if(runningSizePromises >= maxSizePromises) {
+      // console.log({ runningHashPromises });
+      // process.stdout.write('^');
+      return 'pause';
+    }
+  };
+
+  await readFileByLine(filesDataFilePath, {
+    lineCb: fileDataFileLineCb,
+  });
+  console.log('rfl done');
+  console.log({ lineCount });
+  while(runningSizePromises > 0) {
+    await sleep(0);
+  }
+  getFileSizeRes = {
+    sizeFilePath,
+    sizeMap,
+  };
+  return getFileSizeRes;
 }
 
 async function getFileHash(filePath: string, hashOpts: HashFile2Opts = {}): Promise<string | undefined> {
