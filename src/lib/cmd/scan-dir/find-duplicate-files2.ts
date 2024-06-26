@@ -1,7 +1,8 @@
 
 import path from 'path';
 import { Stats, WriteStream, createWriteStream } from 'fs';
-import { lstat } from 'fs/promises';
+import fs, { FileHandle, FileReadResult, lstat } from 'fs/promises';
+import assert from 'assert';
 
 import { FindDuplicateFilesOpts } from './find-duplicate-files';
 import { Deferred } from '../../../test/deferred';
@@ -12,7 +13,6 @@ import { ReadFileByLineOpts, readFileByLine } from '../../util/files';
 import { isObject, isString } from '../../util/validate-primitives';
 import { logger } from '../../logger';
 import { sleep } from '../../util/sleep';
-import assert from 'assert';
 import { HashFile2Opts, hashFile2 } from '../../util/hasher';
 import { getIntuitiveByteString, getIntuitiveTimeString } from '../../util/format-util';
 
@@ -21,6 +21,7 @@ let maxSizePromises: number;
 let maxDupePromises: number;
 
 const HASH_HWM = 32 * 1024;
+
 const RFL_HWM = 2 * 1024;
 
 // maxConcurrentHashPromises = 200;
@@ -191,6 +192,32 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   hashFileReadMs = hashFileReadTimer.stop();
   console.log(`totalBytes: ${totalBytes} - ${getIntuitiveByteString(totalBytes)}`);
   console.log(`hashFileRead took: ${hashFileReadMs} - ${getIntuitiveTimeString(hashFileReadMs)}`);
+
+  let buf: Buffer;
+  let fileHandle: FileHandle;
+  let pos: number;
+  let readRes: FileReadResult<Buffer>;
+  let totalBytesRead: number;
+  let rfbTimer: Timer;
+  let rfbMs: number;
+  fileHandle = await fs.open(dupesFilePath);
+  console.log(fileHandle);
+  buf = Buffer.alloc(1 * 1024);
+  pos = 0;
+  totalBytesRead = 0;
+  rfbTimer = Timer.start();
+  /*
+    TODO: lets find the first position where the largest file's hash occurs
+  */
+  while((readRes = await fileHandle.read(buf, 0, buf.length, pos)).bytesRead !== 0) {
+    totalBytesRead += readRes.bytesRead;
+    pos += readRes.bytesRead;
+  }
+  rfbMs = rfbTimer.stop();
+  console.log(`totalBytesRead: ${totalBytesRead}b (${getIntuitiveByteString(totalBytesRead)})`);
+  console.log(`read file buffer took: ${rfbMs} ms (${getIntuitiveTimeString(rfbMs)})`);
+
+  process.stdout.write('\n');
 
   return new Map<string, string[]>();
 }
@@ -439,6 +466,9 @@ async function getFileSizes(filesDataFilePath: string, opts: {
 
   const fileDataFileLineCb: ReadFileByLineOpts['lineCb'] = (line: string, resumeCb: () => void) => {
     let sizePromise: Promise<void>;
+
+    lineCount++;
+
     runningSizePromises++;
     sizePromise = (async () => {
       let fileStats: Stats | undefined;
@@ -463,7 +493,10 @@ async function getFileSizes(filesDataFilePath: string, opts: {
           throw e;
         }
       }
-      fileSize = fileStats?.size ?? -1;
+      if(fileStats === undefined) {
+        return;
+      }
+      fileSize = fileStats.size;
       if((fileSizeCount = sizeMap.get(fileSize)) === undefined) {
         fileSizeCount = 0;
       }
@@ -485,8 +518,6 @@ async function getFileSizes(filesDataFilePath: string, opts: {
         }
         await drainDeferred.promise;
       }
-
-      lineCount++;
     })();
     sizePromise.finally(() => {
       runningSizePromises--;

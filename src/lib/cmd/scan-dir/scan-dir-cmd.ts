@@ -52,9 +52,17 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   mkdirIfNotExist(OUT_DATA_DIR_PATH);
   mkdirIfNotExist(SCANDIR_OUT_DATA_DIR_PATH);
 
-  dirsDataFilePath = getDirsDataFilePath(nowDate);
+  // dirsDataFilePath = getDirsDataFilePath(nowDate);
+  dirsDataFilePath = [
+    SCANDIR_OUT_DATA_DIR_PATH,
+    '0_dirs.txt',
+  ].join(path.sep);
   dirsWs = createWriteStream(dirsDataFilePath);
-  filesDataFilePath = getFilesDataFilePath(nowDate);
+  // filesDataFilePath = getFilesDataFilePath(nowDate);
+  filesDataFilePath = [
+    SCANDIR_OUT_DATA_DIR_PATH,
+    '0_files.txt',
+  ].join(path.sep);
   filesWs = createWriteStream(filesDataFilePath);
 
   const scanDirCb = async (params: ScanDirCbParams) => {
