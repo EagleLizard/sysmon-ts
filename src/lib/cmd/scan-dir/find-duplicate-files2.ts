@@ -201,7 +201,6 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   let rfbTimer: Timer;
   let rfbMs: number;
   fileHandle = await fs.open(dupesFilePath);
-  console.log(fileHandle);
   buf = Buffer.alloc(1 * 1024);
   pos = 0;
   totalBytesRead = 0;
