@@ -16,7 +16,7 @@ import { sleep } from '../../util/sleep';
 import { HashFile2Opts, hashFile2 } from '../../util/hasher';
 import { getIntuitiveByteString, getIntuitiveTimeString } from '../../util/format-util';
 import { scanDirColors as c } from './scan-dir-colors';
-import { CliColors } from '../../service/cli-colors';
+import { CliColors, ColorFormatter } from '../../service/cli-colors';
 
 let maxConcurrentHashPromises: number;
 let maxSizePromises: number;
@@ -27,15 +27,6 @@ const HASH_HWM = 32 * 1024;
 
 const RFL_HWM = 2 * 1024;
 // const RFL_HWM = 4 * 1024;
-
-// maxConcurrentHashPromises = 200;
-// maxConcurrentHashPromises = 1;
-// maxConcurrentHashPromises = 3;
-// maxConcurrentHashPromises = 6;
-// maxConcurrentHashPromises = 12;
-// maxConcurrentHashPromises = 24;
-// maxConcurrentHashPromises = 48;
-// maxConcurrentHashPromises = 96;
 
 // maxConcurrentHashPromises = 8;
 // maxConcurrentHashPromises = 16;
@@ -65,6 +56,15 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   let sizeMap: Map<number, number>;
   let possibleDupesTimer: Timer;
   let possibleDupesMs: number;
+
+  _print({
+    HASH_HWM,
+    RFL_HWM,
+    maxConcurrentHashPromises,
+  }, {
+    valFmtFn: c.yellow_yellow,
+  });
+  process.stdout.write('\n');
 
   possibleDupesTimer = Timer.start();
   getFileSizesRes = await getFileSizes(opts.filesDataFilePath, {
@@ -579,16 +579,21 @@ async function getFileHash(filePath: string, hashOpts: HashFile2Opts = {}): Prom
   return fileHash;
 }
 
-function _print(val: unknown) {
+function _print(val: unknown, opts: {
+  valFmtFn?: ColorFormatter
+} = {}) {
+  let valFmtFn: ColorFormatter;
+
+  valFmtFn = opts.valFmtFn ?? _fmtFn;
 
   if(isFlatObject(val)) {
     let keys: string[];
     keys = Object.keys(val);
     for(let i = 0; i < keys.length; ++i) {
-      console.log(`${keys[i]}: ${_fmtFn(val[keys[i]])}`);
+      console.log(`${keys[i]}: ${valFmtFn(val[keys[i]])}`);
     }
   } else {
-    _fmtFn(val);
+    valFmtFn(val);
   }
 
   function _fmtFn(val: unknown): string {

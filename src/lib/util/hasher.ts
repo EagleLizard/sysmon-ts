@@ -5,8 +5,10 @@ import { createReadStream, ReadStream } from 'fs';
 // const alg = 'sha256';
 // const alg = 'md5';
 // const alg = 'blake2s256';
-// const alg = 'sha1';
-const DEFAULT_ALG = 'shake256';
+const DEFAULT_ALG = 'sha1';
+// const DEFAULT_ALG = 'sha256';
+// const DEFAULT_ALG = 'sha512';
+// const DEFAULT_ALG = 'shake256';
 // const outputFormat = 'base64';
 const outputFormat = 'hex';
 
@@ -31,7 +33,7 @@ export function getHasher(hashOpts: HashOptions = {}): Hasher {
   let hash: Hash;
   let alg: string;
   alg = DEFAULT_ALG;
-  if(xofAlgos.includes(alg)) {
+  if(alg === 'shake256') {
     hashOpts.outputLength = 4;
   }
 
