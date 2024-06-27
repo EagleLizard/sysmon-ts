@@ -15,14 +15,18 @@ import { logger } from '../../logger';
 import { sleep } from '../../util/sleep';
 import { HashFile2Opts, hashFile2 } from '../../util/hasher';
 import { getIntuitiveByteString, getIntuitiveTimeString } from '../../util/format-util';
+import { scanDirColors as c } from './scan-dir-colors';
+import { CliColors } from '../../service/cli-colors';
 
 let maxConcurrentHashPromises: number;
 let maxSizePromises: number;
 let maxDupePromises: number;
 
 const HASH_HWM = 32 * 1024;
+// const HASH_HWM = 64 * 1024;
 
 const RFL_HWM = 2 * 1024;
+// const RFL_HWM = 4 * 1024;
 
 // maxConcurrentHashPromises = 200;
 // maxConcurrentHashPromises = 1;
@@ -53,19 +57,21 @@ maxSizePromises = 32;
 maxDupePromises = 1;
 
 const rflMod = 500;
+// const rflMod = 125;
 
 export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   let sizeFilePath: string;
   let getFileSizesRes: GetFileSizesRes;
   let sizeMap: Map<number, number>;
+  let possibleDupesTimer: Timer;
+  let possibleDupesMs: number;
 
+  possibleDupesTimer = Timer.start();
   getFileSizesRes = await getFileSizes(opts.filesDataFilePath, {
     nowDate: opts.nowDate,
   });
   sizeMap = getFileSizesRes.sizeMap;
   sizeFilePath = getFileSizesRes.sizeFilePath;
-
-  console.log(`sizeMap.size: ${sizeMap.size}`);
   let sizeMapIter: IterableIterator<number>;
   let sizeMapIterRes: IteratorResult<number>;
   let possibleDupeSizeMap: Map<number, number>;
@@ -80,7 +86,7 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
     assert(fileCount !== undefined);
     if(
       1
-      // && (size !== 0)
+      // && (size > 0)
       && (size !== 0)
       && (fileCount > 1)
     ) {
@@ -104,8 +110,9 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
     assert(fileCount !== undefined);
     possibleDupeCount += fileCount;
   }
-
-  console.log({ possibleDupes: possibleDupeCount });
+  possibleDupesMs = possibleDupesTimer.stop();
+  _print({ possibleDupes: possibleDupeCount });
+  console.log(`find possible dupes took: ${getIntuitiveTimeString(possibleDupesMs)}`);
 
   let hashFilePath: string;
   let hashMap: Map<string, number>;
@@ -118,9 +125,11 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   let dupeMap: Map<string, number>;
   let hashMapIter: IterableIterator<string>;
   let hashMapIterRes: IteratorResult<string>;
+  let uniqueDupeFiles: number;
   let dupeCount: number;
 
   dupeMap = new Map();
+  uniqueDupeFiles = 0;
   dupeCount = 0;
 
   hashMapIter = hashMap.keys();
@@ -132,12 +141,16 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
     assert(hashFileCount !== undefined);
     if(hashFileCount > 1) {
       dupeMap.set(fileHash, hashFileCount);
-      dupeCount++;
+      uniqueDupeFiles++;
+      dupeCount += hashFileCount;
     }
     hashMap.delete(fileHash);
   }
   hashMap.clear();
-  console.log({ dupeCount });
+  _print({
+    uniqueDupeFiles,
+    dupeCount,
+  });
 
   let dupesFilePath: string;
   let hashSizeMap: Map<string, number>;
@@ -151,14 +164,11 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   let hashSizeMapIterRes: IteratorResult<string>;
   let maxFileSize: number;
   let maxFileSizeHash: string | undefined;
-  let unqiueDupeFiles: number;
   hashSizeMapIter = hashSizeMap.keys();
   maxFileSize = -Infinity;
-  unqiueDupeFiles = 0;
   while(!(hashSizeMapIterRes = hashSizeMapIter.next()).done) {
     let currHash: string;
     let currHashCount: number | undefined;
-    unqiueDupeFiles++;
     currHash = hashSizeMapIterRes.value;
     currHashCount = hashSizeMap.get(currHash);
     assert(currHashCount !== undefined);
@@ -168,7 +178,6 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
     }
   }
   assert(maxFileSizeHash !== undefined);
-  console.log(`unique dupe files: ${unqiueDupeFiles}`);
   console.log(`\nmaxFileSize: ${getIntuitiveByteString(maxFileSize)} (${maxFileSize} bytes)\nhash: ${maxFileSizeHash}\n`);
 
   let hashFileReadTimer: Timer;
@@ -234,7 +243,6 @@ async function getFileHashes(sizeFilePath: string, possibleDupeSizeMap: Map<numb
   let hashMap: Map<string, number>;
   let drainDeferred: Deferred | undefined;
   let rflTimer: Timer;
-  let possibleDupeCount: number;
 
   let getFileHashesRes: GetFileHashesRes;
 
@@ -248,7 +256,6 @@ async function getFileHashes(sizeFilePath: string, possibleDupeSizeMap: Map<numb
   runningHashPromises = 0;
   hashMap = new Map();
   rflTimer = Timer.start();
-  possibleDupeCount = 0;
 
   const fileSizesFileLineCb: ReadFileByLineOpts['lineCb'] = (line, resumeCb) => {
     let filePath: string;
@@ -304,11 +311,11 @@ async function getFileHashes(sizeFilePath: string, possibleDupeSizeMap: Map<numb
       if(runningHashPromises < maxConcurrentHashPromises) {
         resumeCb();
       }
+      if(rflTimer.currentMs() > rflMod) {
+        process.stdout.write('.');
+        rflTimer.reset();
+      }
     });
-    if(rflTimer.currentMs() > rflMod) {
-      process.stdout.write('.');
-      rflTimer.reset();
-    }
     if(runningHashPromises >= maxConcurrentHashPromises) {
       return 'pause';
     }
@@ -321,7 +328,7 @@ async function getFileHashes(sizeFilePath: string, possibleDupeSizeMap: Map<numb
   while(runningHashPromises > 0) {
     await sleep(0);
   }
-  console.log({ possibleDupeCount });
+  process.stdout.write('\n');
   getFileHashesRes = {
     hashFilePath,
     hashMap,
@@ -336,8 +343,6 @@ type GetDuplicateFileHashesRes = {
 
 async function getDuplicateFileHashes(hashFilePath: string, dupeMap: Map<string, number>): Promise<GetDuplicateFileHashesRes> {
   let getDuplicateFileHashesRes: GetDuplicateFileHashesRes;
-  let totalHashCount: number;
-  let totalDupeHashCount: number;
   let runningDupePromises: number;
   let hashSizeMap: Map<string, number>;
   let dupesFileName: string;
@@ -346,8 +351,6 @@ async function getDuplicateFileHashes(hashFilePath: string, dupeMap: Map<string,
   let drainDeferred: Deferred | undefined;
   let rflTimer: Timer;
 
-  totalHashCount = 0;
-  totalDupeHashCount = 0;
   runningDupePromises = 0;
   hashSizeMap = new Map();
 
@@ -380,8 +383,6 @@ async function getDuplicateFileHashes(hashFilePath: string, dupeMap: Map<string,
     }
     fileSize = +rxExecRes.groups.sizeStr;
     assert(!isNaN(fileSize));
-    totalHashCount++;
-    totalDupeHashCount++;
     runningDupePromises++;
     dupePromise = (async () => {
       let wsRes: boolean;
@@ -405,11 +406,11 @@ async function getDuplicateFileHashes(hashFilePath: string, dupeMap: Map<string,
       if(runningDupePromises < maxDupePromises) {
         resumeCb();
       }
+      if(rflTimer.currentMs() > rflMod) {
+        process.stdout.write('.');
+        rflTimer.reset();
+      }
     });
-    if(rflTimer.currentMs() > rflMod) {
-      process.stdout.write('.');
-      rflTimer.reset();
-    }
     if(runningDupePromises >= maxDupePromises) {
       return 'pause';
     }
@@ -421,8 +422,6 @@ async function getDuplicateFileHashes(hashFilePath: string, dupeMap: Map<string,
   while(runningDupePromises > 0) {
     await sleep(0);
   }
-  console.log({ totalHashCount });
-  console.log({ totalDupeHashCount });
   getDuplicateFileHashesRes = {
     dupesFilePath,
     hashSizeMap,
@@ -539,8 +538,10 @@ async function getFileSizes(filesDataFilePath: string, opts: {
   await readFileByLine(filesDataFilePath, {
     lineCb: fileDataFileLineCb,
   });
-  console.log('rfl done');
-  console.log({ lineCount });
+  // console.log('rfl done');
+  // _print({ lineCount });
+  console.log(`${c.italic('lineCount')}: ${c.yellow_light(lineCount)}`);
+  // console.log({ lineCount });
   while(runningSizePromises > 0) {
     await sleep(0);
   }
@@ -576,4 +577,49 @@ async function getFileHash(filePath: string, hashOpts: HashFile2Opts = {}): Prom
     }
   }
   return fileHash;
+}
+
+function _print(val: unknown) {
+
+  if(isFlatObject(val)) {
+    let keys: string[];
+    keys = Object.keys(val);
+    for(let i = 0; i < keys.length; ++i) {
+      console.log(`${keys[i]}: ${_fmtFn(val[keys[i]])}`);
+    }
+  } else {
+    _fmtFn(val);
+  }
+
+  function _fmtFn(val: unknown): string {
+    switch(typeof val) {
+      case 'boolean':
+        return c.pink(val);
+      case 'number':
+        return c.yellow_light(val);
+      case 'string':
+        return CliColors.rgb(100, 255, 100)(`'${val}'`);
+      case 'object':
+        throw new Error('no objects :/');
+      default:
+        return c.yellow_light(val);
+    }
+  }
+}
+
+function isFlatObject(val: unknown): val is Record<string, unknown> {
+  let vals: unknown[];
+  if(!isObject(val)) {
+    return false;
+  }
+  vals = Object.values(val);
+  for(let i = 0; i < vals.length; ++i) {
+    if(
+      isObject(vals[i])
+      || Array.isArray(vals[i])
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
