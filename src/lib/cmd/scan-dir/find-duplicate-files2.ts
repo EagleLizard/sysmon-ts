@@ -203,6 +203,58 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   console.log(`hashFileRead took: ${hashFileReadMs} - ${getIntuitiveTimeString(hashFileReadMs)}`);
   process.stdout.write('\n');
 
+  await formatDupes(dupesFilePath, hashSizeMap);
+
+  return new Map<string, string[]>();
+}
+
+/*
+  nlStart = false
+  hPos = 0
+  hParse = false
+  szParse = false
+
+  foundHash = undefined
+  foundSize = undefined
+  foundFilePath = undefined
+  if currChar === newline
+    if hParse or szParse
+      throw error, invalid format
+    if fParse
+      << terminal >>
+      foundFilePath = chars[].join
+    else
+      hParse = true
+    reset
+  else
+    if hParse
+      if currChar === space
+        <<terminal char>>
+        set foundHash = chars[].join
+        assert foundHash === hash
+        set chars[].length = 0
+        set hParse = false
+        set szParse = true
+      else
+        if currChar === hash[hPos]
+          chars.push(currChar)
+        else
+          reset
+    else if szParse
+      if currChar === space
+        <<terminal char>>
+        set foundSize = +(chars[].join)
+        assert foundSize is number
+        set chars[].length = 0
+        set szParse = false
+        set fParse = true
+      else
+        assert currChar is digit
+        chars[].push(currChar)
+    else if fParse
+      chars[].push(currChar)
+ */
+async function formatDupes(dupesFilePath: string, hashSizeMap: Map<string, number>) {
   let buf: Buffer;
   let fileHandlePromise: Promise<FileHandle>;
   let fileHandle: FileHandle;
@@ -219,6 +271,7 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   /*
     TODO: lets find the first position where the largest file's hash occurs
    */
+  let nlParse: boolean;
   let hParse: boolean;
   let szParse: boolean;
   let fParse: boolean;
@@ -232,6 +285,8 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
 
   let targetHash: string;
 
+  let firstChar: boolean;
+
   fileHandlePromise = fs.open(dupesFilePath);
   fileHandlePromise.finally(() => {
     fileHandle.close();
@@ -243,67 +298,32 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   rfbTimer = Timer.start();
 
   /* Init parsing vars  */
-
   hParse = false;
   szParse = false;
   fParse = false;
   hPos = 0;
   chars = [];
 
-  targetHash = maxFileSizeHash;
+  firstChar = true;
 
+  // targetHash = maxFileSizeHash;
+  targetHash = [ ...hashSizeMap.keys() ][0];
+  console.log({ targetHash });
   while((readRes = await fileHandle.read(buf, 0, buf.length, pos)).bytesRead !== 0) {
-    /*
-    nlStart = false
-    hPos = 0
-    hParse = false
-    szParse = false
 
-    foundHash = undefined
-    foundSize = undefined
-    foundFilePath = undefined
-    if currChar === newline
-      if hParse or szParse
-        throw error, invalid format
-      if fParse
-        << terminal >>
-        foundFilePath = chars[].join
-      else
-        hParse = true
-      reset
-    else
-      if hParse
-        if currChar === space
-          <<terminal char>>
-          set foundHash = chars[].join
-          assert foundHash === hash
-          set chars[].length = 0
-          set hParse = false
-          set szParse = true
-        else
-          if currChar === hash[hPos]
-            chars.push(currChar)
-          else
-            reset
-      else if szParse
-        if currChar === space
-          <<terminal char>>
-          set foundSize = +(chars[].join)
-          assert foundSize is number
-          set chars[].length = 0
-          set szParse = false
-          set fParse = true
-        else
-          assert currChar is digit
-          chars[].push(currChar)
-      else if fParse
-        chars[].push(currChar)
-     */
     for(let i = 0; i < buf.length; ++i) {
       let subBuf: Buffer;
       let currChar: string;
+
       subBuf = buf.subarray(i, i + 1);
       currChar = subBuf.toString();
+      if(firstChar) {
+        /*
+          necessary because the first line doesn't start with a newline
+         */
+        hParse = true;
+        firstChar = false;
+      }
       if(currChar === '\n') {
         if(hParse || szParse) {
           throw new Error(`Invalid format, buf dump: ${buf.toString()}`);
@@ -314,15 +334,14 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
           fParse = false;
           console.log(foundFilePath);
         }
-        hParse = true;
         /* reset */
+        hParse = true;
       } else {
         if(hParse) {
           if(currChar === ' ') {
             /* terminal */
             foundHash = chars.join('');
             assert(foundHash === targetHash);
-
             /* start size parse */
             szParse = true;
             /* reset */
@@ -362,15 +381,11 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
     totalBytesRead += readRes.bytesRead;
     pos += readRes.bytesRead;
   }
+
   rfbMs = rfbTimer.stop();
 
-  process.stdout.write('\n');
   console.log(`totalBytesRead: ${totalBytesRead}b (${getIntuitiveByteString(totalBytesRead)})`);
   console.log(`read file buffer took: ${rfbMs} ms (${getIntuitiveTimeString(rfbMs)})`);
-
-  process.stdout.write('\n');
-
-  return new Map<string, string[]>();
 }
 
 type GetFileHashesRes = {
