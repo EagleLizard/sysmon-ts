@@ -366,7 +366,7 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
   let szParse: boolean;
   let fParse: boolean;
   let hPos: number;
-  let bytes: number[];
+  let chars: string[];
   let foundHash: string | undefined;
   let foundSizeStr: string | undefined;
   let foundSize: number | undefined;
@@ -376,12 +376,9 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
 
   let currChar: string;
   let currByte: number;
-  
-  let chars: string[];
 
   let line: number;
   let col: number;
-
 
   fileHandle = opts.fileHandle;
   targetHash = opts.targetHash;
@@ -396,7 +393,7 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
   szParse = false;
   fParse = false;
   hPos = 0;
-  bytes = [];
+  chars = [];
 
   firstChar = true;
 
@@ -423,18 +420,8 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
           throw new Error(`Invalid format, buf dump: ${buf.toString()}`);
         } else if(fParse) {
           /* terminal */
-          chars = Array(bytes.length).fill(0);
-          for(let k = 0; k < bytes.length; ++k) {
-            chars[k] = String.fromCharCode(bytes[k]);
-          }
           foundFilePath = chars.join('');
-          // foundFilePath = Buffer.from(bytes).toString();
-          // foundFilePath = '';
-          // for(let k = 0; k < bytes.length; ++k) {
-          //   foundFilePath += String.fromCharCode(bytes[k]);
-          // }
 
-          bytes.length = 0;
           chars.length = 0;
           fParse = false;
 
@@ -455,12 +442,6 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
         if(hParse) {
           if(currByte === 32) {
             /* terminal */
-            // foundHash = '';
-            chars = Array(bytes.length).fill(0);
-            for(let k = 0; k < bytes.length; ++k) {
-              chars[k] = String.fromCharCode(bytes[k]);
-              // foundHash += String.fromCharCode(bytes[k]);
-            }
             foundHash = chars.join('');
             // assert(foundHash === targetHash);
             /* start size parse */
@@ -468,27 +449,20 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
             /* reset */
             hParse = false;
             hPos = 0;
-            bytes.length = 0;
             chars.length = 0;
           } else if(currByte === targetHash.charCodeAt(hPos)) {
-            bytes.push(currByte);
+            chars.push(String.fromCharCode(currByte));
             hPos++;
           } else {
             /* reset */
             hParse = false;
             szParse = false;
-            bytes.length = 0;
+            chars.length = 0;
             hPos = 0;
           }
         } else if(szParse) {
           if(currByte === 32) {
             /* terminal */
-            // foundSizeStr = '';
-            chars = Array(bytes.length).fill(0);
-            for(let k = 0; k < bytes.length; ++k) {
-              // foundSizeStr += String.fromCharCode(bytes[k]);
-              chars[k] = String.fromCharCode(bytes[k]);
-            }
             foundSizeStr = chars.join('');
             foundSize = +foundSizeStr;
             if(isNaN(foundSize)) {
@@ -499,15 +473,14 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
               throw new Error(`invalid size string: ${foundSizeStr} at ${line}:${col}`);
             }
             /* reset */
-            bytes.length = 0;
             chars.length = 0;
             szParse = false;
             fParse = true;
           } else {
-            bytes.push(currByte);
+            chars.push(String.fromCharCode(currByte));
           }
         } else if(fParse) {
-          bytes.push(currByte);
+          chars.push(String.fromCharCode(currByte));
           // console.log(chars.slice(-10));
         }
       }
