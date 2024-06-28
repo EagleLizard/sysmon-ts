@@ -305,11 +305,12 @@ async function formatDupes(dupesFilePath: string, hashSizeMap: Map<string, numbe
     let writeHeading: boolean;
     writeHeading = true;
 
-    const dupeCb: FindHashDupesOpts['dupeCb'] = (filePath, size, hash) => {
+    const dupeCb: FindHashDupesOpts['dupeCb'] = (filePath, size, hash, range) => {
       if(writeHeading) {
         writeHeading = false;
         fmtWs.write(`${hash} ${size}\n`);
       }
+      fmtWs.write(`  [ ${range.join(', ')} ]\n`);
       fmtWs.write(`  ${filePath}\n`);
     };
     let buf: Buffer;
@@ -344,7 +345,7 @@ type FindHashDupesOpts = {
   targetHash: string;
   dupeCount: number;
   buf: Buffer,
-  dupeCb: (filePath: string, size: number, hash: string) => void;
+  dupeCb: (filePath: string, size: number, hash: string, range: [ number, number ]) => void;
 };
 
 type FindHashDupesRes = {
@@ -380,6 +381,9 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
   let line: number;
   let col: number;
 
+  let dupeStartPos: number | undefined;
+  let dupeEndPos: number | undefined;
+
   fileHandle = opts.fileHandle;
   targetHash = opts.targetHash;
   dupeCount = opts.dupeCount;
@@ -412,7 +416,9 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
          */
         hParse = true;
         firstChar = false;
+        dupeStartPos = pos + i;
       }
+      /* 10 -> '\n' */
       if(currByte === 10) {
         line++;
         col = 0;
@@ -428,7 +434,9 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
           assert(foundFilePath.length > 0);
           assert(foundSize !== undefined);
           assert(foundHash !== undefined);
-          opts.dupeCb(foundFilePath, foundSize, foundHash);
+          dupeEndPos = pos + i;
+          assert(dupeStartPos !== undefined);
+          opts.dupeCb(foundFilePath, foundSize, foundHash, [ dupeStartPos, dupeEndPos ]);
           dupeCount--;
 
           foundHash = undefined;
@@ -437,9 +445,11 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
         }
         /* reset */
         hParse = true;
+        dupeStartPos = pos + i;
       } else {
         col++;
         if(hParse) {
+          /* 32 -> ' ' */
           if(currByte === 32) {
             /* terminal */
             foundHash = chars.join('');
@@ -461,6 +471,7 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
             hPos = 0;
           }
         } else if(szParse) {
+          /* 32 -> ' ' */
           if(currByte === 32) {
             /* terminal */
             foundSizeStr = chars.join('');
@@ -481,7 +492,6 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
           }
         } else if(fParse) {
           chars.push(String.fromCharCode(currByte));
-          // console.log(chars.slice(-10));
         }
       }
     }
