@@ -257,12 +257,12 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
 async function formatDupes(dupesFilePath: string, hashSizeMap: Map<string, number>) {
   let fileHandlePromise: Promise<FileHandle>;
   let fileHandle: FileHandle;
+  let fmtFileName: string;
+  let fmtFilePath: string;
+  let fmtWs: WriteStream;
   let totalBytesRead: number;
   let rfbTimer: Timer;
   let rfbMs: number;
-
-  let targetHash: string;
-  let targetHashDupeCount: number;
 
   let findHashDupesRes: FindHashDupesRes;
 
@@ -274,33 +274,76 @@ async function formatDupes(dupesFilePath: string, hashSizeMap: Map<string, numbe
   });
   fileHandle = await fileHandlePromise;
 
-  rfbTimer = Timer.start();
+  fmtFileName = '0_dupes_fmt.txt';
+  fmtFilePath = [
+    SCANDIR_OUT_DATA_DIR_PATH,
+    fmtFileName,
+  ].join(path.sep);
+  fmtWs = createWriteStream(fmtFilePath);
 
-  // targetHash = maxFileSizeHash;
-  [ targetHash, targetHashDupeCount ] = [ ...hashSizeMap.entries() ][0];
-  console.log({ targetHash });
-  // await findHashDupes(fileHandle, targetHash, targetHashDupeCount);
-  const dupeCb: FindHashDupesOpts['dupeCb'] = (filePath, size, hash) => {
-    console.log(filePath);
-  };
-  findHashDupesRes = await findHashDupes({
-    fileHandle,
-    targetHash,
-    dupeCount: targetHashDupeCount,
-    dupeCb,
+  rfbTimer = Timer.start();
+  // [ targetHash, targetHashDupeCount ] = [ ...hashSizeMap.entries() ][0];
+  let hashSizeTuples: [ string, number ][];
+  hashSizeTuples = [ ...hashSizeMap.entries() ];
+  /*
+    sort by size desc
+   */
+  hashSizeTuples.sort((a, b) => {
+    if(a[1] > b[1]) {
+      return -1;
+    } else if(a[1] < b[1]) {
+      return 1;
+    } else {
+      return 0;
+    }
   });
-  totalBytesRead += findHashDupesRes.bytesRead;
+  // console.log(hashSizeTuples[0]);
+  // [ targetHash, targetHashDupeCount ] = hashSizeTuples[0];
+  for(let i = 0; i < hashSizeTuples.length; ++i) {
+    let targetHash: string;
+    let targetHashDupeCount: number;
+    let writeHeading: boolean;
+    writeHeading = true;
+
+    const dupeCb: FindHashDupesOpts['dupeCb'] = (filePath, size, hash) => {
+      if(writeHeading) {
+        writeHeading = false;
+        fmtWs.write(`${hash} ${size}\n`);
+      }
+      fmtWs.write(`  ${filePath}\n`);
+    };
+    let buf: Buffer;
+    buf = Buffer.alloc(16 * 1023);
+
+    [ targetHash, targetHashDupeCount ] = hashSizeTuples[i];
+    findHashDupesRes = await findHashDupes({
+      fileHandle,
+      targetHash,
+      dupeCount: targetHashDupeCount,
+      buf,
+      dupeCb,
+    });
+    totalBytesRead += findHashDupesRes.bytesRead;
+    if((i % 1e3) === 0) {
+      process.stdout.write(((i / hashSizeTuples.length)).toFixed(2));
+    }
+    if((i % 1e2) === 0) {
+      process.stdout.write('.');
+    }
+  }
 
   rfbMs = rfbTimer.stop();
 
   console.log(`totalBytesRead: ${totalBytesRead}b (${getIntuitiveByteString(totalBytesRead)})`);
-  console.log(`read file buffer took: ${rfbMs} ms (${getIntuitiveTimeString(rfbMs)})`);
+  // console.log(`read file buffer took: ${rfbMs} ms (${getIntuitiveTimeString(rfbMs)})`);
+  console.log(`read file buffer took: ${getIntuitiveTimeString(rfbMs)} (${rfbMs} ms)\n`);
 }
 
 type FindHashDupesOpts = {
   fileHandle: FileHandle;
   targetHash: string;
   dupeCount: number;
+  buf: Buffer,
   dupeCb: (filePath: string, size: number, hash: string) => void;
 };
 
@@ -323,19 +366,28 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
   let szParse: boolean;
   let fParse: boolean;
   let hPos: number;
-  let chars: string[];
+  let bytes: number[];
   let foundHash: string | undefined;
+  let foundSizeStr: string | undefined;
   let foundSize: number | undefined;
   let foundFilePath: string | undefined;
 
   let findHashDupesRes: FindHashDupesRes;
+
+  let currChar: string;
+  let currByte: number;
+  
+  let chars: string[];
+
+  let line: number;
+  let col: number;
 
 
   fileHandle = opts.fileHandle;
   targetHash = opts.targetHash;
   dupeCount = opts.dupeCount;
 
-  buf = Buffer.alloc(1 * 1024);
+  buf = opts.buf;
   pos = 0;
   bytesRead = 0;
 
@@ -344,16 +396,19 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
   szParse = false;
   fParse = false;
   hPos = 0;
-  chars = [];
+  bytes = [];
 
   firstChar = true;
+
+  line = 1;
+  col = 0;
+
   while((readRes = await fileHandle.read(buf, 0, buf.length, pos)).bytesRead !== 0) {
     for(let i = 0; i < buf.length; ++i) {
-      let subBuf: Buffer;
-      let currChar: string;
+      // let subBuf: Buffer;
 
-      subBuf = buf.subarray(i, i + 1);
-      currChar = subBuf.toString();
+      // subBuf = buf.subarray(i, i + 1);
+      currByte = buf[i];
       if(firstChar) {
         /*
           necessary because the first line doesn't start with a newline
@@ -361,12 +416,25 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
         hParse = true;
         firstChar = false;
       }
-      if(currChar === '\n') {
+      if(currByte === 10) {
+        line++;
+        col = 0;
         if(hParse || szParse) {
           throw new Error(`Invalid format, buf dump: ${buf.toString()}`);
         } else if(fParse) {
           /* terminal */
+          chars = Array(bytes.length).fill(0);
+          for(let k = 0; k < bytes.length; ++k) {
+            chars[k] = String.fromCharCode(bytes[k]);
+          }
           foundFilePath = chars.join('');
+          // foundFilePath = Buffer.from(bytes).toString();
+          // foundFilePath = '';
+          // for(let k = 0; k < bytes.length; ++k) {
+          //   foundFilePath += String.fromCharCode(bytes[k]);
+          // }
+
+          bytes.length = 0;
           chars.length = 0;
           fParse = false;
 
@@ -374,6 +442,7 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
           assert(foundSize !== undefined);
           assert(foundHash !== undefined);
           opts.dupeCb(foundFilePath, foundSize, foundHash);
+          dupeCount--;
 
           foundHash = undefined;
           foundSize = undefined;
@@ -382,42 +451,63 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
         /* reset */
         hParse = true;
       } else {
+        col++;
         if(hParse) {
-          if(currChar === ' ') {
+          if(currByte === 32) {
             /* terminal */
+            // foundHash = '';
+            chars = Array(bytes.length).fill(0);
+            for(let k = 0; k < bytes.length; ++k) {
+              chars[k] = String.fromCharCode(bytes[k]);
+              // foundHash += String.fromCharCode(bytes[k]);
+            }
             foundHash = chars.join('');
-            assert(foundHash === targetHash);
+            // assert(foundHash === targetHash);
             /* start size parse */
             szParse = true;
             /* reset */
             hParse = false;
             hPos = 0;
+            bytes.length = 0;
             chars.length = 0;
-          } else if(currChar === targetHash[hPos]) {
-            chars.push(currChar);
+          } else if(currByte === targetHash.charCodeAt(hPos)) {
+            bytes.push(currByte);
             hPos++;
           } else {
             /* reset */
             hParse = false;
-            chars.length = 0;
+            szParse = false;
+            bytes.length = 0;
             hPos = 0;
           }
         } else if(szParse) {
-          if(currChar === ' ') {
+          if(currByte === 32) {
             /* terminal */
-            foundSize = +chars.join('');
-            assert(!isNaN(foundSize));
+            // foundSizeStr = '';
+            chars = Array(bytes.length).fill(0);
+            for(let k = 0; k < bytes.length; ++k) {
+              // foundSizeStr += String.fromCharCode(bytes[k]);
+              chars[k] = String.fromCharCode(bytes[k]);
+            }
+            foundSizeStr = chars.join('');
+            foundSize = +foundSizeStr;
+            if(isNaN(foundSize)) {
+              // console.log('readRes.bytesRead');
+              // console.log(readRes.bytesRead);
+              // console.log('bytes.length');
+              // console.log(bytes.length);
+              throw new Error(`invalid size string: ${foundSizeStr} at ${line}:${col}`);
+            }
             /* reset */
+            bytes.length = 0;
             chars.length = 0;
             szParse = false;
-            /* start filepath parse */
             fParse = true;
           } else {
-            assert(/[0-9]/.test(currChar));
-            chars.push(currChar);
+            bytes.push(currByte);
           }
         } else if(fParse) {
-          chars.push(currChar);
+          bytes.push(currByte);
           // console.log(chars.slice(-10));
         }
       }
@@ -425,6 +515,9 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
 
     bytesRead += readRes.bytesRead;
     pos += readRes.bytesRead;
+    if(dupeCount < 1) {
+      break;
+    }
   }
 
   findHashDupesRes = {
