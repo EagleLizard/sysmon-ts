@@ -255,47 +255,89 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
       chars[].push(currChar)
  */
 async function formatDupes(dupesFilePath: string, hashSizeMap: Map<string, number>) {
-  let buf: Buffer;
   let fileHandlePromise: Promise<FileHandle>;
   let fileHandle: FileHandle;
-  let pos: number;
-  let readRes: FileReadResult<Buffer>;
   let totalBytesRead: number;
   let rfbTimer: Timer;
   let rfbMs: number;
-  fileHandle = await fs.open(dupesFilePath);
-  buf = Buffer.alloc(1 * 1024);
-  pos = 0;
-  totalBytesRead = 0;
-  rfbTimer = Timer.start();
-  /*
-    TODO: lets find the first position where the largest file's hash occurs
-   */
-  let nlParse: boolean;
-  let hParse: boolean;
-  let szParse: boolean;
-  let fParse: boolean;
-
-  let hPos: number;
-
-  let chars: string[];
-  let foundHash: string | undefined;
-  let foundSize: number | undefined;
-  let foundFilePath: string | undefined;
 
   let targetHash: string;
+  let targetHashDupeCount: number;
 
-  let firstChar: boolean;
+  let findHashDupesRes: FindHashDupesRes;
+
+  totalBytesRead = 0;
 
   fileHandlePromise = fs.open(dupesFilePath);
   fileHandlePromise.finally(() => {
     fileHandle.close();
   });
   fileHandle = await fileHandlePromise;
+
+  rfbTimer = Timer.start();
+
+  // targetHash = maxFileSizeHash;
+  [ targetHash, targetHashDupeCount ] = [ ...hashSizeMap.entries() ][0];
+  console.log({ targetHash });
+  // await findHashDupes(fileHandle, targetHash, targetHashDupeCount);
+  const dupeCb: FindHashDupesOpts['dupeCb'] = (filePath, size, hash) => {
+    console.log(filePath);
+  };
+  findHashDupesRes = await findHashDupes({
+    fileHandle,
+    targetHash,
+    dupeCount: targetHashDupeCount,
+    dupeCb,
+  });
+  totalBytesRead += findHashDupesRes.bytesRead;
+
+  rfbMs = rfbTimer.stop();
+
+  console.log(`totalBytesRead: ${totalBytesRead}b (${getIntuitiveByteString(totalBytesRead)})`);
+  console.log(`read file buffer took: ${rfbMs} ms (${getIntuitiveTimeString(rfbMs)})`);
+}
+
+type FindHashDupesOpts = {
+  fileHandle: FileHandle;
+  targetHash: string;
+  dupeCount: number;
+  dupeCb: (filePath: string, size: number, hash: string) => void;
+};
+
+type FindHashDupesRes = {
+  bytesRead: number;
+}
+
+async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes> {
+  let fileHandle: FileHandle;
+  let targetHash: string;
+  let dupeCount: number;
+
+  let buf: Buffer;
+  let pos: number;
+  let readRes: FileReadResult<Buffer>;
+  let bytesRead: number;
+
+  let firstChar: boolean;
+  let hParse: boolean;
+  let szParse: boolean;
+  let fParse: boolean;
+  let hPos: number;
+  let chars: string[];
+  let foundHash: string | undefined;
+  let foundSize: number | undefined;
+  let foundFilePath: string | undefined;
+
+  let findHashDupesRes: FindHashDupesRes;
+
+
+  fileHandle = opts.fileHandle;
+  targetHash = opts.targetHash;
+  dupeCount = opts.dupeCount;
+
   buf = Buffer.alloc(1 * 1024);
   pos = 0;
-  totalBytesRead = 0;
-  rfbTimer = Timer.start();
+  bytesRead = 0;
 
   /* Init parsing vars  */
   hParse = false;
@@ -305,12 +347,7 @@ async function formatDupes(dupesFilePath: string, hashSizeMap: Map<string, numbe
   chars = [];
 
   firstChar = true;
-
-  // targetHash = maxFileSizeHash;
-  targetHash = [ ...hashSizeMap.keys() ][0];
-  console.log({ targetHash });
   while((readRes = await fileHandle.read(buf, 0, buf.length, pos)).bytesRead !== 0) {
-
     for(let i = 0; i < buf.length; ++i) {
       let subBuf: Buffer;
       let currChar: string;
@@ -332,7 +369,15 @@ async function formatDupes(dupesFilePath: string, hashSizeMap: Map<string, numbe
           foundFilePath = chars.join('');
           chars.length = 0;
           fParse = false;
-          console.log(foundFilePath);
+
+          assert(foundFilePath.length > 0);
+          assert(foundSize !== undefined);
+          assert(foundHash !== undefined);
+          opts.dupeCb(foundFilePath, foundSize, foundHash);
+
+          foundHash = undefined;
+          foundSize = undefined;
+          foundFilePath = undefined;
         }
         /* reset */
         hParse = true;
@@ -378,14 +423,14 @@ async function formatDupes(dupesFilePath: string, hashSizeMap: Map<string, numbe
       }
     }
 
-    totalBytesRead += readRes.bytesRead;
+    bytesRead += readRes.bytesRead;
     pos += readRes.bytesRead;
   }
 
-  rfbMs = rfbTimer.stop();
-
-  console.log(`totalBytesRead: ${totalBytesRead}b (${getIntuitiveByteString(totalBytesRead)})`);
-  console.log(`read file buffer took: ${rfbMs} ms (${getIntuitiveTimeString(rfbMs)})`);
+  findHashDupesRes = {
+    bytesRead,
+  };
+  return findHashDupesRes;
 }
 
 type GetFileHashesRes = {
