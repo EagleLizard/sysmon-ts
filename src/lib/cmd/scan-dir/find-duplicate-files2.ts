@@ -310,11 +310,11 @@ async function formatDupes(dupesFilePath: string, hashSizeMap: Map<string, numbe
         writeHeading = false;
         fmtWs.write(`${hash} ${size}\n`);
       }
-      fmtWs.write(`  [ ${range.join(', ')} ]\n`);
+      // fmtWs.write(`  [ ${range.join(', ')} ]\n`);
       fmtWs.write(`  ${filePath}\n`);
     };
     let buf: Buffer;
-    buf = Buffer.alloc(16 * 1023);
+    buf = Buffer.alloc(128 * 1024);
 
     [ targetHash, targetHashDupeCount ] = hashSizeTuples[i];
     findHashDupesRes = await findHashDupes({
@@ -367,6 +367,7 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
   let szParse: boolean;
   let fParse: boolean;
   let hPos: number;
+  let hashLen: number | undefined;
   let chars: string[];
   let foundHash: string | undefined;
   let foundSizeStr: string | undefined;
@@ -405,19 +406,19 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
   col = 0;
 
   while((readRes = await fileHandle.read(buf, 0, buf.length, pos)).bytesRead !== 0) {
+    if(firstChar) {
+      /*
+        necessary because the first line doesn't start with a newline
+       */
+      hParse = true;
+      firstChar = false;
+      dupeStartPos = pos;
+    }
     for(let i = 0; i < buf.length; ++i) {
       // let subBuf: Buffer;
 
       // subBuf = buf.subarray(i, i + 1);
       currByte = buf[i];
-      if(firstChar) {
-        /*
-          necessary because the first line doesn't start with a newline
-         */
-        hParse = true;
-        firstChar = false;
-        dupeStartPos = pos + i;
-      }
       /* 10 -> '\n' */
       if(currByte === 10) {
         line++;
