@@ -250,24 +250,29 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
   for(let i = 0; i < hashSizeTuples.length; ++i) {
     let targetHash: string;
     let targetSize: number;
+    let dupeCount: number | undefined;
     let readRes: FileReadResult<Buffer>;
-
-    [ targetHash, targetSize ] = hashSizeTuples[i];
 
     let buf: Buffer;
     let pos: number;
     let line: string;
     let lastNlPos: number;
+    let skip: boolean;
+
+    [ targetHash, targetSize ] = hashSizeTuples[i];
+    dupeCount = dupeCountMap.get(targetHash);
+    assert(dupeCount !== undefined);
     // buf = Buffer.alloc(128 * 1024);
-    // buf = Buffer.alloc(64 * 1024);
+    buf = Buffer.alloc(64 * 1024);
     // buf = Buffer.alloc(32 * 1024);
-    buf = Buffer.alloc(16 * 1024);
+    // buf = Buffer.alloc(16 * 1024);
     // buf = Buffer.alloc(8 * 1024);
     // buf = Buffer.alloc(1 * 1024);
     // buf = Buffer.alloc(1 * 64);
     // buf = Buffer.alloc(1 * 512);
     pos = 0;
     line = '';
+    skip = false;
     while((readRes = await fileHandle.read(buf, 0, buf.length, pos)).bytesRead !== 0) {
       let bufStr: string;
       let nlRx: RegExp;
@@ -297,19 +302,29 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
           // console.error('');
           // console.error(JSON.stringify(line));
           // console.error(readRes.bytesRead);
+          console.log(line.split('\n'));
           throw new Error(`invalid filehash on line: ${line}`);
         }
         if(fileHash === targetHash) {
           fmtWs.write(`${line}\n`);
+          dupeCount--;
         }
         line = '';
+        if(dupeCount < 1) {
+          skip = true;
+          break;
+        }
+      }
+      if(skip) {
+        break;
       }
       line += bufStr.substring(lastNlPos);
       pos += readRes.bytesRead;
     }
 
-    if((i % 1e3) === 0) {
-      process.stdout.write(((i / hashSizeTuples.length)).toFixed(2));
+    // if((i % 1e3) === 0) {
+    if((i % 5e2) === 0) {
+      process.stdout.write(((i / hashSizeTuples.length) * 100).toFixed(1));
     }
     if((i % 1e2) === 0) {
       process.stdout.write('.');
