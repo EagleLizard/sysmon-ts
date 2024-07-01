@@ -1,6 +1,6 @@
 
 import path from 'path';
-import { Stats, WriteStream, createWriteStream } from 'fs';
+import { ReadStream, Stats, WriteStream, createWriteStream } from 'fs';
 import fs, { FileHandle, FileReadResult, lstat } from 'fs/promises';
 import assert from 'assert';
 
@@ -17,6 +17,7 @@ import { HashFile2Opts, hashFile2 } from '../../util/hasher';
 import { getIntuitiveByteString, getIntuitiveTimeString } from '../../util/format-util';
 import { scanDirColors as c } from './scan-dir-colors';
 import { CliColors, ColorFormatter } from '../../service/cli-colors';
+import readline, { Interface } from 'readline';
 
 let maxConcurrentHashPromises: number;
 let maxSizePromises: number;
@@ -203,9 +204,119 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   console.log(`hashFileRead took: ${hashFileReadMs} - ${getIntuitiveTimeString(hashFileReadMs)}`);
   process.stdout.write('\n');
 
-  await formatDupes(dupesFilePath, hashSizeMap);
+  // await formatDupes(dupesFilePath, hashSizeMap, dupeMap);
+  await formatDupes2(dupesFilePath, hashSizeMap, dupeMap);
 
   return new Map<string, string[]>();
+}
+
+async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, number>, dupeCountMap: Map<string, number>) {
+  let fileHandlePromise: Promise<FileHandle>;
+  let fileHandle: FileHandle;
+  let fmtFileName: string;
+  let fmtFilePath: string;
+  let fmtWs: WriteStream;
+  let rfbTimer: Timer;
+  let rfbMs: number;
+
+  fileHandlePromise = fs.open(dupesFilePath);
+  fileHandlePromise.finally(() => {
+    fileHandle.close();
+  });
+  fileHandle = await fileHandlePromise;
+
+  fmtFileName = '0_dupes_fmt.txt';
+  fmtFilePath = [
+    SCANDIR_OUT_DATA_DIR_PATH,
+    fmtFileName,
+  ].join(path.sep);
+  fmtWs = createWriteStream(fmtFilePath);
+
+  rfbTimer = Timer.start();
+  let hashSizeTuples: [ string, number ][];
+  hashSizeTuples = [ ...hashSizeMap.entries() ];
+  /*
+    sort by size desc
+   */
+  hashSizeTuples.sort((a, b) => {
+    if(a[1] > b[1]) {
+      return -1;
+    } else if(a[1] < b[1]) {
+      return 1;
+    } else {
+      return 0;
+    }
+  });
+  for(let i = 0; i < hashSizeTuples.length; ++i) {
+    let targetHash: string;
+    let targetSize: number;
+    let readRes: FileReadResult<Buffer>;
+
+    [ targetHash, targetSize ] = hashSizeTuples[i];
+
+    let buf: Buffer;
+    let pos: number;
+    let line: string;
+    let lastNlPos: number;
+    // buf = Buffer.alloc(128 * 1024);
+    // buf = Buffer.alloc(64 * 1024);
+    // buf = Buffer.alloc(32 * 1024);
+    buf = Buffer.alloc(16 * 1024);
+    // buf = Buffer.alloc(8 * 1024);
+    // buf = Buffer.alloc(1 * 1024);
+    // buf = Buffer.alloc(1 * 64);
+    // buf = Buffer.alloc(1 * 512);
+    pos = 0;
+    line = '';
+    while((readRes = await fileHandle.read(buf, 0, buf.length, pos)).bytesRead !== 0) {
+      let bufStr: string;
+      let nlRx: RegExp;
+      bufStr = buf.subarray(0, readRes.bytesRead).toString();
+      nlRx = /\n/g;
+      lastNlPos = -1;
+      while(nlRx.exec(bufStr) !== null) {
+        let nlSub: string;
+        // while((nlRx.exec(bufStr)) !== null) {
+        let nlIdx: number;
+        let lineRx: RegExp;
+        let lineRxRes: RegExpExecArray | null;
+        let fileHash: string | undefined;
+
+        nlIdx = nlRx.lastIndex;
+        // fmtWs.write(`${nlIdx} `);
+        /* terminal */
+        nlSub = bufStr.substring(lastNlPos, nlIdx - 1);
+        line += nlSub;
+        lastNlPos = nlIdx;
+
+        lineRx = /^(?<fileHash>[a-f0-9]+) (?<sizeStr>[0-9]+) (?<filePath>.*)$/;
+        lineRxRes = lineRx.exec(line);
+        fileHash = lineRxRes?.groups?.fileHash;
+        if(fileHash === undefined) {
+          // console.error(bufStr);
+          // console.error('');
+          // console.error(JSON.stringify(line));
+          // console.error(readRes.bytesRead);
+          throw new Error(`invalid filehash on line: ${line}`);
+        }
+        if(fileHash === targetHash) {
+          fmtWs.write(`${line}\n`);
+        }
+        line = '';
+      }
+      line += bufStr.substring(lastNlPos);
+      pos += readRes.bytesRead;
+    }
+
+    if((i % 1e3) === 0) {
+      process.stdout.write(((i / hashSizeTuples.length)).toFixed(2));
+    }
+    if((i % 1e2) === 0) {
+      process.stdout.write('.');
+    }
+  }
+  rfbMs = rfbTimer.stop();
+  console.log(`formatDupesRl took ${getIntuitiveTimeString(rfbMs)} (${rfbMs} ms)`);
 }
 
 /*
@@ -254,7 +365,7 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
     else if fParse
       chars[].push(currChar)
  */
-async function formatDupes(dupesFilePath: string, hashSizeMap: Map<string, number>) {
+async function formatDupes(dupesFilePath: string, hashSizeMap: Map<string, number>, dupeCountMap: Map<string, number>) {
   let fileHandlePromise: Promise<FileHandle>;
   let fileHandle: FileHandle;
   let fmtFileName: string;
@@ -301,7 +412,8 @@ async function formatDupes(dupesFilePath: string, hashSizeMap: Map<string, numbe
   // [ targetHash, targetHashDupeCount ] = hashSizeTuples[0];
   for(let i = 0; i < hashSizeTuples.length; ++i) {
     let targetHash: string;
-    let targetHashDupeCount: number;
+    let targetHashSize: number;
+    let targetHashDupeCount: number | undefined;
     let writeHeading: boolean;
     writeHeading = true;
 
@@ -316,7 +428,11 @@ async function formatDupes(dupesFilePath: string, hashSizeMap: Map<string, numbe
     let buf: Buffer;
     buf = Buffer.alloc(128 * 1024);
 
-    [ targetHash, targetHashDupeCount ] = hashSizeTuples[i];
+    [ targetHash, ] = hashSizeTuples[i];
+    targetHashDupeCount = dupeCountMap.get(targetHash);
+    if(targetHashDupeCount === undefined) {
+      throw new Error(`undefined dupe count for hash: ${targetHash}`);
+    }
     findHashDupesRes = await findHashDupes({
       fileHandle,
       targetHash,
@@ -406,19 +522,19 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
   col = 0;
 
   while((readRes = await fileHandle.read(buf, 0, buf.length, pos)).bytesRead !== 0) {
-    if(firstChar) {
-      /*
-        necessary because the first line doesn't start with a newline
-       */
-      hParse = true;
-      firstChar = false;
-      dupeStartPos = pos;
-    }
     for(let i = 0; i < buf.length; ++i) {
       // let subBuf: Buffer;
 
       // subBuf = buf.subarray(i, i + 1);
       currByte = buf[i];
+      if(firstChar) {
+        /*
+          necessary because the first line doesn't start with a newline
+         */
+        hParse = true;
+        firstChar = false;
+        dupeStartPos = pos + i;
+      }
       /* 10 -> '\n' */
       if(currByte === 10) {
         line++;
@@ -432,11 +548,17 @@ async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes>
           chars.length = 0;
           fParse = false;
 
-          assert(foundFilePath.length > 0);
-          assert(foundSize !== undefined);
-          assert(foundHash !== undefined);
           dupeEndPos = pos + i;
-          assert(dupeStartPos !== undefined);
+          // assert(foundFilePath.length > 0);
+          // assert(foundSize !== undefined);
+          // assert(foundHash !== undefined);
+          // assert(dupeStartPos !== undefined);
+          assert(
+            (foundFilePath.length > 0)
+            && (foundSize !== undefined)
+            && (foundHash !== undefined)
+            && (dupeStartPos !== undefined)
+          );
           opts.dupeCb(foundFilePath, foundSize, foundHash, [ dupeStartPos, dupeEndPos ]);
           dupeCount--;
 
