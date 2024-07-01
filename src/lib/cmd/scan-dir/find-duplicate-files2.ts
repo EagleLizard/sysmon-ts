@@ -212,124 +212,128 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
 
 async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, number>, dupeCountMap: Map<string, number>) {
   let fileHandlePromise: Promise<FileHandle>;
-  let fileHandle: FileHandle;
+  let fileHandle: FileHandle | undefined;
   let fmtFileName: string;
   let fmtFilePath: string;
   let fmtWs: WriteStream;
   let rfbTimer: Timer;
   let rfbMs: number;
 
-  fileHandlePromise = fs.open(dupesFilePath);
-  fileHandlePromise.finally(() => {
-    fileHandle.close();
-  });
-  fileHandle = await fileHandlePromise;
+  try {
+    fileHandlePromise = fs.open(dupesFilePath);
+    fileHandle = await fileHandlePromise;
 
-  fmtFileName = '0_dupes_fmt.txt';
-  fmtFilePath = [
-    SCANDIR_OUT_DATA_DIR_PATH,
-    fmtFileName,
-  ].join(path.sep);
-  fmtWs = createWriteStream(fmtFilePath);
+    fmtFileName = '0_dupes_fmt.txt';
+    fmtFilePath = [
+      SCANDIR_OUT_DATA_DIR_PATH,
+      fmtFileName,
+    ].join(path.sep);
+    fmtWs = createWriteStream(fmtFilePath);
 
-  rfbTimer = Timer.start();
-  let hashSizeTuples: [ string, number ][];
-  hashSizeTuples = [ ...hashSizeMap.entries() ];
-  /*
-    sort by size desc
-   */
-  hashSizeTuples.sort((a, b) => {
-    if(a[1] > b[1]) {
-      return -1;
-    } else if(a[1] < b[1]) {
-      return 1;
-    } else {
-      return 0;
-    }
-  });
-  for(let i = 0; i < hashSizeTuples.length; ++i) {
-    let targetHash: string;
-    let targetSize: number;
-    let dupeCount: number | undefined;
-    let readRes: FileReadResult<Buffer>;
+    rfbTimer = Timer.start();
+    let hashSizeTuples: [ string, number ][];
+    hashSizeTuples = [ ...hashSizeMap.entries() ];
+    /*
+      sort by size desc
+    */
+    hashSizeTuples.sort((a, b) => {
+      if(a[1] > b[1]) {
+        return -1;
+      } else if(a[1] < b[1]) {
+        return 1;
+      } else {
+        return 0;
+      }
+    });
+    for(let i = 0; i < hashSizeTuples.length; ++i) {
+      let targetHash: string;
+      let targetSize: number;
+      let dupeCount: number | undefined;
+      let readRes: FileReadResult<Buffer>;
 
-    let buf: Buffer;
-    let pos: number;
-    let line: string;
-    let lastNlPos: number;
-    let skip: boolean;
+      let buf: Buffer;
+      let pos: number;
+      let line: string;
+      let lastNlPos: number;
+      let skip: boolean;
 
-    [ targetHash, targetSize ] = hashSizeTuples[i];
-    dupeCount = dupeCountMap.get(targetHash);
-    assert(dupeCount !== undefined);
-    // buf = Buffer.alloc(128 * 1024);
-    buf = Buffer.alloc(64 * 1024);
-    // buf = Buffer.alloc(32 * 1024);
-    // buf = Buffer.alloc(16 * 1024);
-    // buf = Buffer.alloc(8 * 1024);
-    // buf = Buffer.alloc(1 * 1024);
-    // buf = Buffer.alloc(1 * 64);
-    // buf = Buffer.alloc(1 * 512);
-    pos = 0;
-    line = '';
-    skip = false;
-    while((readRes = await fileHandle.read(buf, 0, buf.length, pos)).bytesRead !== 0) {
-      let bufStr: string;
-      let nlRx: RegExp;
-      bufStr = buf.subarray(0, readRes.bytesRead).toString();
-      nlRx = /\n/g;
-      lastNlPos = -1;
-      while(nlRx.exec(bufStr) !== null) {
-        let nlSub: string;
-        // while((nlRx.exec(bufStr)) !== null) {
-        let nlIdx: number;
-        let lineRx: RegExp;
-        let lineRxRes: RegExpExecArray | null;
-        let fileHash: string | undefined;
+      [ targetHash, targetSize ] = hashSizeTuples[i];
+      dupeCount = dupeCountMap.get(targetHash);
+      assert(dupeCount !== undefined);
+      // buf = Buffer.alloc(128 * 1024);
+      buf = Buffer.alloc(64 * 1024);
+      // buf = Buffer.alloc(32 * 1024);
+      // buf = Buffer.alloc(16 * 1024);
+      // buf = Buffer.alloc(8 * 1024);
+      // buf = Buffer.alloc(1 * 1024);
+      // buf = Buffer.alloc(1 * 64);
+      // buf = Buffer.alloc(1 * 512);
+      pos = 0;
+      line = '';
+      skip = false;
+      while((readRes = await fileHandle.read(buf, 0, buf.length, pos)).bytesRead !== 0) {
+        let bufStr: string;
+        let nlRx: RegExp;
+        bufStr = buf.subarray(0, readRes.bytesRead).toString();
+        nlRx = /\n/g;
+        lastNlPos = -1;
+        while(nlRx.exec(bufStr) !== null) {
+          let nlSub: string;
+          // while((nlRx.exec(bufStr)) !== null) {
+          let nlIdx: number;
+          let lineRx: RegExp;
+          let lineRxRes: RegExpExecArray | null;
+          let fileHash: string | undefined;
 
-        nlIdx = nlRx.lastIndex;
-        // fmtWs.write(`${nlIdx} `);
-        /* terminal */
-        nlSub = bufStr.substring(lastNlPos, nlIdx - 1);
-        line += nlSub;
-        lastNlPos = nlIdx;
+          nlIdx = nlRx.lastIndex;
+          // fmtWs.write(`${nlIdx} `);
+          /* terminal */
+          nlSub = bufStr.substring(lastNlPos, nlIdx - 1);
+          line += nlSub;
+          lastNlPos = nlIdx;
 
-        lineRx = /^(?<fileHash>[a-f0-9]+) (?<sizeStr>[0-9]+) (?<filePath>.*)$/;
-        lineRxRes = lineRx.exec(line);
-        fileHash = lineRxRes?.groups?.fileHash;
-        if(fileHash === undefined) {
-          // console.error(bufStr);
-          // console.error('');
-          // console.error(JSON.stringify(line));
-          // console.error(readRes.bytesRead);
-          console.log(line.split('\n'));
-          throw new Error(`invalid filehash on line: ${line}`);
+          lineRx = /^(?<fileHash>[a-f0-9]+) (?<sizeStr>[0-9]+) (?<filePath>.*)$/;
+          lineRxRes = lineRx.exec(line);
+          fileHash = lineRxRes?.groups?.fileHash;
+          if(fileHash === undefined) {
+            // console.error(bufStr);
+            // console.error('');
+            // console.error(JSON.stringify(line));
+            // console.error(readRes.bytesRead);
+            console.log(line.split('\n'));
+            throw new Error(`invalid filehash on line: ${line}`);
+          }
+          if(fileHash === targetHash) {
+            fmtWs.write(`${line}\n`);
+            dupeCount--;
+          }
+          line = '';
+          if(dupeCount < 1) {
+            skip = true;
+            break;
+          }
         }
-        if(fileHash === targetHash) {
-          fmtWs.write(`${line}\n`);
-          dupeCount--;
-        }
-        line = '';
-        if(dupeCount < 1) {
-          skip = true;
+        if(skip) {
           break;
         }
+        line += bufStr.substring(lastNlPos);
+        pos += readRes.bytesRead;
       }
-      if(skip) {
-        break;
-      }
-      line += bufStr.substring(lastNlPos);
-      pos += readRes.bytesRead;
-    }
 
-    // if((i % 1e3) === 0) {
-    if((i % 5e2) === 0) {
-      process.stdout.write(((i / hashSizeTuples.length) * 100).toFixed(1));
+      // if((i % 1e3) === 0) {
+      if((i % 5e2) === 0) {
+        process.stdout.write(((i / hashSizeTuples.length) * 100).toFixed(1));
+      }
+      if((i % 1e2) === 0) {
+        process.stdout.write('.');
+      }
     }
-    if((i % 1e2) === 0) {
-      process.stdout.write('.');
-    }
+  } finally {
+    console.log('Closing fileHandle');
+    console.log({ fileHandle });
+    fileHandle?.close();
   }
+
   rfbMs = rfbTimer.stop();
   console.log(`formatDupesRl took ${getIntuitiveTimeString(rfbMs)} (${rfbMs} ms)`);
 }
