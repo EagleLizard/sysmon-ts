@@ -15,7 +15,7 @@ import { isObject, isString } from '../../util/validate-primitives';
 import { logger } from '../../logger';
 import { sleep } from '../../util/sleep';
 import { HashFile2Opts, hashFile2 } from '../../util/hasher';
-import { getIntuitiveByteString, getIntuitiveTimeString } from '../../util/format-util';
+import { getIntuitiveByteString, getIntuitiveTime, getIntuitiveTimeString } from '../../util/format-util';
 import { scanDirColors as c } from './scan-dir-colors';
 import { CliColors, ColorFormatter } from '../../service/cli-colors';
 
@@ -52,6 +52,10 @@ maxDupePromises = 1;
 
 const rflMod = 500;
 // const rflMod = 125;
+
+const timeFmt = (ms: number) => {
+  return c.chartreuse(getIntuitiveTimeString(ms));
+};
 
 export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
   let sizeFilePath: string;
@@ -481,7 +485,15 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
   }
   debugWs?.close();
   rfbMs = rfbTimer.stop();
-  console.log(`formatDupes2() took ${getIntuitiveTimeString(rfbMs)} (${rfbMs} ms)\n`);
+  let [ rfbtVal, rfbtUnit ] = getIntuitiveTime(rfbMs);
+  let rfbtStr = rfbtVal.toFixed(3);
+  // const tColor = CliColors.comb([ c.chartreuse, CliColors.underline ]);
+  const tColor = c.chartreuse;
+  console.log(`formatDupes2() took ${timeFmt(rfbMs)} (${rfbMs} ms)`);
+  console.log(`formatDupes2() took ${tColor(rfbtStr)} ${rfbtUnit} (${rfbMs} ms)`);
+  // console.log(`formatDupes2() took ${getIntuitiveTimeString(rfbMs)} (${rfbMs} ms)`);
+
+  console.log('');
 }
 
 /*
@@ -964,19 +976,36 @@ async function getDuplicateFileHashes(hashFilePath: string, dupeMap: Map<string,
     runningDupePromises++;
     dupePromise = (async () => {
       let wsRes: boolean;
-      if(!hashSizeMap.has(fileHash)) {
-        hashSizeMap.set(fileHash, fileSize);
+      wsRes = true;
+      // if(fileSize <= 4029039) {
+      // if(fileSize <= 2616662) {
+      if(fileSize <= 212357) {
+        if(!hashSizeMap.has(fileHash)) {
+          hashSizeMap.set(fileHash, fileSize);
+        }
+        if(drainDeferred !== undefined) {
+          process.stdout.write('*');
+          await drainDeferred.promise;
+        }
+        wsRes = dupesWs.write(`${line}\n`);
       }
-      wsRes = dupesWs.write(`${line}\n`);
       if(!wsRes) {
+        process.stdout.write('•');
         if(drainDeferred === undefined) {
           drainDeferred = Deferred.init();
-          dupesWs.once('drain', drainDeferred.resolve);
+          dupesWs.once('drain', () => {
+            if(drainDeferred !== undefined) {
+              drainDeferred.resolve();
+            } else {
+              throw Error('Enexpected undefined drainDeferred');
+            }
+          });
           drainDeferred.promise.finally(() => {
             drainDeferred = undefined;
           });
         }
-        await drainDeferred.promise;
+        // process.stdout.write('*');
+        // await drainDeferred.promise;
       }
     })();
     dupePromise.finally(() => {
