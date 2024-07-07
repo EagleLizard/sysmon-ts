@@ -441,11 +441,10 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
                 });
                 fmtWs.once('drain', () => {
                   setImmediate(() => {
-                    if(drainDeferred !== undefined) {
-                      drainDeferred.resolve();
-                    } else {
+                    if(drainDeferred === undefined) {
                       throw Error('Enexpected undefined drainDeferred');
                     }
+                    drainDeferred.resolve();
                   });
                 });
               }
@@ -467,14 +466,15 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
         }
         line += bufStr.substring(lastNlPos);
       }
-
       // debugWs?.write('\n');
 
       // if((i % 1e3) === 0) {
-      if((i % 5e2) === 0) {
+      // if((i % 5e2) === 0) {
+      if((i % 125) === 0) {
         process.stdout.write(((i / hashSizeTuples.length) * 100).toFixed(1));
       }
-      if((i % 1e2) === 0) {
+      // if((i % 1e2) === 0) {
+      if((i % 25) === 0) {
         process.stdout.write('.');
       }
     }
@@ -879,16 +879,28 @@ async function getFileHashes(sizeFilePath: string, possibleDupeSizeMap: Map<numb
       hashMap.set(fileHash, hashCount + 1);
 
       hashFileLine = `${fileHash} ${fileSize} ${filePath}`;
+      if(drainDeferred !== undefined) {
+        process.stdout.write('|');
+        await drainDeferred.promise;
+      }
       wsRes = hashWs.write(`${hashFileLine}\n`);
       if(!wsRes) {
         if(drainDeferred === undefined) {
           drainDeferred = Deferred.init();
-          hashWs.once('drain', drainDeferred.resolve);
+          hashWs.once('drain', () => {
+            setImmediate(() => {
+              process.stdout.write('•');
+              if(drainDeferred === undefined) {
+                throw Error('Enexpected undefined drainDeferred');
+              }
+              drainDeferred.resolve();
+            });
+          });
           drainDeferred.promise.finally(() => {
             drainDeferred = undefined;
           });
         }
-        await drainDeferred.promise;
+        // await drainDeferred.promise;
       }
     })();
     hashPromise.finally(() => {
@@ -977,28 +989,25 @@ async function getDuplicateFileHashes(hashFilePath: string, dupeMap: Map<string,
     dupePromise = (async () => {
       let wsRes: boolean;
       wsRes = true;
-      // if(fileSize <= 4029039) {
-      // if(fileSize <= 2616662) {
-      if(fileSize <= 212357) {
-        if(!hashSizeMap.has(fileHash)) {
-          hashSizeMap.set(fileHash, fileSize);
-        }
-        if(drainDeferred !== undefined) {
-          process.stdout.write('*');
-          await drainDeferred.promise;
-        }
-        wsRes = dupesWs.write(`${line}\n`);
+      if(!hashSizeMap.has(fileHash)) {
+        hashSizeMap.set(fileHash, fileSize);
       }
+      if(drainDeferred !== undefined) {
+        // process.stdout.write('*');
+        await drainDeferred.promise;
+      }
+      wsRes = dupesWs.write(`${line}\n`);
       if(!wsRes) {
-        process.stdout.write('•');
+        // process.stdout.write('•');
         if(drainDeferred === undefined) {
           drainDeferred = Deferred.init();
           dupesWs.once('drain', () => {
-            if(drainDeferred !== undefined) {
+            setImmediate(() => {
+              if(drainDeferred === undefined) {
+                throw Error('Enexpected undefined drainDeferred');
+              }
               drainDeferred.resolve();
-            } else {
-              throw Error('Enexpected undefined drainDeferred');
-            }
+            });
           });
           drainDeferred.promise.finally(() => {
             drainDeferred = undefined;
