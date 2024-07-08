@@ -53,6 +53,9 @@ maxDupePromises = 1;
 const rflMod = 500;
 // const rflMod = 125;
 
+const INTERRUPT_MS = 1e3;
+const INTERRUPT_NSECS = BigInt(INTERRUPT_MS * 1e6);
+
 const timeFmt = (ms: number) => {
   return c.chartreuse(getIntuitiveTimeString(ms));
 };
@@ -302,52 +305,79 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
     debugWs.write('\n');
   }
 
-  for(let i = 0; i < hashSizeTuples.length; ++i) {
-    let targetHash: string;
-    let targetSize: number;
-    let dupeCount: number | undefined;
+  let hsIter: IterableIterator<[string, number]>;
+  let iterRes: IteratorResult<[string, number]>;
+  let hsIdx: number;
+  let iterCount: number;
+  let iterTimer: Timer;
+  hsIdx = 0;
+  iterCount = 0;
+  iterTimer = Timer.start();
+  hsIter = hashSizeTuples[Symbol.iterator]();
 
-    [ targetHash, targetSize ] = hashSizeTuples[i];
-    dupeCount = dupeCountMap.get(targetHash);
-    assert(dupeCount !== undefined);
+  // for(let i = 0; i < hashSizeTuples.length; ++i) {
+  await new Promise<void>((resolve) => {
+    (async function doIter() {
+      while(
+        !(iterRes = hsIter.next()).done
+        && (process.exitCode === undefined)
+      ) {
+        let targetHash: string;
+        let targetSize: number;
+        let dupeCount: number | undefined;
+        hsIdx++;
+        [ targetHash, targetSize ] = iterRes.value;
+        dupeCount = dupeCountMap.get(targetHash);
+        assert(dupeCount !== undefined);
 
-    if(fileHandle === undefined) {
-      fileHandlePromise = fs.open(dupesFilePath);
-      fileHandle = await fileHandlePromise;
-    }
+        if(fileHandle === undefined) {
+          fileHandlePromise = fs.open(dupesFilePath);
+          fileHandle = await fileHandlePromise;
+        }
 
-    // debugWs?.write(`${targetHash} ${targetSize}\n`);
+        await seekForHash({
+          targetHash,
+          fileHandle,
+          buf,
+          dupeCount,
+          fmtWs,
+        });
 
-    // while((readRes = await fileHandle.read(buf, 0, buf.length, pos)).bytesRead !== 0) {
-    await seekForHash({
-      targetHash,
-      fileHandle,
-      buf,
-      dupeCount,
-      fmtWs,
-    });
+        // if((i % 1e3) === 0) {
+        if((hsIdx % 5e2) === 0) {
+        // if((i % 125) === 0) {
+          process.stdout.write(((hsIdx / hashSizeTuples.length) * 100).toFixed(1));
+        }
+        // if((i % 1e2) === 0) {
+        if((hsIdx % 50) === 0) {
+        // if((i % 25) === 0) {
+          process.stdout.write('.');
+        }
 
-    // if((i % 1e3) === 0) {
-    if((i % 5e2) === 0) {
-    // if((i % 125) === 0) {
-      process.stdout.write(((i / hashSizeTuples.length) * 100).toFixed(1));
-    }
-    // if((i % 1e2) === 0) {
-    if((i % 50) === 0) {
-    // if((i % 25) === 0) {
-      process.stdout.write('.');
-    }
-
-    /* reset filehandle */
-    if(fhResetCounter++ > fhResetMod) {
-      await fileHandle?.close();
-      fileHandlePromise?.finally(() => {
-        fileHandle?.close();
-      });
-      fileHandle = undefined;
-      fhResetCounter = 0;
-    }
-  }
+        /* reset filehandle */
+        if(fhResetCounter++ > fhResetMod) {
+          await fileHandle?.close();
+          fileHandlePromise?.finally(() => {
+            fileHandle?.close();
+          });
+          fileHandle = undefined;
+          fhResetCounter = 0;
+        }
+        if(
+          ((iterCount++ % 100) === 0)
+          && (iterTimer.currentMs() > INTERRUPT_MS)
+        ) {
+          iterTimer.reset();
+          process.stdout.write('!');
+          setImmediate(() => {
+            doIter();
+          });
+          return;
+        }
+      }
+      resolve();
+    })();
+  });
   process.stdout.write(`\nilc: ${innerLoopCount.toLocaleString()}\n`);
   debugWs?.close();
   rfbMs = rfbTimer.stop();
