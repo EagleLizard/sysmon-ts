@@ -244,19 +244,13 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
   let fmtFilePath: string;
   let fmtWs: WriteStream;
   let hashSizeTuples: [ string, number ][];
-  let drainDeferred: Deferred | undefined;
   let rfbTimer: Timer;
   let rfbMs: number;
   let buf: Buffer;
 
   let debugFilePath: string | undefined;
   let debugWs: WriteStream | undefined;
-  let debug2FilePath: string | undefined;
-  let debug2Ws: WriteStream | undefined;
   let innerLoopCount: number;
-
-  const debug2WsResetMod = 1e3;
-  let debug2WsResetCount: number;
 
   const fhResetMod = 1e3;
   let fhResetCounter: number;
@@ -270,7 +264,6 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
   }
 
   innerLoopCount = 0;
-  debug2WsResetCount = 0;
   fhResetCounter = 0;
 
   buf = Buffer.alloc(32 * 1024);
@@ -313,21 +306,10 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
     let targetHash: string;
     let targetSize: number;
     let dupeCount: number | undefined;
-    let readRes: FileReadResult<Buffer>;
-
-    // let buf: Buffer;
-    let pos: number;
-    let line: string;
-    let lastNlPos: number;
-    let skip: boolean;
 
     [ targetHash, targetSize ] = hashSizeTuples[i];
     dupeCount = dupeCountMap.get(targetHash);
     assert(dupeCount !== undefined);
-    // buf = Buffer.alloc(32 * 1024);
-    pos = 0;
-    line = '';
-    skip = false;
 
     if(fileHandle === undefined) {
       fileHandlePromise = fs.open(dupesFilePath);
@@ -337,95 +319,13 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
     // debugWs?.write(`${targetHash} ${targetSize}\n`);
 
     // while((readRes = await fileHandle.read(buf, 0, buf.length, pos)).bytesRead !== 0) {
-    for(;;) {
-      let bufStr: string;
-      let nlRx: RegExp;
-
-      readRes = await fileHandle.read(buf, 0, buf.length, pos);
-      bufStr = buf.subarray(0, readRes.bytesRead).toString();
-      nlRx = /\n/g;
-      lastNlPos = -1;
-      if(
-        config.DEBUG_EZD
-        && (
-          (debug2Ws === undefined)
-          || (debug2WsResetCount++ > debug2WsResetMod)
-        )
-      ) {
-        debug2Ws?.close();
-        debug2WsResetCount = 0;
-        debug2FilePath = [
-          SCANDIR_OUT_DATA_DIR_PATH,
-          'debug2.txt',
-        ].join(path.sep);
-        debug2Ws = createWriteStream(debug2FilePath);
-      }
-      while(nlRx.exec(bufStr) !== null) {
-        let nlSub: string;
-        // while((nlRx.exec(bufStr)) !== null) {
-        let nlIdx: number;
-        let lineRx: RegExp;
-        let lineRxRes: RegExpExecArray | null;
-        let fileHash: string | undefined;
-
-        innerLoopCount++;
-
-        nlIdx = nlRx.lastIndex;
-        /* terminal */
-        nlSub = bufStr.substring(lastNlPos, nlIdx - 1);
-
-        line += nlSub;
-        lastNlPos = nlIdx;
-
-        lineRx = /^(?<fileHash>[a-f0-9]+) [0-9]+ .*$/;
-        lineRxRes = lineRx.exec(line);
-        fileHash = lineRxRes?.groups?.fileHash;
-        if(fileHash === undefined) {
-          console.log(line.split('\n'));
-          throw new Error(`invalid filehash on line: ${line}`);
-        }
-        if(fileHash === targetHash) {
-          let wsRes: boolean;
-          if(drainDeferred !== undefined) {
-            process.stdout.write('*');
-            await drainDeferred.promise;
-          }
-          wsRes = fmtWs.write(`${line}\n`);
-          dupeCount--;
-          if(!wsRes) {
-            process.stdout.write('•');
-            if(drainDeferred === undefined) {
-              drainDeferred = Deferred.init();
-              drainDeferred.promise.finally(() => {
-                drainDeferred = undefined;
-              });
-              fmtWs.once('drain', () => {
-                setImmediate(() => {
-                  if(drainDeferred === undefined) {
-                    throw Error('Enexpected undefined drainDeferred');
-                  }
-                  drainDeferred.resolve();
-                });
-              });
-            }
-          }
-        }
-        line = '';
-        if(dupeCount < 1) {
-          skip = true;
-          break;
-        }
-      }
-      if(skip) {
-        break;
-      }
-      pos += readRes.bytesRead;
-      if(readRes.bytesRead === 0) {
-        console.log('readRes.bytesRead === 0');
-        break;
-      }
-      line += bufStr.substring(lastNlPos);
-    }
+    await seekForHash({
+      targetHash,
+      fileHandle,
+      buf,
+      dupeCount,
+      fmtWs,
+    });
 
     // if((i % 1e3) === 0) {
     if((i % 5e2) === 0) {
@@ -460,6 +360,113 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
   // console.log(`formatDupes2() took ${getIntuitiveTimeString(rfbMs)} (${rfbMs} ms)`);
 
   console.log('');
+}
+
+type SeekForHashOpts = {
+  fileHandle: FileHandle;
+  buf: Buffer;
+  targetHash: string;
+  dupeCount: number;
+  fmtWs: WriteStream;
+};
+
+async function seekForHash(opts: SeekForHashOpts) {
+  let fileHandle: FileHandle;
+  let buf: Buffer;
+  let targetHash: string;
+  let dupeCount: number;
+  let readRes: FileReadResult<Buffer>;
+  let fmtWs: WriteStream;
+
+  let drainDeferred: Deferred | undefined;
+  let line: string;
+  let pos: number;
+  let skip: boolean;
+
+  fileHandle = opts.fileHandle;
+  buf = opts.buf;
+  targetHash = opts.targetHash;
+  dupeCount = opts.dupeCount;
+  fmtWs = opts.fmtWs;
+
+  line = '';
+  pos = 0;
+  skip = false;
+
+  for(;;) {
+    let bufStr: string;
+    let nlRx: RegExp;
+    let lastNlPos: number;
+
+    readRes = await fileHandle.read(buf, 0, buf.length, pos);
+    bufStr = buf.subarray(0, readRes.bytesRead).toString();
+    nlRx = /\n/g;
+    lastNlPos = -1;
+
+    while(nlRx.exec(bufStr) !== null) {
+      let nlSub: string;
+      // while((nlRx.exec(bufStr)) !== null) {
+      let nlIdx: number;
+      let lineRx: RegExp;
+      let lineRxRes: RegExpExecArray | null;
+      let fileHash: string | undefined;
+
+      nlIdx = nlRx.lastIndex;
+      /* terminal */
+      nlSub = bufStr.substring(lastNlPos, nlIdx - 1);
+
+      line += nlSub;
+      lastNlPos = nlIdx;
+
+      lineRx = /^(?<fileHash>[a-f0-9]+) [0-9]+ .*$/;
+      lineRxRes = lineRx.exec(line);
+      fileHash = lineRxRes?.groups?.fileHash;
+      if(fileHash === undefined) {
+        console.log(line.split('\n'));
+        throw new Error(`invalid filehash on line: ${line}`);
+      }
+      if(fileHash === targetHash) {
+        let wsRes: boolean;
+        if(drainDeferred !== undefined) {
+          process.stdout.write('*');
+          await drainDeferred.promise;
+        }
+        wsRes = fmtWs.write(`${line}\n`);
+        dupeCount--;
+        if(!wsRes) {
+          process.stdout.write('•');
+          if(drainDeferred === undefined) {
+            drainDeferred = Deferred.init();
+            drainDeferred.promise.finally(() => {
+              drainDeferred = undefined;
+            });
+            fmtWs.once('drain', () => {
+              setImmediate(() => {
+                if(drainDeferred === undefined) {
+                  throw Error('Enexpected undefined drainDeferred');
+                }
+                drainDeferred.resolve();
+              });
+            });
+          }
+        }
+      }
+      line = '';
+      if(dupeCount < 1) {
+        skip = true;
+        break;
+      }
+    }
+    if(skip) {
+      break;
+    }
+    pos += readRes.bytesRead;
+    if(readRes.bytesRead === 0) {
+      console.log('readRes.bytesRead === 0');
+      break;
+    }
+    line += bufStr.substring(lastNlPos);
+  }
 }
 
 /*
