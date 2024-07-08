@@ -238,7 +238,7 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts) {
 }
 
 async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, number>, dupeCountMap: Map<string, number>) {
-  let fileHandlePromise: Promise<FileHandle>;
+  let fileHandlePromise: Promise<FileHandle> | undefined;
   let fileHandle: FileHandle | undefined;
   let fmtFileName: string;
   let fmtFilePath: string;
@@ -258,6 +258,9 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
   const debug2WsResetMod = 1e3;
   let debug2WsResetCount: number;
 
+  const fhResetMod = 1e3;
+  let fhResetCounter: number;
+
   if(config.DEBUG_EZD) {
     debugFilePath = [
       SCANDIR_OUT_DATA_DIR_PATH,
@@ -268,32 +271,9 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
 
   innerLoopCount = 0;
   debug2WsResetCount = 0;
+  fhResetCounter = 0;
 
-  // buf = Buffer.alloc(128 * 1024);
-  // buf = Buffer.alloc(64 * 1024);
   buf = Buffer.alloc(32 * 1024);
-  // buf = Buffer.alloc(16 * 1024);
-  // buf = Buffer.alloc(8 * 1024);
-  // buf = Buffer.alloc(1 * 1024);
-  // buf = Buffer.alloc(1 * 64);
-  // buf = Buffer.alloc(1 * 512);
-
-  fileHandlePromise = fs.open(dupesFilePath);
-  // fileHandlePromise.finally(() => {
-  //   console.log('Closing fileHandle');
-  //   // console.log({ fileHandle });
-  //   fileHandle?.close();
-  // });
-  fileHandle = await fileHandlePromise;
-
-  // try {
-  //   fileHandlePromise = fs.open(dupesFilePath);
-  //   fileHandle = await fileHandlePromise;
-  // } finally {
-  //   console.log('Closing fileHandle');
-  //   // console.log({ fileHandle });
-  //   fileHandle?.close();
-  // }
 
   fmtFileName = '0_dupes_fmt.txt';
   fmtFilePath = [
@@ -321,8 +301,6 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
     }
   });
 
-  // hashSizeTuples = hashSizeTuples.slice(7e4);
-
   if(debugWs !== undefined) {
     for(let i = 0; i < hashSizeTuples.length; ++i) {
       let [ hash, size ] = hashSizeTuples[i];
@@ -346,17 +324,15 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
     [ targetHash, targetSize ] = hashSizeTuples[i];
     dupeCount = dupeCountMap.get(targetHash);
     assert(dupeCount !== undefined);
-    // // buf = Buffer.alloc(128 * 1024);
-    // // buf = Buffer.alloc(64 * 1024);
     // buf = Buffer.alloc(32 * 1024);
-    // // buf = Buffer.alloc(16 * 1024);
-    // // buf = Buffer.alloc(8 * 1024);
-    // // buf = Buffer.alloc(1 * 1024);
-    // // buf = Buffer.alloc(1 * 64);
-    // // buf = Buffer.alloc(1 * 512);
     pos = 0;
     line = '';
     skip = false;
+
+    if(fileHandle === undefined) {
+      fileHandlePromise = fs.open(dupesFilePath);
+      fileHandle = await fileHandlePromise;
+    }
 
     // debugWs?.write(`${targetHash} ${targetSize}\n`);
 
@@ -364,7 +340,7 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
     for(;;) {
       let bufStr: string;
       let nlRx: RegExp;
-      let firstNl = true;
+
       readRes = await fileHandle.read(buf, 0, buf.length, pos);
       bufStr = buf.subarray(0, readRes.bytesRead).toString();
       nlRx = /\n/g;
@@ -395,11 +371,8 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
         innerLoopCount++;
 
         nlIdx = nlRx.lastIndex;
-        // fmtWs.write(`${nlIdx} `);
         /* terminal */
         nlSub = bufStr.substring(lastNlPos, nlIdx - 1);
-
-        debug2Ws?.write(`${lastNlPos} ${nlIdx}\n`);
 
         line += nlSub;
         lastNlPos = nlIdx;
@@ -408,37 +381,11 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
         lineRxRes = lineRx.exec(line);
         fileHash = lineRxRes?.groups?.fileHash;
         if(fileHash === undefined) {
-          // console.error(bufStr);
-          // console.error('');
-          // console.error(JSON.stringify(line));
-          // console.error(readRes.bytesRead);
           console.log(line.split('\n'));
           throw new Error(`invalid filehash on line: ${line}`);
         }
-        // if(firstNl) {
-        //   firstNl = false;
-        //   debugWs?.write(`${fileHash.substring(0, 7)} ${pos} ilc: ${innerLoopCount}\n`);
-        // }
-        debug2Ws?.write(`target: ${targetHash.substring(0, 7)}\n`);
-        debug2Ws?.write(`${fileHash.substring(0, 7)} ${pos} ilc: ${innerLoopCount}\n`);
-        // debugWs?.write(`${fileHash.substring(0, 7)} ${pos} ilc: ${innerLoopCount}\n`);
-        debug2Ws?.write(`${lastNlPos} ${nlIdx}\n`);
-        debug2Ws?.write('\n');
         if(fileHash === targetHash) {
           let wsRes: boolean;
-          let debugStr = [
-            '',
-            '-'.repeat(30),
-            `${JSON.stringify(line)}`,
-            `dupeCount: ${dupeCount}`,
-            `pos: ${pos}`,
-            '',
-            // '-'.repeat(30),
-          ].join('\n');
-          debugWs?.write(debugStr);
-          // debugWs?.write(`${JSON.stringify(line)}\n`);
-          // debugWs?.write(`dupeCount: ${dupeCount}\n`);
-          // debugWs?.write(`pos: ${pos}\n`);
           if(drainDeferred !== undefined) {
             process.stdout.write('*');
             await drainDeferred.promise;
@@ -469,34 +416,39 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
           break;
         }
       }
-      // debug2Ws?.close();
       if(skip) {
         break;
       }
       pos += readRes.bytesRead;
       if(readRes.bytesRead === 0) {
+        console.log('readRes.bytesRead === 0');
         break;
       }
       line += bufStr.substring(lastNlPos);
     }
-    // debugWs?.write('\n');
 
     // if((i % 1e3) === 0) {
-    // if((i % 5e2) === 0) {
-    if((i % 125) === 0) {
+    if((i % 5e2) === 0) {
+    // if((i % 125) === 0) {
       process.stdout.write(((i / hashSizeTuples.length) * 100).toFixed(1));
     }
     // if((i % 1e2) === 0) {
-    if((i % 25) === 0) {
+    if((i % 50) === 0) {
+    // if((i % 25) === 0) {
       process.stdout.write('.');
     }
+
+    /* reset filehandle */
+    if(fhResetCounter++ > fhResetMod) {
+      await fileHandle?.close();
+      fileHandlePromise?.finally(() => {
+        fileHandle?.close();
+      });
+      fileHandle = undefined;
+      fhResetCounter = 0;
+    }
   }
-  process.stdout.write('\n');
-  fileHandlePromise.finally(() => {
-    console.log('Closing fileHandle');
-    // console.log({ fileHandle });
-    fileHandle?.close();
-  });
+  process.stdout.write(`\nilc: ${innerLoopCount.toLocaleString()}\n`);
   debugWs?.close();
   rfbMs = rfbTimer.stop();
   let [ rfbtVal, rfbtUnit ] = getIntuitiveTime(rfbMs);
