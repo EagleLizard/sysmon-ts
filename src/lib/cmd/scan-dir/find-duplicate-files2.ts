@@ -282,6 +282,8 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
   let rfbTimer: Timer;
   let rfbMs: number;
   let buf: Buffer;
+  let totalDupeCount: number;
+  let foundDupes: number;
 
   let debugFilePath: string;
   let debugWs: WriteStream | undefined;
@@ -361,6 +363,20 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
     debugWs.write('\n');
   }
 
+  foundDupes = 0;
+  totalDupeCount = 0;
+  for(let i = 0; i < hashSizeTuples.length; ++i) {
+    let currHashTuple: [string, number];
+    let currDupeCount: number | undefined;
+    currHashTuple = hashSizeTuples[i];
+    if((currDupeCount = dupeCountMap.get(currHashTuple[0])) === undefined) {
+      throw new Error(`unexpected undefined dupeCount for hash ${currHashTuple[0]}`);
+    }
+    totalDupeCount += currDupeCount;
+  }
+
+  _print({ totalDupeCount });
+
   let hsIter: IterableIterator<[string, number]>;
   let iterRes: IteratorResult<[string, number]>;
   let hsIdx: number;
@@ -385,6 +401,11 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
         hsIdx++;
         [ targetHash, targetSize ] = iterRes.value;
         dupeCount = dupeCountMap.get(targetHash);
+        debugWs?.write('\n');
+        debugWs?.write(`hsIdx: ${hsIdx}`);
+        debugWs?.write(`dupeCount: ${dupeCount}\n`);
+        debugWs?.write(`targetHash: ${targetHash.substring(0, 7)}\n`);
+        debugWs?.write(`fhResetCounter: ${fhResetCounter}\n`);
         assert(dupeCount !== undefined);
 
         if(fileHandle === undefined) {
@@ -403,13 +424,15 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
         innerLoopCount += seekForHashRes.innerLoopCount;
         debug2Ws?.write(`ilc: ${innerLoopCount}\n`);
 
+        foundDupes += dupeCount;
+
         if((hsIdx % 500) === 0) {
-          process.stdout.write(((hsIdx / hashSizeTuples.length) * 100).toFixed(1));
+          process.stdout.write(((foundDupes / totalDupeCount) * 100).toFixed(2));
+          // process.stdout.write(((hsIdx / hashSizeTuples.length) * 100).toFixed(1));
         }
         if((hsIdx % 50) === 0) {
           process.stdout.write('.');
         }
-
         /* reset filehandle */
         if(fhResetCounter++ > fhResetMod) {
           await fileHandle?.close();
@@ -443,7 +466,9 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
     })();
   });
   process.stdout.write(`\nilc: ${c.cyan(innerLoopCount.toLocaleString())}\n`);
+  fmtWs.close();
   debugWs?.close();
+  debug2Ws?.close();
   rfbMs = rfbTimer.stop();
   console.log(`formatDupes2() took ${timeFmt(rfbMs)} (${rfbMs} ms)`);
   console.log('');
@@ -999,6 +1024,9 @@ async function getFileHashes(sizeFilePath: string, possibleDupeSizeMap: Map<numb
     if(runningHashPromises >= maxConcurrentHashPromises) {
       return 'pause';
     }
+    if(process.exitCode !== undefined) {
+      return 'finish';
+    }
   };
   await readFileByLine(sizeFilePath, {
     lineCb: fileSizesFileLineCb,
@@ -1115,8 +1143,9 @@ async function getDuplicateFileHashes(hashFilePath: string, dupeMap: Map<string,
   });
   console.log('rfl done');
   while(runningDupePromises > 0) {
-    await sleep(0);
+    await sleep(10);
   }
+  dupesWs.close();
   getDuplicateFileHashesRes = {
     dupesFilePath,
     hashSizeMap,
