@@ -82,5 +82,9 @@ export function readFileByLine(filePath: string, opts: ReadFileByLineOpts): Prom
       }
     });
   });
+  readFilePromise.finally(() => {
+    rl.close();
+    rs.destroy();
+  });
   return readFilePromise;
 }
