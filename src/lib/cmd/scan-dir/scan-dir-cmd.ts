@@ -69,16 +69,25 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
     let wsRes: boolean;
     if(params.isDir) {
       dirCount++;
+      if(dirsDrainDeferred !== undefined) {
+        await dirsDrainDeferred.promise;
+      }
       wsRes = dirsWs.write(`${params.fullPath}\n`);
       if(!wsRes) {
         if(dirsDrainDeferred === undefined) {
           dirsDrainDeferred = Deferred.init();
-          dirsWs.once('drain', dirsDrainDeferred.resolve);
+          dirsWs.once('drain', () => {
+            setImmediate(() => {
+              if(dirsDrainDeferred === undefined) {
+                throw new Error('Enexpected undefined drainDeferred');
+              }
+              dirsDrainDeferred.resolve();
+            });
+          });
           dirsDrainDeferred.promise.finally(() => {
             dirsDrainDeferred = undefined;
           });
         }
-        await dirsDrainDeferred.promise;
       }
       let skipDir = (
         (opts.find_dirs !== undefined)
@@ -100,16 +109,24 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
         TODO: Explore resolving symlinks, research best
           practices for dealing with them.
       */
+      if(filesDrainDeferred !== undefined) {
+        await filesDrainDeferred.promise;
+      }
       wsRes = filesWs.write(`${params.fullPath}\n`);
       if(!wsRes) {
         if(filesDrainDeferred === undefined) {
           filesDrainDeferred = Deferred.init();
-          filesWs.once('drain', filesDrainDeferred.resolve);
+          filesWs.once('drain', () => {
+            if(filesDrainDeferred === undefined) {
+              throw new Error('Enexpected undefined drainDeferred');
+            }
+            filesDrainDeferred.resolve();
+          });
           filesDrainDeferred.promise.finally(() => {
             filesDrainDeferred = undefined;
           });
         }
-        await filesDrainDeferred.promise;
+        // await filesDrainDeferred.promise;
       }
       fileCount++;
     }
@@ -143,7 +160,11 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   timer = Timer.start();
   const duplicateFiles = await findDuplicateFiles2({
     filesDataFilePath,
-    nowDate
+    nowDate,
+    debug: {
+      dirPaths,
+      opts,
+    }
   });
   let fileDupeCount: number;
   let dupeMapKeys: string[];

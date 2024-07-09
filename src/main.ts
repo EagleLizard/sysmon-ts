@@ -27,8 +27,17 @@ async function main() {
     shutdown('SIGTERM');
   });
   process.on('unhandledRejection', (reason) => {
+    console.error('unhandledRejection');
+    console.error(typeof reason);
+    console.error(reason);
     logger.error('unhandledRejection:');
     logger.error(reason);
+  });
+
+  process.on('uncaughtException', (err, origin) => {
+    console.error('uncaughtException');
+    console.error(err);
+    console.error(origin);
   });
 
   await sysmonMain();

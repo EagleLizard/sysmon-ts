@@ -6,3 +6,11 @@ export function sleep(ms: number) {
     }, ms);
   });
 }
+
+export function sleepImmediate() {
+  return new Promise<void>((resolve) => {
+    setImmediate(() => {
+      resolve();
+    });
+  });
+}

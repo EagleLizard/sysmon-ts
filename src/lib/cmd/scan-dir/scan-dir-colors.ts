@@ -16,8 +16,17 @@ const teal = CliColors.rgb(120, 255, 214);
 const gray = CliColors.rgb(104, 104, 104);
 const gray_light = CliColors.rgb(122, 122, 122);
 const gray_xlight = CliColors.rgb(160, 160, 160);
+
 // const coral = chalk.rgb(255, 127, 80);
-const coral = CliColors.rgb(255, 156, 120);
+// const coral = CliColors.rgb(255, 156, 120);
+const coral = CliColors.rgb(219, 136, 105);
+// const coral = CliColors.rgb(255, 181, 153);
+
+// const peach = CliColors.rgb(255, 184, 92);
+// const peach = CliColors.rgb(255, 193, 112);
+// const peach = CliColors.rgb(255, 202, 133);
+const peach = CliColors.rgb(255, 197, 109);
+
 const yellow_yellow = CliColors.rgb(255, 255, 0);
 const aqua = CliColors.rgb(96, 226, 182);
 const purple_light = CliColors.rgb(213, 167, 250);
@@ -33,6 +42,8 @@ const blue_light = CliColors.rgb(149, 199, 255);
 // 142	250	253
 const cyan = CliColors.rgb(142, 250, 253);
 
+const white = CliColors.rgb(255, 255, 255);
+
 const ezdColors = {
   chartreuse,
   chartreuse_light,
@@ -45,6 +56,7 @@ const ezdColors = {
   gray_light,
   gray_xlight,
   coral,
+  peach,
   yellow_yellow,
   yellow_light,
   aqua,
@@ -54,6 +66,7 @@ const ezdColors = {
   orange_light,
   blue_light,
   cyan,
+  white,
 
   italic: CliColors.italic,
   bold: CliColors.bold,
