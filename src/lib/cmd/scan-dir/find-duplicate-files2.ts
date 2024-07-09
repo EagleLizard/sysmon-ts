@@ -1,7 +1,7 @@
 
 import path from 'path';
-import { ReadStream, Stats, WriteStream, createWriteStream, lstatSync, statSync, writeFileSync } from 'fs';
-import fs, { FileHandle, FileReadResult, lstat, writeFile } from 'fs/promises';
+import { Stats, WriteStream, createWriteStream, statSync } from 'fs';
+import fs, { FileHandle, FileReadResult, lstat } from 'fs/promises';
 import assert from 'assert';
 
 import { config } from '../../../config';
@@ -15,7 +15,7 @@ import { isObject, isString } from '../../util/validate-primitives';
 import { logger } from '../../logger';
 import { sleep, sleepImmediate } from '../../util/sleep';
 import { HashFile2Opts, hashFile2 } from '../../util/hasher';
-import { getIntuitiveByteString, getIntuitiveTime, getIntuitiveTimeString } from '../../util/format-util';
+import { getIntuitiveByteString, getIntuitiveTimeString } from '../../util/format-util';
 import { scanDirColors as c } from './scan-dir-colors';
 import { CliColors, ColorFormatter } from '../../service/cli-colors';
 import { ScanDirOpts } from '../parse-sysmon-args';
@@ -54,7 +54,6 @@ maxDupePromises = 1;
 const rflMod = 500;
 
 const INTERRUPT_MS = 1e3;
-const FMT_DUPES_BUF_SIZE = 32 * 1024;
 
 const DEBUG_LEDGER_FILE_PATH = [
   SCANDIR_OUT_DATA_DIR_PATH,
@@ -84,16 +83,15 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts & {
   let findDupes2Timer: Timer;
   let findDupes2Ms: number;
 
-  let ledgerWs: WriteStream | undefined;
+  let ledgerWs: WriteStream;
+  let nowDateStr: string;
 
   findDupes2Timer = Timer.start();
 
-  if(config.DEBUG_EZD) {
-    ledgerWs = createWriteStream(DEBUG_LEDGER_FILE_PATH, {
-      flags: 'a',
-    });
-  }
-  let nowDateStr = getDateStr(opts.nowDate);
+  ledgerWs = createWriteStream(DEBUG_LEDGER_FILE_PATH, {
+    flags: 'a',
+  });
+  nowDateStr = getDateStr(opts.nowDate);
   ledgerWs?.write(`\n${'-'.repeat(nowDateStr.length)}`);
   ledgerWs?.write(`\n${nowDateStr}\n`);
   if(opts.debug !== undefined) {
@@ -327,7 +325,7 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
   fhResetCounter = 0;
   debug2ResetCounter = 0;
 
-  buf = Buffer.alloc(FMT_DUPES_BUF_SIZE);
+  buf = Buffer.alloc(32 * 1024);
 
   fmtFileName = '0_dupes_fmt.txt';
   fmtFilePath = [
