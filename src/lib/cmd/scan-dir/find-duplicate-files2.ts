@@ -58,7 +58,8 @@ const INTERRUPT_MS = 1e3;
 
 // const FMT_DUPES_INTERRUPT_MOD = 666;
 const FMT_DUPES_INTERRUPT_MOD = 333;
-const FMT_DUPES_INTERRUPT_MS = 250;
+// const FMT_DUPES_INTERRUPT_MS = 250;
+const FMT_DUPES_INTERRUPT_MS = 100;
 
 const DEBUG_LEDGER_FILE_PATH = [
   SCANDIR_OUT_DATA_DIR_PATH,
@@ -296,14 +297,14 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts & {
   ledgerWs = createWriteStream(DEBUG_LEDGER_FILE_PATH, {
     flags: 'a',
   });
+  process.stdout.write(`ilc: ${c.cyan(formatDupes2Res.innerLoopCount.toLocaleString())}\n`);
+  process.stdout.write(`findDuplicateFiles2() took: ${_timeStr(findDupes2Ms)}\n`);
 
   ledgerWs.write(`ilc: ${formatDupes2Res.innerLoopCount}\n`);
-  console.log(`findDuplicateFiles2() took: ${_timeStr(findDupes2Ms)}`);
   ledgerWs.write(`findDuplicateFiles2() took: ${_timeStr(findDupes2Ms, false)}\n`);
-
-  ledgerWs.write(`\nformatDupes() took: ${getIntuitiveTimeString(formatDupesMs)} (${formatDupesMs} ms)`);
-  ledgerWs.write(`\nfindDuplicateFiles2() took: ${getIntuitiveTimeString(findDupes2Ms)} (${findDupes2Ms} ms)`);
-  ledgerWs.write(`\nEnd: ${getDateStr(new Date)}\n`);
+  ledgerWs.write(`formatDupes() took: ${getIntuitiveTimeString(formatDupesMs)} (${formatDupesMs} ms)\n`);
+  ledgerWs.write(`findDuplicateFiles2() took: ${getIntuitiveTimeString(findDupes2Ms)} (${findDupes2Ms} ms)\n`);
+  ledgerWs.write(`End: ${getDateStr(new Date)}\n`);
   await _closeWs(ledgerWs);
 
   return new Map<string, string[]>();
@@ -463,7 +464,10 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
         debugWs?.write(`last resetFhMs: ${_timeStr(resetFhMs, false)}\n`);
         assert(dupeCount !== undefined);
         // if((hsIdx % FMT_DUPES_INTERRUPT_MOD) === 0) {
-        if(resetFhCounter++ >= FMT_DUPES_INTERRUPT_MOD) {
+        // if(resetFhCounter++ >= FMT_DUPES_INTERRUPT_MOD) {
+        if(
+          (resetFhTimer.currentMs() >= 6.666e3)
+        ) {
           resetFhCounter = 0;
           resetFhMs = resetFhTimer.currentMs();
           process.stdout.write(`${resetFmtFn('✗')}`);
@@ -498,13 +502,6 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
         if((hsIdx % 25) === 0) {
           process.stdout.write('.');
         }
-        /* reset filehandle */
-        await fileHandle?.close();
-        fileHandlePromise?.finally(() => {
-          fileHandle?.close();
-        });
-        fileHandle = undefined;
-        currFhSeeks = 0;
 
         if(iterTimer.currentMs() > INTERRUPT_MS) {
           /*
@@ -519,13 +516,20 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
       resolve();
     })();
   });
-  process.stdout.write(`\nilc: ${c.cyan(innerLoopCount.toLocaleString())}\n`);
+  /* reset filehandle */
+  await fileHandle?.close();
+  fileHandlePromise?.finally(() => {
+    fileHandle?.close();
+  });
+  fileHandle = undefined;
+  currFhSeeks = 0;
+
   fmtWs.close();
   debugWs?.close();
   debug2Ws?.close();
   rfbMs = rfbTimer.stop();
-  console.log(`formatDupes2() took ${timeFmt(rfbMs)} (${rfbMs} ms)`);
-  console.log('');
+  process.stdout.write('\n\n');
+  process.stdout.write(`formatDupes2() took ${timeFmt(rfbMs)} (${rfbMs} ms)\n`);
   formatDupes2Res = {
     innerLoopCount,
   };
