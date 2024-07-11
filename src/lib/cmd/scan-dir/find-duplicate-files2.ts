@@ -28,7 +28,8 @@ let maxDupePromises: number;
 const HASH_HWM = 64 * 1024;
 // const HASH_HWM = 128 * 1024;
 
-const RFL_HWM = 2 * 1024;
+const RFL_HWM = 1 * 1024;
+// const RFL_HWM = 2 * 1024;
 // const RFL_HWM = 4 * 1024;
 // const RFL_HWM = 8 * 1024;
 
@@ -55,7 +56,8 @@ const rflMod = 500;
 
 const INTERRUPT_MS = 1e3;
 
-const FMT_DUPES_INTERRUPT_MOD = 666;
+// const FMT_DUPES_INTERRUPT_MOD = 666;
+const FMT_DUPES_INTERRUPT_MOD = 333;
 const FMT_DUPES_INTERRUPT_MS = 250;
 
 const DEBUG_LEDGER_FILE_PATH = [
@@ -330,22 +332,18 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
 
   let debug2FilePath: string;
   let debug2Ws: WriteStream | undefined;
-  let debug2ResetCounter: number;
 
   let currFhSeeks: number;
-  let fhResetCounter: number;
 
   debugFilePath = [
     SCANDIR_OUT_DATA_DIR_PATH,
     'debug.txt',
   ].join(path.sep);
-
   debug2FilePath = [
     SCANDIR_OUT_DATA_DIR_PATH,
     'debug2.txt',
   ].join(path.sep);
 
-  fhResetCounter = 0;
   currFhSeeks = 0;
 
   buf = Buffer.alloc(32 * 1024);
@@ -410,6 +408,13 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
   const resetFmtWsMs = 10 * 1e3;
   resetFmtWsTimer = Timer.start();
 
+  let resetFhTimer: Timer;
+  let resetFhMs: number;
+  let resetFhCounter: number;
+  resetFhTimer = Timer.start();
+
+  resetFhCounter = 0;
+
   const resetFmtFn = CliColors.comb([ c.tomato, c.bold ]);
 
   await new Promise<void>((resolve) => {
@@ -450,14 +455,23 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
         dupeCount = dupeCountMap.get(targetHash);
         debugWs?.write('\n');
         debugWs?.write(`hsIdx: ${hsIdx}\n`);
-        debugWs?.write(`(hsIdx % ${FMT_DUPES_INTERRUPT_MOD}): ${hsIdx & FMT_DUPES_INTERRUPT_MOD}\n`);
+        // debugWs?.write(`(hsIdx % ${FMT_DUPES_INTERRUPT_MOD}): ${hsIdx & FMT_DUPES_INTERRUPT_MOD}\n`);
+        debugWs?.write(`resetFhCounter: ${resetFhCounter}\n`);
         debugWs?.write(`dupeCount: ${dupeCount}\n`);
         debugWs?.write(`targetHash: ${targetHash.substring(0, 7)}\n`);
-        debugWs?.write(`fhResetCounter: ${fhResetCounter}\n`);
+        debugWs?.write(`resetFhTimer: ${_timeStr(resetFhTimer.currentMs(), false)}\n`);
+        debugWs?.write(`last resetFhMs: ${_timeStr(resetFhMs, false)}\n`);
         assert(dupeCount !== undefined);
-        if((hsIdx % FMT_DUPES_INTERRUPT_MOD) === 0) {
+        // if((hsIdx % FMT_DUPES_INTERRUPT_MOD) === 0) {
+        if(resetFhCounter++ >= FMT_DUPES_INTERRUPT_MOD) {
+          resetFhCounter = 0;
+          resetFhMs = resetFhTimer.currentMs();
           process.stdout.write(`${resetFmtFn('✗')}`);
+
+          await fileHandle?.close();
+          fileHandle = undefined;
           await sleep(FMT_DUPES_INTERRUPT_MS);
+          resetFhTimer.reset();
         }
         if(fileHandle === undefined) {
           fileHandlePromise = fs.open(dupesFilePath);
@@ -490,7 +504,6 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
           fileHandle?.close();
         });
         fileHandle = undefined;
-        fhResetCounter = 0;
         currFhSeeks = 0;
 
         if(iterTimer.currentMs() > INTERRUPT_MS) {
@@ -499,7 +512,6 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
               by signals like SIGINT, SIGTERM
           */
           iterTimer.reset();
-          // process.stdout.write('!');
           setImmediate(doIter);
           return;
         }
