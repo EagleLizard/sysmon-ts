@@ -54,7 +54,7 @@ maxDupePromises = 1;
 
 const rflMod = 500;
 
-const INTERRUPT_MS = 1e3;
+const ITER_INTERRUPT_MS = 1e3;
 
 // const FMT_DUPES_INTERRUPT_MOD = 666;
 const FMT_DUPES_INTERRUPT_MOD = 333;
@@ -465,9 +465,7 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
         assert(dupeCount !== undefined);
         // if((hsIdx % FMT_DUPES_INTERRUPT_MOD) === 0) {
         // if(resetFhCounter++ >= FMT_DUPES_INTERRUPT_MOD) {
-        if(
-          (resetFhTimer.currentMs() >= 6.666e3)
-        ) {
+        if(resetFhTimer.currentMs() >= 7.5e3) {
           resetFhCounter = 0;
           resetFhMs = resetFhTimer.currentMs();
           process.stdout.write(`${resetFmtFn('✗')}`);
@@ -491,8 +489,9 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
         });
         currFhSeeks++;
         innerLoopCount += seekForHashRes.innerLoopCount;
-        debug2Ws?.write(`ilc: ${innerLoopCount}\n`);
-        debug2Ws?.write(`curr fh seeks: ${currFhSeeks}\n`);
+        // debugWs?.write(`curr fh seeks: ${currFhSeeks}\n`);
+        debugWs?.write(`ilc: ${innerLoopCount}\n`);
+        debugWs?.write(`ilcAvg: ${(Math.round((innerLoopCount / hsIdx) * 100) / 100)}\n`);
 
         foundDupes += dupeCount;
 
@@ -503,7 +502,7 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
           process.stdout.write('.');
         }
 
-        if(iterTimer.currentMs() > INTERRUPT_MS) {
+        if(iterTimer.currentMs() > ITER_INTERRUPT_MS) {
           /*
             force the loop to execute async so that it is interruptable
               by signals like SIGINT, SIGTERM
@@ -588,9 +587,7 @@ async function seekForHash(opts: SeekForHashOpts): Promise<SeekForHashRes> {
   pos = 0;
   skip = false;
 
-  buf.fill(0);
-
-  opts.debug2Ws?.write(`target hash: ${targetHash.substring(0, 7)}\n`);
+  opts.debug2Ws?.write(`${targetHash.substring(0, 7)}\n`);
 
   for(;;) {
     let bufStr: string;
