@@ -26,6 +26,8 @@ const coral = CliColors.rgb(219, 136, 105);
 // const peach = CliColors.rgb(255, 193, 112);
 // const peach = CliColors.rgb(255, 202, 133);
 const peach = CliColors.rgb(255, 197, 109);
+// const tomato = CliColors.rgb(255, 86, 53);
+const tomato = CliColors.rgb(255, 101, 71);
 
 const yellow_yellow = CliColors.rgb(255, 255, 0);
 const aqua = CliColors.rgb(96, 226, 182);
@@ -57,6 +59,7 @@ const ezdColors = {
   gray_xlight,
   coral,
   peach,
+  tomato,
   yellow_yellow,
   yellow_light,
   aqua,

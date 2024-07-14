@@ -4,6 +4,12 @@ import path from 'path';
 
 export const BASE_DIR = path.resolve(__dirname, '..');
 
+const LOG_DIR_NAME = 'logs';
+export const LOG_DIR_PATH = [
+  BASE_DIR,
+  LOG_DIR_NAME,
+].join(path.sep);
+
 const DATA_DIR_NAME = 'data';
 export const DATA_DIR_PATH = [
   BASE_DIR,

@@ -8,7 +8,10 @@ import { config } from '../../../config';
 import { FindDuplicateFilesOpts } from './find-duplicate-files';
 import { Deferred } from '../../../test/deferred';
 import { Timer } from '../../util/timer';
-import { getDateFileStr, getDateStr } from '../../util/datetime-util';
+import {
+  // getDateFileStr,
+  getDateStr,
+} from '../../util/datetime-util';
 import { SCANDIR_OUT_DATA_DIR_PATH } from '../../../constants';
 import { ReadFileByLineOpts, readFileByLine } from '../../util/files';
 import { isObject, isString } from '../../util/validate-primitives';
@@ -28,7 +31,8 @@ let maxDupePromises: number;
 const HASH_HWM = 64 * 1024;
 // const HASH_HWM = 128 * 1024;
 
-const RFL_HWM = 2 * 1024;
+const RFL_HWM = 1 * 1024;
+// const RFL_HWM = 2 * 1024;
 // const RFL_HWM = 4 * 1024;
 // const RFL_HWM = 8 * 1024;
 
@@ -53,7 +57,12 @@ maxDupePromises = 1;
 
 const rflMod = 500;
 
-const INTERRUPT_MS = 1e3;
+const ITER_INTERRUPT_MS = 1e3;
+
+// const FMT_DUPES_INTERRUPT_MOD = 666;
+const FMT_DUPES_INTERRUPT_MOD = 333;
+const FMT_DUPES_INTERRUPT_MS = 250;
+// const FMT_DUPES_INTERRUPT_MS = 100;
 
 const DEBUG_LEDGER_FILE_PATH = [
   SCANDIR_OUT_DATA_DIR_PATH,
@@ -64,8 +73,18 @@ const timeFmt = (ms: number) => {
   return c.chartreuse(getIntuitiveTimeString(ms));
 };
 
-const _timeStr = (ms: number) => {
-  return `${c.peach(getIntuitiveTimeString(ms))} (${c.italic(ms)} ms)`;
+const _timeStr = (ms: number, doFmt = true) => {
+  let timeStrFmt: ColorFormatter;
+  let msFmt: ColorFormatter;
+  timeStrFmt = doFmt
+    ? c.peach
+    : (val) => `${val}`
+  ;
+  msFmt = doFmt
+    ? c.italic
+    : (val) => `${val}`
+  ;
+  return `${timeStrFmt(getIntuitiveTimeString(ms))} (${msFmt(ms)} ms)`;
 };
 
 export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts & {
@@ -83,7 +102,7 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts & {
   let findDupes2Timer: Timer;
   let findDupes2Ms: number;
 
-  let ledgerWs: WriteStream;
+  let ledgerWs: WriteStream | undefined;
   let nowDateStr: string;
 
   findDupes2Timer = Timer.start();
@@ -92,23 +111,30 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts & {
     flags: 'a',
   });
   nowDateStr = getDateStr(opts.nowDate);
-  ledgerWs?.write(`\n${'-'.repeat(nowDateStr.length)}`);
-  ledgerWs?.write(`\n${nowDateStr}\n`);
+  ledgerWs.write(`\n${'-'.repeat(nowDateStr.length)}`);
+  ledgerWs.write(`\n${nowDateStr}\n`);
   if(opts.debug !== undefined) {
-    ledgerWs?.write('dir paths:\n');
-    ledgerWs?.write(opts.debug.dirPaths.join('\n'));
-    ledgerWs?.write('\nopts:\n');
-    ledgerWs?.write(JSON.stringify(opts.debug.opts, undefined, 2));
-    ledgerWs?.write('\n');
+    ledgerWs.write('dir paths:\n');
+    ledgerWs.write(opts.debug.dirPaths.join('\n'));
+    ledgerWs.write('\nopts:\n');
+    ledgerWs.write(JSON.stringify(opts.debug.opts, undefined, 2));
+    ledgerWs.write('\n');
   }
 
   _print({
     HASH_HWM,
     RFL_HWM,
     maxConcurrentHashPromises,
+    FMT_DUPES_INTERRUPT_MOD,
+    FMT_DUPES_INTERRUPT_MS,
   }, {
     valFmtFn: c.yellow_yellow,
   });
+  ledgerWs.write(`HASH_HWM: ${HASH_HWM}\n`);
+  ledgerWs.write(`RFL_HWM: ${RFL_HWM}\n`);
+  ledgerWs.write(`maxConcurrentHashPromises: ${maxConcurrentHashPromises}\n`);
+  ledgerWs.write(`FMT_DUPES_INTERRUPT_MOD: ${FMT_DUPES_INTERRUPT_MOD}\n`);
+  ledgerWs.write(`FMT_DUPES_INTERRUPT_MS: ${FMT_DUPES_INTERRUPT_MS}\n`);
   process.stdout.write('\n');
 
   possibleDupesTimer = Timer.start();
@@ -162,7 +188,9 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts & {
   }
   possibleDupesMs = possibleDupesTimer.stop();
   _print({ possibleDupes: possibleDupeCount });
+  ledgerWs.write(`possibleDupes: ${possibleDupeCount}\n`);
   console.log(`find possible dupes took: ${_timeStr(possibleDupesMs)}`);
+  ledgerWs.write(`find possible dupes took: ${_timeStr(possibleDupesMs, false)}\n`);
 
   let hashFilePath: string;
   let hashMap: Map<string, number>;
@@ -181,6 +209,7 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts & {
 
   getFileHashesMs = getFileHashesTimer.stop();
   console.log(`getFileHashes() took: ${_timeStr(getFileHashesMs)}`);
+  ledgerWs.write(`getFileHashes() took: ${_timeStr(getFileHashesMs, false)}\n`);
 
   hashMap = getFileHashesRes.hashMap;
   hashFilePath = getFileHashesRes.hashFilePath;
@@ -214,6 +243,8 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts & {
     uniqueDupeFiles,
     dupeCount,
   });
+  ledgerWs.write(`uniqueDupeFiles: ${uniqueDupeFiles}\n`);
+  ledgerWs.write(`dupeCount: ${dupeCount}\n`);
 
   let dupesFilePath: string;
   let hashSizeMap: Map<string, number>;
@@ -250,11 +281,15 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts & {
 
   process.stdout.write('\n');
 
+  await _closeWs(ledgerWs);
+  ledgerWs = undefined;
+
   let formatDupesTimer: Timer;
   let formatDupesMs: number;
+  let formatDupes2Res: FormatDupes2Res;
   formatDupesTimer = Timer.start();
   try {
-    await formatDupes2(dupesFilePath, hashSizeMap, dupeMap);
+    formatDupes2Res = await formatDupes2(dupesFilePath, hashSizeMap, dupeMap);
   } catch(e) {
     console.error(e);
     throw e;
@@ -262,17 +297,28 @@ export async function findDuplicateFiles2(opts: FindDuplicateFilesOpts & {
   formatDupesMs = formatDupesTimer.stop();
   findDupes2Ms = findDupes2Timer.stop();
 
-  console.log(`findDuplicateFiles2() took: ${_timeStr(findDupes2Ms)}`);
+  ledgerWs = createWriteStream(DEBUG_LEDGER_FILE_PATH, {
+    flags: 'a',
+  });
+  process.stdout.write(`ilc: ${c.cyan(formatDupes2Res.innerLoopCount.toLocaleString())}\n`);
+  process.stdout.write(`findDuplicateFiles2() took: ${_timeStr(findDupes2Ms)}\n`);
 
-  ledgerWs?.write(`\nformatDupes() took: ${getIntuitiveTimeString(formatDupesMs)} (${formatDupesMs} ms)`);
-  ledgerWs?.write(`\nfindDuplicateFiles2() took: ${getIntuitiveTimeString(findDupes2Ms)} (${findDupes2Ms} ms)`);
-  ledgerWs?.write(`\nEnd: ${getDateStr(new Date)}\n`);
-  ledgerWs?.close();
+  ledgerWs.write(`ilc: ${formatDupes2Res.innerLoopCount}\n`);
+  ledgerWs.write(`findDuplicateFiles2() took: ${_timeStr(findDupes2Ms, false)}\n`);
+  ledgerWs.write(`formatDupes() took: ${getIntuitiveTimeString(formatDupesMs)} (${formatDupesMs} ms)\n`);
+  ledgerWs.write(`findDuplicateFiles2() took: ${getIntuitiveTimeString(findDupes2Ms)} (${findDupes2Ms} ms)\n`);
+  ledgerWs.write(`End: ${getDateStr(new Date)}\n`);
+  await _closeWs(ledgerWs);
 
   return new Map<string, string[]>();
 }
 
-async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, number>, dupeCountMap: Map<string, number>) {
+type FormatDupes2Res = {
+  innerLoopCount: number;
+};
+
+async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, number>, dupeCountMap: Map<string, number>): Promise<FormatDupes2Res> {
+  let formatDupes2Res: FormatDupes2Res;
   let fileHandlePromise: Promise<FileHandle> | undefined;
   let fileHandle: FileHandle | undefined;
   let fmtFileName: string;
@@ -282,48 +328,23 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
   let rfbTimer: Timer;
   let rfbMs: number;
   let buf: Buffer;
+  let totalDupeCount: number;
+  let foundDupes: number;
 
   let debugFilePath: string;
   let debugWs: WriteStream | undefined;
 
   let debug2FilePath: string;
   let debug2Ws: WriteStream | undefined;
-  let debug2ResetCounter: number;
-
-  let fhResetCounter: number;
-  // const fhResetMod = 1e3;
-  // const fhResetMod = 250;
-  /*
-    Setting fhResetMod to reconstruct the filehandle fixed the issue where
-      the process would exit with no error message or exception. After days
-      of testing, I found one test case deterministically failed after
-      seeking for 1424 files. This meant that the filehandle had been
-      reset once, and did not get to the subseuqent reset.
-    Even though setting fhResetMod to 400 would work for this case,
-      there is no discernable performance impact between 400 and 100.
-      Choosing a lower value like 100 makes it more likely a case not
-      tested yet will not cause the same error.
-  */
-  const fhResetMod = 100;
-  const debug2ResetMod = 1e3;
 
   debugFilePath = [
     SCANDIR_OUT_DATA_DIR_PATH,
     'debug.txt',
   ].join(path.sep);
-
   debug2FilePath = [
     SCANDIR_OUT_DATA_DIR_PATH,
     'debug2.txt',
   ].join(path.sep);
-
-  if(config.DEBUG_EZD) {
-    debugWs = createWriteStream(debugFilePath);
-    debug2Ws = createWriteStream(debug2FilePath);
-  }
-
-  fhResetCounter = 0;
-  debug2ResetCounter = 0;
 
   buf = Buffer.alloc(32 * 1024);
 
@@ -333,10 +354,6 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
     fmtFileName,
   ].join(path.sep);
   fmtWs = createWriteStream(fmtFilePath);
-  fmtWs.on('error', (err) => {
-    console.error(err);
-    throw err;
-  });
 
   rfbTimer = Timer.start();
   hashSizeTuples = [ ...hashSizeMap.entries() ];
@@ -352,14 +369,30 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
       return a[0].localeCompare(b[0]);
     }
   });
-
-  if(debugWs !== undefined) {
+  if(config.DEBUG_EZD) {
+    debugWs = createWriteStream(debugFilePath);
     for(let i = 0; i < hashSizeTuples.length; ++i) {
       let [ hash, size ] = hashSizeTuples[i];
       debugWs.write(`${hash} ${size} ${dupeCountMap.get(hash)}\n`);
     }
     debugWs.write('\n');
+    await _closeWs(debugWs);
+    debugWs = undefined;
   }
+
+  foundDupes = 0;
+  totalDupeCount = 0;
+  for(let i = 0; i < hashSizeTuples.length; ++i) {
+    let currHashTuple: [string, number];
+    let currDupeCount: number | undefined;
+    currHashTuple = hashSizeTuples[i];
+    if((currDupeCount = dupeCountMap.get(currHashTuple[0])) === undefined) {
+      throw new Error(`unexpected undefined dupeCount for hash ${currHashTuple[0]}`);
+    }
+    totalDupeCount += currDupeCount;
+  }
+
+  _print({ totalDupeCount });
 
   let hsIter: IterableIterator<[string, number]>;
   let iterRes: IteratorResult<[string, number]>;
@@ -371,27 +404,74 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
   hsIdx = 0;
   innerLoopCount = 0;
 
-  // for(let i = 0; i < hashSizeTuples.length; ++i) {
+  let resetFmtWsTimer: Timer;
+  const resetFmtWsMs = 10 * 1e3;
+  resetFmtWsTimer = Timer.start();
+
+  let resetFhTimer: Timer;
+  let resetFhMs: number;
+
+  resetFhTimer = Timer.start();
+
+  const resetFmtFn = CliColors.comb([ c.tomato, c.bold ]);
+
   await new Promise<void>((resolve) => {
     (async function doIter() {
+
       while(
         !(iterRes = hsIter.next()).done
         && (process.exitCode === undefined)
       ) {
         let targetHash: string;
-        let targetSize: number;
         let dupeCount: number | undefined;
         let seekForHashRes: SeekForHashRes;
-        hsIdx++;
-        [ targetHash, targetSize ] = iterRes.value;
-        dupeCount = dupeCountMap.get(targetHash);
-        assert(dupeCount !== undefined);
 
+        if(config.DEBUG_EZD) {
+          if(debug2Ws !== undefined) {
+            await _closeWs(debug2Ws);
+            debug2Ws = undefined;
+          }
+          if(debugWs !== undefined) {
+            await _closeWs(debugWs);
+            debugWs = undefined;
+          }
+          debugWs = createWriteStream(debugFilePath, {
+            flags: 'a',
+          });
+          debug2Ws = createWriteStream(debug2FilePath);
+        }
+        if(resetFmtWsTimer.currentMs() > resetFmtWsMs) {
+          resetFmtWsTimer.reset();
+          await _closeWs(fmtWs);
+          fmtWs = createWriteStream(fmtFilePath, {
+            flags: 'a',
+          });
+        }
+
+        hsIdx++;
+        targetHash = iterRes.value[0];
+        dupeCount = dupeCountMap.get(targetHash);
+        debugWs?.write('\n');
+        debugWs?.write(`hsIdx: ${hsIdx}\n`);
+        debugWs?.write(`dupeCount: ${dupeCount}\n`);
+        debugWs?.write(`targetHash: ${targetHash.substring(0, 7)}\n`);
+        debugWs?.write(`resetFhTimer: ${_timeStr(resetFhTimer.currentMs(), false)}\n`);
+        debugWs?.write(`last resetFhMs: ${_timeStr(resetFhMs, false)}\n`);
+        assert(dupeCount !== undefined);
+        if(resetFhTimer.currentMs() >= 1.5e5) {
+          resetFhMs = resetFhTimer.currentMs();
+          process.stdout.write(`${resetFmtFn('✗')}`);
+
+          await fileHandle?.close();
+          fileHandle = undefined;
+          await sleep(FMT_DUPES_INTERRUPT_MS);
+          resetFhTimer.reset();
+        }
         if(fileHandle === undefined) {
           fileHandlePromise = fs.open(dupesFilePath);
           fileHandle = await fileHandlePromise;
         }
-
+        debug2Ws?.write(`\nseek: ${targetHash.substring(0, 7)}\n`);
         seekForHashRes = await seekForHash({
           targetHash,
           fileHandle,
@@ -401,52 +481,62 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
           debug2Ws,
         });
         innerLoopCount += seekForHashRes.innerLoopCount;
-        debug2Ws?.write(`ilc: ${innerLoopCount}\n`);
+        debugWs?.write(`ilc: ${innerLoopCount}\n`);
+        debugWs?.write(`ilcAvg: ${(Math.round((innerLoopCount / hsIdx) * 100) / 100)}\n`);
 
-        if((hsIdx % 500) === 0) {
-          process.stdout.write(((hsIdx / hashSizeTuples.length) * 100).toFixed(1));
+        foundDupes += dupeCount;
+
+        if((hsIdx % 250) === 0) {
+          process.stdout.write(((foundDupes / totalDupeCount) * 100).toFixed(3));
         }
-        if((hsIdx % 50) === 0) {
+        if((hsIdx % 25) === 0) {
           process.stdout.write('.');
         }
 
-        /* reset filehandle */
-        if(fhResetCounter++ > fhResetMod) {
-          await fileHandle?.close();
-          fileHandlePromise?.finally(() => {
-            fileHandle?.close();
-          });
-          fileHandle = undefined;
-          fhResetCounter = 0;
-        }
-        if(iterTimer.currentMs() > INTERRUPT_MS) {
+        if(iterTimer.currentMs() > ITER_INTERRUPT_MS) {
           /*
             force the loop to execute async so that it is interruptable
               by signals like SIGINT, SIGTERM
           */
           iterTimer.reset();
-          process.stdout.write('!');
           setImmediate(doIter);
           return;
-        }
-
-        if(
-          config.DEBUG_EZD
-          && (debug2ResetCounter++ > debug2ResetMod)
-        ) {
-          debug2Ws?.close();
-          debug2Ws = createWriteStream(debug2FilePath);
-          debug2ResetCounter = 0;
         }
       }
       resolve();
     })();
   });
-  process.stdout.write(`\nilc: ${c.cyan(innerLoopCount.toLocaleString())}\n`);
+  /* reset filehandle */
+  await fileHandle?.close();
+  fileHandlePromise?.finally(() => {
+    fileHandle?.close();
+  });
+  fileHandle = undefined;
+
+  fmtWs.close();
   debugWs?.close();
+  debug2Ws?.close();
   rfbMs = rfbTimer.stop();
-  console.log(`formatDupes2() took ${timeFmt(rfbMs)} (${rfbMs} ms)`);
-  console.log('');
+  process.stdout.write('\n\n');
+  process.stdout.write(`formatDupes2() took ${timeFmt(rfbMs)} (${rfbMs} ms)\n`);
+  formatDupes2Res = {
+    innerLoopCount,
+  };
+  return formatDupes2Res;
+}
+
+function _closeWs(ws?: WriteStream): Promise<void> {
+  let closePromise: Promise<void>;
+  if(ws === undefined) {
+    return Promise.resolve();
+  }
+  closePromise = new Promise((resolve) => {
+    ws.once('close', () => {
+      resolve();
+    });
+  });
+  ws.close();
+  return closePromise;
 }
 
 type SeekForHashOpts = {
@@ -476,6 +566,8 @@ async function seekForHash(opts: SeekForHashOpts): Promise<SeekForHashRes> {
   let pos: number;
   let skip: boolean;
 
+  let debug2Ws: WriteStream | undefined;
+
   fileHandle = opts.fileHandle;
   buf = opts.buf;
   targetHash = opts.targetHash;
@@ -487,13 +579,15 @@ async function seekForHash(opts: SeekForHashOpts): Promise<SeekForHashRes> {
   pos = 0;
   skip = false;
 
-  opts.debug2Ws?.write(`${targetHash.substring(0, 7)}\n`);
+  debug2Ws = opts.debug2Ws;
+
+  debug2Ws?.write(`${targetHash.substring(0, 7)}\n`);
 
   for(;;) {
     let bufStr: string;
     let nlRx: RegExp;
     let lastNlPos: number;
-
+    buf.fill(0);
     readRes = await fileHandle.read(buf, 0, buf.length, pos);
     bufStr = buf.subarray(0, readRes.bytesRead).toString();
     nlRx = /\n/g;
@@ -529,8 +623,11 @@ async function seekForHash(opts: SeekForHashOpts): Promise<SeekForHashRes> {
           await drainDeferred.promise;
         }
         wsRes = fmtWs.write(`${line}\n`);
+
         // opts.debugWs?.write(`${pos} ${nlIdx}\n`);
-        opts.debug2Ws?.write(`${dupeCount}\n`);
+        debug2Ws?.write(`dupe count: ${dupeCount}\n`);
+        debug2Ws?.write(`ilc: ${innerLoopCount}\n`);
+
         dupeCount--;
         if(!wsRes) {
           process.stdout.write('•');
@@ -568,321 +665,8 @@ async function seekForHash(opts: SeekForHashOpts): Promise<SeekForHashRes> {
   }
   opts.debug2Ws?.write('\n');
   return {
-    innerLoopCount
+    innerLoopCount,
   };
-}
-
-/*
-  nlStart = false
-  hPos = 0
-  hParse = false
-  szParse = false
-
-  foundHash = undefined
-  foundSize = undefined
-  foundFilePath = undefined
-  if currChar === newline
-    if hParse or szParse
-      throw error, invalid format
-    if fParse
-      << terminal >>
-      foundFilePath = chars[].join
-    else
-      hParse = true
-    reset
-  else
-    if hParse
-      if currChar === space
-        <<terminal char>>
-        set foundHash = chars[].join
-        assert foundHash === hash
-        set chars[].length = 0
-        set hParse = false
-        set szParse = true
-      else
-        if currChar === hash[hPos]
-          chars.push(currChar)
-        else
-          reset
-    else if szParse
-      if currChar === space
-        <<terminal char>>
-        set foundSize = +(chars[].join)
-        assert foundSize is number
-        set chars[].length = 0
-        set szParse = false
-        set fParse = true
-      else
-        assert currChar is digit
-        chars[].push(currChar)
-    else if fParse
-      chars[].push(currChar)
- */
-async function formatDupes(dupesFilePath: string, hashSizeMap: Map<string, number>, dupeCountMap: Map<string, number>) {
-  let fileHandlePromise: Promise<FileHandle>;
-  let fileHandle: FileHandle;
-  let fmtFileName: string;
-  let fmtFilePath: string;
-  let fmtWs: WriteStream;
-  let totalBytesRead: number;
-  let rfbTimer: Timer;
-  let rfbMs: number;
-
-  let findHashDupesRes: FindHashDupesRes;
-
-  totalBytesRead = 0;
-
-  fileHandlePromise = fs.open(dupesFilePath);
-  fileHandlePromise.finally(() => {
-    fileHandle.close();
-  });
-  fileHandle = await fileHandlePromise;
-
-  fmtFileName = '0_dupes_fmt.txt';
-  fmtFilePath = [
-    SCANDIR_OUT_DATA_DIR_PATH,
-    fmtFileName,
-  ].join(path.sep);
-  fmtWs = createWriteStream(fmtFilePath);
-
-  rfbTimer = Timer.start();
-  // [ targetHash, targetHashDupeCount ] = [ ...hashSizeMap.entries() ][0];
-  let hashSizeTuples: [ string, number ][];
-  hashSizeTuples = [ ...hashSizeMap.entries() ];
-  /*
-    sort by size desc
-   */
-  hashSizeTuples.sort((a, b) => {
-    if(a[1] > b[1]) {
-      return -1;
-    } else if(a[1] < b[1]) {
-      return 1;
-    } else {
-      return 0;
-    }
-  });
-  // console.log(hashSizeTuples[0]);
-  // [ targetHash, targetHashDupeCount ] = hashSizeTuples[0];
-  for(let i = 0; i < hashSizeTuples.length; ++i) {
-    let targetHash: string;
-    let targetHashSize: number;
-    let targetHashDupeCount: number | undefined;
-    let writeHeading: boolean;
-    writeHeading = true;
-
-    const dupeCb: FindHashDupesOpts['dupeCb'] = (filePath, size, hash, range) => {
-      if(writeHeading) {
-        writeHeading = false;
-        fmtWs.write(`${hash} ${size}\n`);
-      }
-      // fmtWs.write(`  [ ${range.join(', ')} ]\n`);
-      fmtWs.write(`  ${filePath}\n`);
-    };
-    let buf: Buffer;
-    buf = Buffer.alloc(128 * 1024);
-
-    [ targetHash, ] = hashSizeTuples[i];
-    targetHashDupeCount = dupeCountMap.get(targetHash);
-    if(targetHashDupeCount === undefined) {
-      throw new Error(`undefined dupe count for hash: ${targetHash}`);
-    }
-    findHashDupesRes = await findHashDupes({
-      fileHandle,
-      targetHash,
-      dupeCount: targetHashDupeCount,
-      buf,
-      dupeCb,
-    });
-    totalBytesRead += findHashDupesRes.bytesRead;
-    if((i % 1e3) === 0) {
-      process.stdout.write(((i / hashSizeTuples.length)).toFixed(2));
-    }
-    if((i % 1e2) === 0) {
-      process.stdout.write('.');
-    }
-  }
-
-  rfbMs = rfbTimer.stop();
-
-  console.log(`totalBytesRead: ${totalBytesRead}b (${getIntuitiveByteString(totalBytesRead)})`);
-  // console.log(`read file buffer took: ${rfbMs} ms (${getIntuitiveTimeString(rfbMs)})`);
-  console.log(`read file buffer took: ${getIntuitiveTimeString(rfbMs)} (${rfbMs} ms)\n`);
-}
-
-type FindHashDupesOpts = {
-  fileHandle: FileHandle;
-  targetHash: string;
-  dupeCount: number;
-  buf: Buffer,
-  dupeCb: (filePath: string, size: number, hash: string, range: [ number, number ]) => void;
-};
-
-type FindHashDupesRes = {
-  bytesRead: number;
-}
-
-async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes> {
-  let fileHandle: FileHandle;
-  let targetHash: string;
-  let dupeCount: number;
-
-  let buf: Buffer;
-  let pos: number;
-  let readRes: FileReadResult<Buffer>;
-  let bytesRead: number;
-
-  let firstChar: boolean;
-  let hParse: boolean;
-  let szParse: boolean;
-  let fParse: boolean;
-  let hPos: number;
-  let hashLen: number | undefined;
-  let chars: string[];
-  let foundHash: string | undefined;
-  let foundSizeStr: string | undefined;
-  let foundSize: number | undefined;
-  let foundFilePath: string | undefined;
-
-  let findHashDupesRes: FindHashDupesRes;
-
-  let currChar: string;
-  let currByte: number;
-
-  let line: number;
-  let col: number;
-
-  let dupeStartPos: number | undefined;
-  let dupeEndPos: number | undefined;
-
-  fileHandle = opts.fileHandle;
-  targetHash = opts.targetHash;
-  dupeCount = opts.dupeCount;
-
-  buf = opts.buf;
-  pos = 0;
-  bytesRead = 0;
-
-  /* Init parsing vars  */
-  hParse = false;
-  szParse = false;
-  fParse = false;
-  hPos = 0;
-  chars = [];
-
-  firstChar = true;
-
-  line = 1;
-  col = 0;
-
-  while((readRes = await fileHandle.read(buf, 0, buf.length, pos)).bytesRead !== 0) {
-    for(let i = 0; i < buf.length; ++i) {
-      // let subBuf: Buffer;
-
-      // subBuf = buf.subarray(i, i + 1);
-      currByte = buf[i];
-      if(firstChar) {
-        /*
-          necessary because the first line doesn't start with a newline
-         */
-        hParse = true;
-        firstChar = false;
-        dupeStartPos = pos + i;
-      }
-      /* 10 -> '\n' */
-      if(currByte === 10) {
-        line++;
-        col = 0;
-        if(hParse || szParse) {
-          throw new Error(`Invalid format, buf dump: ${buf.toString()}`);
-        } else if(fParse) {
-          /* terminal */
-          foundFilePath = chars.join('');
-
-          chars.length = 0;
-          fParse = false;
-
-          dupeEndPos = pos + i;
-          // assert(foundFilePath.length > 0);
-          // assert(foundSize !== undefined);
-          // assert(foundHash !== undefined);
-          // assert(dupeStartPos !== undefined);
-          assert(
-            (foundFilePath.length > 0)
-            && (foundSize !== undefined)
-            && (foundHash !== undefined)
-            && (dupeStartPos !== undefined)
-          );
-          opts.dupeCb(foundFilePath, foundSize, foundHash, [ dupeStartPos, dupeEndPos ]);
-          dupeCount--;
-
-          foundHash = undefined;
-          foundSize = undefined;
-          foundFilePath = undefined;
-        }
-        /* reset */
-        hParse = true;
-        dupeStartPos = pos + i;
-      } else {
-        col++;
-        if(hParse) {
-          /* 32 -> ' ' */
-          if(currByte === 32) {
-            /* terminal */
-            foundHash = chars.join('');
-            // assert(foundHash === targetHash);
-            /* start size parse */
-            szParse = true;
-            /* reset */
-            hParse = false;
-            hPos = 0;
-            chars.length = 0;
-          } else if(currByte === targetHash.charCodeAt(hPos)) {
-            chars.push(String.fromCharCode(currByte));
-            hPos++;
-          } else {
-            /* reset */
-            hParse = false;
-            szParse = false;
-            chars.length = 0;
-            hPos = 0;
-          }
-        } else if(szParse) {
-          /* 32 -> ' ' */
-          if(currByte === 32) {
-            /* terminal */
-            foundSizeStr = chars.join('');
-            foundSize = +foundSizeStr;
-            if(isNaN(foundSize)) {
-              // console.log('readRes.bytesRead');
-              // console.log(readRes.bytesRead);
-              // console.log('bytes.length');
-              // console.log(bytes.length);
-              throw new Error(`invalid size string: ${foundSizeStr} at ${line}:${col}`);
-            }
-            /* reset */
-            chars.length = 0;
-            szParse = false;
-            fParse = true;
-          } else {
-            chars.push(String.fromCharCode(currByte));
-          }
-        } else if(fParse) {
-          chars.push(String.fromCharCode(currByte));
-        }
-      }
-    }
-
-    bytesRead += readRes.bytesRead;
-    pos += readRes.bytesRead;
-    if(dupeCount < 1) {
-      break;
-    }
-  }
-
-  findHashDupesRes = {
-    bytesRead,
-  };
-  return findHashDupesRes;
 }
 
 type GetFileHashesRes = {
@@ -998,6 +782,9 @@ async function getFileHashes(sizeFilePath: string, possibleDupeSizeMap: Map<numb
     });
     if(runningHashPromises >= maxConcurrentHashPromises) {
       return 'pause';
+    }
+    if(process.exitCode !== undefined) {
+      return 'finish';
     }
   };
   await readFileByLine(sizeFilePath, {
@@ -1115,8 +902,9 @@ async function getDuplicateFileHashes(hashFilePath: string, dupeMap: Map<string,
   });
   console.log('rfl done');
   while(runningDupePromises > 0) {
-    await sleep(0);
+    await sleep(10);
   }
+  dupesWs.close();
   getDuplicateFileHashesRes = {
     dupesFilePath,
     hashSizeMap,
@@ -1412,4 +1200,317 @@ function isFlatObject(val: unknown): val is Record<string, unknown> {
     }
   }
   return true;
+}
+
+/*
+  nlStart = false
+  hPos = 0
+  hParse = false
+  szParse = false
+
+  foundHash = undefined
+  foundSize = undefined
+  foundFilePath = undefined
+  if currChar === newline
+    if hParse or szParse
+      throw error, invalid format
+    if fParse
+      << terminal >>
+      foundFilePath = chars[].join
+    else
+      hParse = true
+    reset
+  else
+    if hParse
+      if currChar === space
+        <<terminal char>>
+        set foundHash = chars[].join
+        assert foundHash === hash
+        set chars[].length = 0
+        set hParse = false
+        set szParse = true
+      else
+        if currChar === hash[hPos]
+          chars.push(currChar)
+        else
+          reset
+    else if szParse
+      if currChar === space
+        <<terminal char>>
+        set foundSize = +(chars[].join)
+        assert foundSize is number
+        set chars[].length = 0
+        set szParse = false
+        set fParse = true
+      else
+        assert currChar is digit
+        chars[].push(currChar)
+    else if fParse
+      chars[].push(currChar)
+ */
+async function formatDupes(dupesFilePath: string, hashSizeMap: Map<string, number>, dupeCountMap: Map<string, number>) {
+  let fileHandlePromise: Promise<FileHandle>;
+  let fileHandle: FileHandle;
+  let fmtFileName: string;
+  let fmtFilePath: string;
+  let fmtWs: WriteStream;
+  let totalBytesRead: number;
+  let rfbTimer: Timer;
+  let rfbMs: number;
+
+  let findHashDupesRes: FindHashDupesRes;
+
+  totalBytesRead = 0;
+
+  fileHandlePromise = fs.open(dupesFilePath);
+  fileHandlePromise.finally(() => {
+    fileHandle.close();
+  });
+  fileHandle = await fileHandlePromise;
+
+  fmtFileName = '0_dupes_fmt.txt';
+  fmtFilePath = [
+    SCANDIR_OUT_DATA_DIR_PATH,
+    fmtFileName,
+  ].join(path.sep);
+  fmtWs = createWriteStream(fmtFilePath);
+
+  rfbTimer = Timer.start();
+  // [ targetHash, targetHashDupeCount ] = [ ...hashSizeMap.entries() ][0];
+  let hashSizeTuples: [ string, number ][];
+  hashSizeTuples = [ ...hashSizeMap.entries() ];
+  /*
+    sort by size desc
+    */
+  hashSizeTuples.sort((a, b) => {
+    if(a[1] > b[1]) {
+      return -1;
+    } else if(a[1] < b[1]) {
+      return 1;
+    } else {
+      return 0;
+    }
+  });
+  // console.log(hashSizeTuples[0]);
+  // [ targetHash, targetHashDupeCount ] = hashSizeTuples[0];
+  for(let i = 0; i < hashSizeTuples.length; ++i) {
+    let targetHash: string;
+    let targetHashSize: number;
+    let targetHashDupeCount: number | undefined;
+    let writeHeading: boolean;
+    writeHeading = true;
+
+    const dupeCb: FindHashDupesOpts['dupeCb'] = (filePath, size, hash, range) => {
+      if(writeHeading) {
+        writeHeading = false;
+        fmtWs.write(`${hash} ${size}\n`);
+      }
+      // fmtWs.write(`  [ ${range.join(', ')} ]\n`);
+      fmtWs.write(`  ${filePath}\n`);
+    };
+    let buf: Buffer;
+    buf = Buffer.alloc(128 * 1024);
+
+    [ targetHash, ] = hashSizeTuples[i];
+    targetHashDupeCount = dupeCountMap.get(targetHash);
+    if(targetHashDupeCount === undefined) {
+      throw new Error(`undefined dupe count for hash: ${targetHash}`);
+    }
+    findHashDupesRes = await findHashDupes({
+      fileHandle,
+      targetHash,
+      dupeCount: targetHashDupeCount,
+      buf,
+      dupeCb,
+    });
+    totalBytesRead += findHashDupesRes.bytesRead;
+    if((i % 1e3) === 0) {
+      process.stdout.write(((i / hashSizeTuples.length)).toFixed(2));
+    }
+    if((i % 1e2) === 0) {
+      process.stdout.write('.');
+    }
+  }
+
+  rfbMs = rfbTimer.stop();
+
+  console.log(`totalBytesRead: ${totalBytesRead}b (${getIntuitiveByteString(totalBytesRead)})`);
+  // console.log(`read file buffer took: ${rfbMs} ms (${getIntuitiveTimeString(rfbMs)})`);
+  console.log(`read file buffer took: ${getIntuitiveTimeString(rfbMs)} (${rfbMs} ms)\n`);
+}
+
+type FindHashDupesOpts = {
+  fileHandle: FileHandle;
+  targetHash: string;
+  dupeCount: number;
+  buf: Buffer,
+  dupeCb: (filePath: string, size: number, hash: string, range: [ number, number ]) => void;
+};
+
+type FindHashDupesRes = {
+  bytesRead: number;
+}
+
+async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes> {
+  let fileHandle: FileHandle;
+  let targetHash: string;
+  let dupeCount: number;
+
+  let buf: Buffer;
+  let pos: number;
+  let readRes: FileReadResult<Buffer>;
+  let bytesRead: number;
+
+  let firstChar: boolean;
+  let hParse: boolean;
+  let szParse: boolean;
+  let fParse: boolean;
+  let hPos: number;
+  let hashLen: number | undefined;
+  let chars: string[];
+  let foundHash: string | undefined;
+  let foundSizeStr: string | undefined;
+  let foundSize: number | undefined;
+  let foundFilePath: string | undefined;
+
+  let findHashDupesRes: FindHashDupesRes;
+
+  let currChar: string;
+  let currByte: number;
+
+  let line: number;
+  let col: number;
+
+  let dupeStartPos: number | undefined;
+  let dupeEndPos: number | undefined;
+
+  fileHandle = opts.fileHandle;
+  targetHash = opts.targetHash;
+  dupeCount = opts.dupeCount;
+
+  buf = opts.buf;
+  pos = 0;
+  bytesRead = 0;
+
+  /* Init parsing vars  */
+  hParse = false;
+  szParse = false;
+  fParse = false;
+  hPos = 0;
+  chars = [];
+
+  firstChar = true;
+
+  line = 1;
+  col = 0;
+
+  while((readRes = await fileHandle.read(buf, 0, buf.length, pos)).bytesRead !== 0) {
+    for(let i = 0; i < buf.length; ++i) {
+      // let subBuf: Buffer;
+
+      // subBuf = buf.subarray(i, i + 1);
+      currByte = buf[i];
+      if(firstChar) {
+        /*
+          necessary because the first line doesn't start with a newline
+         */
+        hParse = true;
+        firstChar = false;
+        dupeStartPos = pos + i;
+      }
+      /* 10 -> '\n' */
+      if(currByte === 10) {
+        line++;
+        col = 0;
+        if(hParse || szParse) {
+          throw new Error(`Invalid format, buf dump: ${buf.toString()}`);
+        } else if(fParse) {
+          /* terminal */
+          foundFilePath = chars.join('');
+
+          chars.length = 0;
+          fParse = false;
+
+          dupeEndPos = pos + i;
+          // assert(foundFilePath.length > 0);
+          // assert(foundSize !== undefined);
+          // assert(foundHash !== undefined);
+          // assert(dupeStartPos !== undefined);
+          assert(
+            (foundFilePath.length > 0)
+            && (foundSize !== undefined)
+            && (foundHash !== undefined)
+            && (dupeStartPos !== undefined)
+          );
+          opts.dupeCb(foundFilePath, foundSize, foundHash, [ dupeStartPos, dupeEndPos ]);
+          dupeCount--;
+
+          foundHash = undefined;
+          foundSize = undefined;
+          foundFilePath = undefined;
+        }
+        /* reset */
+        hParse = true;
+        dupeStartPos = pos + i;
+      } else {
+        col++;
+        if(hParse) {
+          /* 32 -> ' ' */
+          if(currByte === 32) {
+            /* terminal */
+            foundHash = chars.join('');
+            // assert(foundHash === targetHash);
+            /* start size parse */
+            szParse = true;
+            /* reset */
+            hParse = false;
+            hPos = 0;
+            chars.length = 0;
+          } else if(currByte === targetHash.charCodeAt(hPos)) {
+            chars.push(String.fromCharCode(currByte));
+            hPos++;
+          } else {
+            /* reset */
+            hParse = false;
+            szParse = false;
+            chars.length = 0;
+            hPos = 0;
+          }
+        } else if(szParse) {
+          /* 32 -> ' ' */
+          if(currByte === 32) {
+            /* terminal */
+            foundSizeStr = chars.join('');
+            foundSize = +foundSizeStr;
+            if(isNaN(foundSize)) {
+              // console.log('readRes.bytesRead');
+              // console.log(readRes.bytesRead);
+              // console.log('bytes.length');
+              // console.log(bytes.length);
+              throw new Error(`invalid size string: ${foundSizeStr} at ${line}:${col}`);
+            }
+            /* reset */
+            chars.length = 0;
+            szParse = false;
+            fParse = true;
+          } else {
+            chars.push(String.fromCharCode(currByte));
+          }
+        } else if(fParse) {
+          chars.push(String.fromCharCode(currByte));
+        }
+      }
+    }
+
+    bytesRead += readRes.bytesRead;
+    pos += readRes.bytesRead;
+    if(dupeCount < 1) {
+      break;
+    }
+  }
+
+  findHashDupesRes = {
+    bytesRead,
+  };
+  return findHashDupesRes;
 }
