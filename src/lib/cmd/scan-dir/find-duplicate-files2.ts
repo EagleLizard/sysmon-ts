@@ -471,7 +471,7 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
           fileHandlePromise = fs.open(dupesFilePath);
           fileHandle = await fileHandlePromise;
         }
-        debug2Ws?.write(`seek: ${targetHash.substring(0, 7)}\n`);
+        debug2Ws?.write(`\nseek: ${targetHash.substring(0, 7)}\n`);
         seekForHashRes = await seekForHash({
           targetHash,
           fileHandle,
@@ -481,7 +481,6 @@ async function formatDupes2(dupesFilePath: string, hashSizeMap: Map<string, numb
           debug2Ws,
         });
         innerLoopCount += seekForHashRes.innerLoopCount;
-        // debugWs?.write(`curr fh seeks: ${currFhSeeks}\n`);
         debugWs?.write(`ilc: ${innerLoopCount}\n`);
         debugWs?.write(`ilcAvg: ${(Math.round((innerLoopCount / hsIdx) * 100) / 100)}\n`);
 
@@ -567,6 +566,8 @@ async function seekForHash(opts: SeekForHashOpts): Promise<SeekForHashRes> {
   let pos: number;
   let skip: boolean;
 
+  let debug2Ws: WriteStream | undefined;
+
   fileHandle = opts.fileHandle;
   buf = opts.buf;
   targetHash = opts.targetHash;
@@ -578,7 +579,9 @@ async function seekForHash(opts: SeekForHashOpts): Promise<SeekForHashRes> {
   pos = 0;
   skip = false;
 
-  opts.debug2Ws?.write(`${targetHash.substring(0, 7)}\n`);
+  debug2Ws = opts.debug2Ws;
+
+  debug2Ws?.write(`${targetHash.substring(0, 7)}\n`);
 
   for(;;) {
     let bufStr: string;
@@ -589,8 +592,6 @@ async function seekForHash(opts: SeekForHashOpts): Promise<SeekForHashRes> {
     bufStr = buf.subarray(0, readRes.bytesRead).toString();
     nlRx = /\n/g;
     lastNlPos = -1;
-
-    // let buf_nlIdx = buf.indexOf(10);
 
     while(nlRx.exec(bufStr) !== null) {
       let nlSub: string;
@@ -622,9 +623,11 @@ async function seekForHash(opts: SeekForHashOpts): Promise<SeekForHashRes> {
           await drainDeferred.promise;
         }
         wsRes = fmtWs.write(`${line}\n`);
+
         // opts.debugWs?.write(`${pos} ${nlIdx}\n`);
-        opts.debug2Ws?.write(`dupe count: ${dupeCount}\n`);
-        opts.debug2Ws?.write(`ilc: ${innerLoopCount}\n`);
+        debug2Ws?.write(`dupe count: ${dupeCount}\n`);
+        debug2Ws?.write(`ilc: ${innerLoopCount}\n`);
+
         dupeCount--;
         if(!wsRes) {
           process.stdout.write('•');
