@@ -88,3 +88,47 @@ export function readFileByLine(filePath: string, opts: ReadFileByLineOpts): Prom
   });
   return readFilePromise;
 }
+
+type GetLineReaderOpts = {
+  highWaterMark?: number;
+};
+
+export type LineReader = {
+  read: () => Promise<string | undefined>;
+}
+
+export function getLineReader(filePath: string, opts: GetLineReaderOpts = {}): LineReader {
+  let rflIter: AsyncGenerator<string>;
+  let fileReader: LineReader;
+  rflIter = getFileLineIter(filePath, opts);
+  const _read = async () => {
+    let rflIterRes: IteratorResult<string>;
+    rflIterRes = await rflIter.next();
+    if(rflIterRes.done) {
+      return undefined;
+    }
+    return rflIterRes.value;
+  };
+
+  fileReader = {
+    read: _read,
+  };
+  return fileReader;
+}
+
+async function *getFileLineIter(filePath: string, opts: GetLineReaderOpts): AsyncGenerator<string, undefined, undefined> {
+  let rs: ReadStream;
+  let rl: readline.Interface;
+  let rsOpts: { highWaterMark?: number };
+  rsOpts = {};
+  if(opts.highWaterMark !== undefined) {
+    rsOpts.highWaterMark = opts.highWaterMark;
+  }
+  rs = fs.createReadStream(filePath, rsOpts);
+  rl = readline.createInterface({
+    input: rs,
+  });
+  for await (const line of rl) {
+    yield line;
+  }
+}

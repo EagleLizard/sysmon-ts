@@ -1,20 +1,20 @@
 
-import { Stats, WriteStream, createWriteStream, lstatSync } from 'fs';
+import assert from 'assert';
+import path from 'path';
+import { Stats, WriteStream, createWriteStream } from 'fs';
+import { stat } from 'fs/promises';
+
 import { ScanDirOpts } from '../parse-sysmon-args';
-import { lstat, readFile, stat } from 'fs/promises';
-import { sleep } from '../../util/sleep';
 import { logger } from '../../logger';
 import { isObject, isString } from '../../util/validate-primitives';
-import assert from 'assert';
-import { ReadFileByLineOpts, readFileByLine } from '../../util/files';
+import { LineReader, getLineReader } from '../../util/files';
 import { SCANDIR_OUT_DATA_DIR_PATH } from '../../../constants';
-import path from 'path';
+import { Deferred } from '../../../test/deferred';
+import { Timer } from '../../util/timer';
+import { scanDirColors as c } from './scan-dir-colors';
+import { CliColors, ColorFormatter } from '../../service/cli-colors';
 
-type FindDupesWs = {
-  write: WriteStream['write'];
-  close: WriteStream['close'];
-  once: WriteStream['once'];
-}
+const RFL_MOD = 500;
 
 export async function findDupes(opts: {
   filesDataFilePath: string;
@@ -26,34 +26,62 @@ export async function findDupes(opts: {
 }): Promise<Map<string, string[]>> {
   
   // await sleep(45 * 1e3);
-  const maybeDupes = await getMaybeDupes(opts.filesDataFilePath, {
+  const possibleDupes = await getPossibleDupes(opts.filesDataFilePath, {
     nowDate: opts.nowDate,
   });
 
   return new Map<string, string[]>();
 }
 
-async function getMaybeDupes(filesDataFilePath: string, opts: {
+async function getPossibleDupes(filesDataFilePath: string, opts: {
   nowDate: Date,
 }) {
-  let countMap: Map<number, number>;
+  let possibleDupeMap: Map<number, number>;
   let getFileSizeRes: GetFileSizeRes;
   let sizeMap: GetFileSizeRes['sizeMap'];
+  let sizeMapIter: IterableIterator<number>;
+  let sizeMapIterRes: IteratorResult<number>;
+
   getFileSizeRes = await getFileSizes(filesDataFilePath, {
     nowDate: opts.nowDate,
   });
   sizeMap = getFileSizeRes.sizeMap;
-  console.log(sizeMap.size);
-  // for(let i = 0; i < fileSizeEntries.length; ++i) {
-  //   let currCount: number | undefined;
-  //   currCount = countMap.get(fileSizeEntries[i][1]);
-  //   assert(currCount !== undefined);
-  //   if(currCount < 2) {
-  //     fileSizeMap.delete(fileSizeEntries[i][0]);
-  //   }
-  // }
 
-  return countMap;
+  possibleDupeMap = new Map();
+  sizeMapIter = sizeMap.keys();
+  while(!(sizeMapIterRes = sizeMapIter.next()).done) {
+    let size: number;
+    let fileCount: number | undefined;
+    size = sizeMapIterRes.value;
+    fileCount = sizeMap.get(size);
+    assert(fileCount !== undefined);
+    if(
+      (size > 0)
+      && (fileCount > 1)
+    ) {
+      possibleDupeMap.set(size, fileCount);
+    }
+    sizeMap.delete(size);
+  }
+  sizeMap.clear();
+
+  let possibleDupeIter: IterableIterator<number>;
+  let possibleDupeIterRes: IteratorResult<number>;
+  let possibleDupeCount: number;
+  possibleDupeCount = 0;
+
+  possibleDupeIter = possibleDupeMap.keys();
+  while(!(possibleDupeIterRes = possibleDupeIter.next()).done) {
+    let size: number;
+    let fileCount: number | undefined;
+    size = possibleDupeIterRes.value;
+    fileCount = possibleDupeMap.get(size);
+    assert(fileCount !== undefined);
+    possibleDupeCount += fileCount;
+  }
+  _print({ possibleDupeCount });
+
+  return possibleDupeMap;
 }
 
 type GetFileSizeRes = {
@@ -65,11 +93,14 @@ async function getFileSizes(filesDataFilePath: string, opts: {
   nowDate: Date,
 }): Promise<GetFileSizeRes> {
   let sizeMap: Map<number, number>;
-  let sizeCountMap: Map<number, number>;
   let sizeFileName: string;
   let sizeFilePath: string;
-
   let sizeWs: WriteStream;
+  let lineReader: LineReader;
+  let line: string | undefined;
+  let drainDeferred: Deferred | undefined;
+
+  let rflTimer: Timer;
 
   // sizeFileName = `${getDateFileStr(opts.nowDate)}_sizes.txt`;
   sizeFileName = '0_sizes.txt';
@@ -79,16 +110,19 @@ async function getFileSizes(filesDataFilePath: string, opts: {
   ].join(path.sep);
 
   sizeMap = new Map();
-  sizeCountMap = new Map();
 
   sizeWs = createWriteStream(sizeFilePath);
+  lineReader = getLineReader(filesDataFilePath);
 
-  const rflCb: ReadFileByLineOpts['lineCb'] = (line) => {
-    let fileStat: Stats | undefined;
-    let fileSizeCount: number | undefined;
+  rflTimer = Timer.start();
+
+  while((line = await lineReader.read()) !== undefined) {
+    let fileStats: Stats | undefined;
     let fileSize: number;
+    let fileSizeCount: number | undefined;
+    let wsRes: boolean;
     try {
-      fileStat = lstatSync(line);
+      fileStats = await stat(line);
     } catch(e) {
       if(
         isObject(e)
@@ -98,27 +132,73 @@ async function getFileSizes(filesDataFilePath: string, opts: {
           || (e.code === 'EACCES')
         )
       ) {
-        console.log({ fileStat });
-        logger.error(`findDuplicates lineCb: ${e.code} ${line}`);
-        return;
+        console.log({ fileStats });
+        logger.error(`findDuplicates lstat: ${e.code} ${line}`);
+        continue;
       }
       console.error(e);
       throw e;
     }
-    fileSize = fileStat.size;
+    fileSize = fileStats.size;
     if((fileSizeCount = sizeMap.get(fileSize)) === undefined) {
       fileSizeCount = 0;
     }
     sizeMap.set(fileSize, fileSizeCount + 1);
-    sizeWs.write(`${fileSize} ${line}`);
-  };
-
-  await readFileByLine(filesDataFilePath, {
-    lineCb: rflCb,
-  });
+    if(drainDeferred !== undefined) {
+      await drainDeferred.promise;
+    }
+    wsRes = sizeWs.write(`${line}\n`);
+    if(!wsRes) {
+      if(drainDeferred === undefined) {
+        drainDeferred = Deferred.init();
+        sizeWs.once('drain', () => {
+          setImmediate(() => {
+            assert(drainDeferred !== undefined);
+            drainDeferred.resolve();
+          });
+        });
+        drainDeferred.promise.finally(() => {
+          drainDeferred = undefined;
+        });
+      }
+    }
+    if(rflTimer.currentMs() > RFL_MOD) {
+      process.stdout.write('.');
+      rflTimer.reset();
+    }
+  }
+  process.stdout.write('\n');
 
   return {
     sizeFilePath,
-    sizeMap: sizeCountMap
+    sizeMap,
   };
+}
+
+function _print(val: unknown) {
+
+  if(isObject(val)) {
+    let keys: (string | number)[];
+    keys = Object.keys(val);
+    for(let i = 0; i < keys.length; ++i) {
+      console.log(`${keys[i]}: ${_fmtFn(val[keys[i]])}`);
+    }
+  } else {
+    _fmtFn(val);
+  }
+
+  function _fmtFn(_val: unknown): string {
+    switch(typeof _val) {
+      case 'boolean':
+        return c.pink(_val);
+      case 'number':
+        return c.yellow_light(_val);
+      case 'string':
+        return CliColors.rgb(100, 255, 100)(`'${_val}'`);
+      case 'object':
+        throw new Error('no objects :/');
+      default:
+        return c.yellow_light(_val);
+    }
+  }
 }

@@ -10,8 +10,9 @@ import { mkdirIfNotExist } from '../../util/files';
 import { getIntuitiveTimeString } from '../../util/format-util';
 import { Timer } from '../../util/timer';
 import { getDateFileStr } from '../../util/datetime-util';
-import { findDuplicateFiles } from './find-duplicate-files';
-import { findDuplicateFiles2 } from './find-duplicate-files2';
+// import { findDuplicateFiles } from './find-duplicate-files';
+// import { findDuplicateFiles2 } from './find-duplicate-files2';
+import { findDupes } from './find-dupes3';
 import { ScanDirCbParams, scanDir, scanDir2 } from './scan-dir';
 import { ScanDirOpts, getScanDirArgs, getScanDirOpts } from '../parse-sysmon-args';
 import { ParsedArgv2 } from '../parse-argv';
@@ -158,14 +159,22 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
     return;
   }
   timer = Timer.start();
-  const duplicateFiles = await findDuplicateFiles2({
+  const duplicateFiles = await findDupes({
     filesDataFilePath,
     nowDate,
     debug: {
       dirPaths,
       opts,
-    }
+    },
   });
+  // const duplicateFiles = await findDuplicateFiles2({
+  //   filesDataFilePath,
+  //   nowDate,
+  //   debug: {
+  //     dirPaths,
+  //     opts,
+  //   }
+  // });
   let fileDupeCount: number;
   let dupeMapKeys: string[];
 
