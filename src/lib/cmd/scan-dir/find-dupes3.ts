@@ -1,8 +1,8 @@
 
 import assert from 'assert';
 import path from 'path';
-import { Stats, WriteStream, createWriteStream } from 'fs';
-import { rm, rmdir, stat } from 'fs/promises';
+import { Dirent, Stats, WriteStream, createWriteStream } from 'fs';
+import { readdir, rm, rmdir, stat } from 'fs/promises';
 
 import { ScanDirOpts } from '../parse-sysmon-args';
 import { logger } from '../../logger';
@@ -32,6 +32,7 @@ const HASH_HWM = 64 * 1024;
 
 // const SORT_CHUNK_FILE_LINE_COUNT = 100;
 const SORT_CHUNK_FILE_LINE_COUNT = 1e3;
+const NUM_SORT_DUPE_CHUNKS = 100;
 
 export async function findDupes(opts: {
   filesDataFilePath: string;
@@ -91,12 +92,12 @@ export async function findDupes(opts: {
   totalDupeCount = getTotalDupeCount(dupeCountMap);
   _print({ totalDupeCount });
 
-  await sortDuplicates(dupeFilePath, totalDupeCount);
+  await sortDuplicates(dupeFilePath, totalDupeCount, opts.nowDate);
 
   return new Map<string, string[]>();
 }
 
-async function sortDuplicates(dupeFilePath: string, totalDupeCount: number) {
+async function sortDuplicates(dupeFilePath: string, totalDupeCount: number, nowDate: Date) {
   let tmpDirExists: boolean;
   let tmpDir: string;
   tmpDir = SCANDIR_FIND_DUPES_TMP_DIR;
@@ -108,6 +109,70 @@ async function sortDuplicates(dupeFilePath: string, totalDupeCount: number) {
   }
   mkdirIfNotExist(tmpDir);
   await writeTmpDupeSortChnks(dupeFilePath, tmpDir, totalDupeCount);
+
+  await sortTmpDupeChunks(tmpDir, totalDupeCount, nowDate);
+}
+
+async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate: Date) {
+  let dupesFmtFileName: string;
+  let dupesFmtFilePath: string;
+  let dupesFmtWs: WriteStream;
+
+  let dupeChunkDirents: Dirent[];
+
+  let lineReaders: Map<string, LineReader>;
+
+  dupesFmtFileName = '0_dupes_fmt.txt';
+  dupesFmtFilePath = [
+    SCANDIR_OUT_DATA_DIR_PATH,
+    dupesFmtFileName,
+  ].join(path.sep);
+  dupesFmtWs = createWriteStream(dupesFmtFilePath);
+
+  dupeChunkDirents = await readdir(tmpDir, {
+    withFileTypes: true,
+  });
+  lineReaders = new Map();
+  for(let i = 0; i < dupeChunkDirents.length; ++i) {
+    let currDirent: Dirent;
+    let currFileName: string;
+    let currFilePath: string;
+    let fileNameRx: RegExp;
+    let lineReader: LineReader;
+    currDirent = dupeChunkDirents[i];
+    currFileName = currDirent.name;
+    fileNameRx = /^[0-9]+.txt$/i;
+    if(!fileNameRx.test(currFileName)) {
+      throw new Error(`Invalid file name in tmpDir: ${currFileName}`);
+    }
+    currFilePath = [
+      currDirent.parentPath,
+      currFileName,
+    ].join(path.sep);
+    lineReader = getLineReader(currFilePath);
+    lineReaders.set(currFilePath, lineReader);
+  }
+  while(lineReaders.size > 0) {
+    let lineReaderIter: IterableIterator<[string, LineReader]>;
+    let lineReaderIterRes: IteratorResult<[string, LineReader]>;
+    lineReaderIter = lineReaders.entries();
+    while(!(lineReaderIterRes = lineReaderIter.next()).done) {
+      let currFilePath: string;
+      let lineReader: LineReader;
+      let line: string | undefined;
+      [ currFilePath, lineReader ] = lineReaderIterRes.value;
+      line = await lineReader.read();
+      if(line === undefined) {
+        // finished - remove linereader from map
+      } else {
+        // add line to priority queue
+      }
+      console.log('');
+      console.log(currFilePath);
+      console.log(line);
+    }
+    break;
+  }
 }
 
 async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, totalDupeCount: number) {
@@ -121,7 +186,13 @@ async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, total
   let rflTimer: Timer;
   let percentTimer: Timer;
 
+  let chunkSize: number;
+
   // sort into chunks of certain sizes
+
+  // chunkSize = Math.round(totalDupeCount / NUM_SORT_DUPE_CHUNKS);
+  chunkSize = SORT_CHUNK_FILE_LINE_COUNT;
+  console.log(`chunkSize: ${c.yellow_light(chunkSize)}`);
 
   currDupeLines = [];
   tmpFileCounter = 0;
@@ -132,7 +203,7 @@ async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, total
   lineReader = getLineReader(dupeFilePath);
   while((line = await lineReader.read()) !== undefined) {
     currDupeLines.push(line);
-    if(currDupeLines.length >= SORT_CHUNK_FILE_LINE_COUNT) {
+    if(currDupeLines.length >= chunkSize) {
       await _writeTmpFile();
     }
     lineCount++;
