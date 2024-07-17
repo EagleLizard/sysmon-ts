@@ -123,6 +123,7 @@ async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate
   let dupesFmtFileName: string;
   let dupesFmtFilePath: string;
   let dupesFmtWs: WriteStream;
+  let drainDeferred: Deferred | undefined;
 
   let dupeChunkDirents: Dirent[];
 
@@ -190,7 +191,6 @@ async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate
     let nextHashInfo: FileHashInfo | undefined;
     let nextDupeInfo: DupeLineInfo | undefined;
     let wsRes: boolean;
-    let drainDeferred: Deferred | undefined;
     maxIdx = -1;
     for(let i = 0; i < dupeLineInfos.length; ++i) {
       let currSize: number;
@@ -241,25 +241,25 @@ async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate
       write line to file
       replace line and hash info with next entry
      */
-    // if(drainDeferred !== undefined) {
-    //   await drainDeferred.promise;
-    // }
+    if(drainDeferred !== undefined) {
+      await drainDeferred.promise;
+    }
     wsRes = dupesFmtWs.write(`${maxDupeInfo.line}\n`);
-    // if(
-    //   !wsRes
-    //   && (drainDeferred === undefined)
-    // ) {
-    //   drainDeferred = Deferred.init();
-    //   dupesFmtWs.once('drain', () => {
-    //     setImmediate(() => {
-    //       assert(drainDeferred !== undefined);
-    //       drainDeferred.resolve();
-    //     });
-    //   });
-    //   drainDeferred.promise.finally(() => {
-    //     drainDeferred = undefined;
-    //   });
-    // }
+    if(
+      !wsRes
+      && (drainDeferred === undefined)
+    ) {
+      drainDeferred = Deferred.init();
+      dupesFmtWs.once('drain', () => {
+        setImmediate(() => {
+          assert(drainDeferred !== undefined);
+          drainDeferred.resolve();
+        });
+      });
+      drainDeferred.promise.finally(() => {
+        drainDeferred = undefined;
+      });
+    }
   }
   _print({ iterCount });
 }
@@ -312,7 +312,8 @@ async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, total
   // sort into chunks of certain sizes
 
   // chunkSize = Math.round(totalDupeCount / NUM_SORT_DUPE_CHUNKS);
-  chunkSize = SORT_CHUNK_FILE_LINE_COUNT;
+  // chunkSize = SORT_CHUNK_FILE_LINE_COUNT;
+  chunkSize = Math.round(totalDupeCount / NUM_SORT_DUPE_CHUNKS);
   console.log(`chunkSize: ${c.yellow_light(chunkSize)}`);
 
   currDupeLines = [];
