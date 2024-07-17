@@ -113,6 +113,12 @@ async function sortDuplicates(dupeFilePath: string, totalDupeCount: number, nowD
   await sortTmpDupeChunks(tmpDir, totalDupeCount, nowDate);
 }
 
+type DupeLineInfo = {
+  key: string;
+  line: string | undefined;
+  fileHashInfo: FileHashInfo | undefined;
+};
+
 async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate: Date) {
   let dupesFmtFileName: string;
   let dupesFmtFilePath: string;
@@ -120,7 +126,7 @@ async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate
 
   let dupeChunkDirents: Dirent[];
 
-  let lineReaders: Map<string, LineReader>;
+  let lineReaderMap: Map<string, LineReader>;
 
   dupesFmtFileName = '0_dupes_fmt.txt';
   dupesFmtFilePath = [
@@ -132,7 +138,7 @@ async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate
   dupeChunkDirents = await readdir(tmpDir, {
     withFileTypes: true,
   });
-  lineReaders = new Map();
+  lineReaderMap = new Map();
   for(let i = 0; i < dupeChunkDirents.length; ++i) {
     let currDirent: Dirent;
     let currFileName: string;
@@ -150,29 +156,144 @@ async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate
       currFileName,
     ].join(path.sep);
     lineReader = getLineReader(currFilePath);
-    lineReaders.set(currFilePath, lineReader);
+    lineReaderMap.set(currFilePath, lineReader);
   }
-  while(lineReaders.size > 0) {
-    let lineReaderIter: IterableIterator<[string, LineReader]>;
-    let lineReaderIterRes: IteratorResult<[string, LineReader]>;
-    lineReaderIter = lineReaders.entries();
-    while(!(lineReaderIterRes = lineReaderIter.next()).done) {
-      let currFilePath: string;
-      let lineReader: LineReader;
-      let line: string | undefined;
-      [ currFilePath, lineReader ] = lineReaderIterRes.value;
-      line = await lineReader.read();
-      if(line === undefined) {
-        // finished - remove linereader from map
+  let iterCount: number;
+  let dupeLineInfos: DupeLineInfo[];
+  let lrTuples: [ string, LineReader ][];
+  iterCount = 0;
+  dupeLineInfos = [];
+  lrTuples = [ ...lineReaderMap.entries() ];
+  for(let i = 0; i < lrTuples.length; ++i) {
+    let line: string | undefined;
+    let currKey: string;
+    let currLineReader: LineReader;
+    let fileHashInfo: FileHashInfo;
+    [ currKey, currLineReader ] = lrTuples[i];
+    line = await currLineReader.read();
+    /* line shouldn't be undefined (tmp files should not be empty at start) */
+    assert(line !== undefined);
+    fileHashInfo = getHashInfo(line);
+    dupeLineInfos.push({
+      key: currKey,
+      line,
+      fileHashInfo,
+    });
+  }
+  while(lineReaderMap.size > 0) {
+    iterCount++;
+    /* find largest size */
+    let maxIdx: number;
+    let maxDupeInfo: DupeLineInfo | undefined;
+    let maxLineReader: LineReader | undefined;
+    let nextLineRes: string | undefined;
+    let nextHashInfo: FileHashInfo | undefined;
+    let nextDupeInfo: DupeLineInfo | undefined;
+    let wsRes: boolean;
+    let drainDeferred: Deferred | undefined;
+    maxIdx = -1;
+    for(let i = 0; i < dupeLineInfos.length; ++i) {
+      let currSize: number;
+      let currDupeInfo: DupeLineInfo;
+      let currFileHashInfo: FileHashInfo | undefined;
+      currDupeInfo = dupeLineInfos[i];
+      currFileHashInfo = currDupeInfo.fileHashInfo;
+      if(currFileHashInfo === undefined) {
+        throw new Error(`unexpected undefined fileHashInfo: ${currDupeInfo.key}`);
       } else {
-        // add line to priority queue
+        currSize = currFileHashInfo.size;
+        if(
+          (maxDupeInfo === undefined)
+          || (maxDupeInfo.fileHashInfo === undefined)
+          || (currSize > maxDupeInfo.fileHashInfo.size)
+        ) {
+          maxDupeInfo = currDupeInfo;
+          maxIdx = i;
+        }
       }
-      console.log('');
-      console.log(currFilePath);
-      console.log(line);
     }
-    break;
+    // console.log({ maxIdx });
+    assert(
+      (maxIdx !== -1)
+      && (maxDupeInfo !== undefined)
+    );
+    maxLineReader = lineReaderMap.get(maxDupeInfo.key);
+    assert(maxLineReader !== undefined);
+    nextLineRes = await maxLineReader.read();
+    if(nextLineRes === undefined) {
+      /*
+        remove from map,
+        remove from lineInfos
+       */
+      lineReaderMap.delete(maxDupeInfo.key);
+      dupeLineInfos.splice(maxIdx, 1);
+    } else {
+      nextHashInfo = getHashInfo(nextLineRes);
+      nextDupeInfo = {
+        key: maxDupeInfo.key,
+        line: nextLineRes,
+        fileHashInfo: nextHashInfo,
+      };
+      dupeLineInfos[maxIdx] = nextDupeInfo;
+    }
+
+    /*
+      write line to file
+      replace line and hash info with next entry
+     */
+    // if(drainDeferred !== undefined) {
+    //   await drainDeferred.promise;
+    // }
+    wsRes = dupesFmtWs.write(`${maxDupeInfo.line}\n`);
+    // if(
+    //   !wsRes
+    //   && (drainDeferred === undefined)
+    // ) {
+    //   drainDeferred = Deferred.init();
+    //   dupesFmtWs.once('drain', () => {
+    //     setImmediate(() => {
+    //       assert(drainDeferred !== undefined);
+    //       drainDeferred.resolve();
+    //     });
+    //   });
+    //   drainDeferred.promise.finally(() => {
+    //     drainDeferred = undefined;
+    //   });
+    // }
   }
+  _print({ iterCount });
+}
+
+type FileHashInfo = {
+  hash: string;
+  size: number;
+  filePath: string;
+};
+
+function getHashInfo(line: string): FileHashInfo {
+  let lineRx: RegExp;
+  let rxExecRes: RegExpExecArray | null;
+  let hash: string | undefined;
+  let sizeStr: string | undefined;
+  let filePath: string | undefined;
+  let size: number;
+  lineRx = /^(?<hash>[a-f0-9]+) (?<size>[0-9]+) (?<filePath>.*)$/i;
+  rxExecRes = lineRx.exec(line);
+  hash = rxExecRes?.groups?.hash;
+  sizeStr = rxExecRes?.groups?.size;
+  filePath = rxExecRes?.groups?.filePath;
+  assert(
+    (hash !== undefined)
+    && (sizeStr !== undefined)
+    && (filePath !== undefined)
+  );
+  size = +sizeStr;
+  assert(!isNaN(size));
+  return {
+    hash,
+    size,
+    filePath,
+  };
 }
 
 async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, totalDupeCount: number) {
