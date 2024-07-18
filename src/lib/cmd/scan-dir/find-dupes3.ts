@@ -15,6 +15,7 @@ import { scanDirColors as c } from './scan-dir-colors';
 import { CliColors, ColorFormatter } from '../../service/cli-colors';
 import { HashFile2Opts, hashFile2 } from '../../util/hasher';
 import { getIntuitiveTimeString } from '../../util/format-util';
+import { sleep, sleepImmediate } from '../../util/sleep';
 
 const RFL_MOD = 500;
 
@@ -22,9 +23,9 @@ const HASH_RFL_MOD = 250;
 
 // const HASH_PROMISE_CHUNK_SIZE = 16;
 // const HASH_PROMISE_CHUNK_SIZE = 32;
-const HASH_PROMISE_CHUNK_SIZE = 64;
+// const HASH_PROMISE_CHUNK_SIZE = 64;
 // const HASH_PROMISE_CHUNK_SIZE = 128;
-// const HASH_PROMISE_CHUNK_SIZE = 256;
+const HASH_PROMISE_CHUNK_SIZE = 256;
 
 // const HASH_HWM = 16 * 1024;
 // const HASH_HWM = 32 * 1024;
@@ -32,7 +33,9 @@ const HASH_HWM = 64 * 1024;
 
 // const SORT_CHUNK_FILE_LINE_COUNT = 100;
 const SORT_CHUNK_FILE_LINE_COUNT = 1e3;
-const NUM_SORT_DUPE_CHUNKS = 100;
+// const SORT_CHUNK_FILE_LINE_COUNT = 1e4;
+// const NUM_SORT_DUPE_CHUNKS = 100;
+const NUM_SORT_DUPE_CHUNKS = 50;
 
 export async function findDupes(opts: {
   filesDataFilePath: string;
@@ -161,16 +164,19 @@ async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate
   }
   let iterCount: number;
   let dupeLineInfos: DupeLineInfo[];
-  let lrTuples: [ string, LineReader ][];
   iterCount = 0;
   dupeLineInfos = [];
-  lrTuples = [ ...lineReaderMap.entries() ];
-  for(let i = 0; i < lrTuples.length; ++i) {
-    let line: string | undefined;
+  let lrIter: IterableIterator<string>;
+  let lrIterRes: IteratorResult<string>;
+  lrIter = lineReaderMap.keys();
+  while(!(lrIterRes = lrIter.next()).done) {
     let currKey: string;
-    let currLineReader: LineReader;
+    let currLineReader: LineReader | undefined;
+    let line: string | undefined;
     let fileHashInfo: FileHashInfo;
-    [ currKey, currLineReader ] = lrTuples[i];
+    currKey = lrIterRes.value;
+    currLineReader = lineReaderMap.get(currKey);
+    assert(currLineReader !== undefined);
     line = await currLineReader.read();
     /* line shouldn't be undefined (tmp files should not be empty at start) */
     assert(line !== undefined);
@@ -244,11 +250,22 @@ async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate
     if(drainDeferred !== undefined) {
       await drainDeferred.promise;
     }
-    wsRes = dupesFmtWs.write(`${maxDupeInfo.line}\n`);
+    let writeDeferred: Deferred;
+    writeDeferred = Deferred.init();
+    wsRes = dupesFmtWs.write(`${maxDupeInfo.line}\n`, (err) => {
+      if(err) {
+        return writeDeferred.reject(err);
+      }
+      writeDeferred.resolve();
+    });
+    await writeDeferred.promise;
+
+    // wsRes = dupesFmtWs.write(`${maxDupeInfo.line}\n`);
     if(
       !wsRes
       && (drainDeferred === undefined)
     ) {
+      process.stdout.write('|');
       drainDeferred = Deferred.init();
       dupesFmtWs.once('drain', () => {
         setImmediate(() => {
@@ -260,6 +277,8 @@ async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate
         drainDeferred = undefined;
       });
     }
+    // await sleep(0);
+    // await sleepImmediate();
   }
   _print({ iterCount });
 }
@@ -283,7 +302,8 @@ function getHashInfo(line: string): FileHashInfo {
   sizeStr = rxExecRes?.groups?.size;
   filePath = rxExecRes?.groups?.filePath;
   assert(
-    (hash !== undefined)
+    1
+    && (hash !== undefined)
     && (sizeStr !== undefined)
     && (filePath !== undefined)
   );
@@ -308,12 +328,12 @@ async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, total
   let percentTimer: Timer;
 
   let chunkSize: number;
-
+  
   // sort into chunks of certain sizes
 
   // chunkSize = Math.round(totalDupeCount / NUM_SORT_DUPE_CHUNKS);
-  // chunkSize = SORT_CHUNK_FILE_LINE_COUNT;
-  chunkSize = Math.round(totalDupeCount / NUM_SORT_DUPE_CHUNKS);
+  chunkSize = SORT_CHUNK_FILE_LINE_COUNT;
+  // chunkSize = Math.ceil(totalDupeCount / NUM_SORT_DUPE_CHUNKS);
   console.log(`chunkSize: ${c.yellow_light(chunkSize)}`);
 
   currDupeLines = [];
@@ -557,7 +577,7 @@ async function getFileHashes(
           rflTimer.reset();
         }
         if(percentTimer.currentMs() > ((HASH_RFL_MOD) * 8)) {
-          process.stdout.write(((finishedHashCount / possibleDupeCount) * 100).toFixed(4));
+          process.stdout.write(((finishedHashCount / possibleDupeCount) * 100).toFixed(3));
           percentTimer.reset();
         }
       });
