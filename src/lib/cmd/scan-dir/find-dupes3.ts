@@ -23,9 +23,9 @@ const HASH_RFL_MOD = 250;
 
 // const HASH_PROMISE_CHUNK_SIZE = 16;
 // const HASH_PROMISE_CHUNK_SIZE = 32;
-// const HASH_PROMISE_CHUNK_SIZE = 64;
+const HASH_PROMISE_CHUNK_SIZE = 64;
 // const HASH_PROMISE_CHUNK_SIZE = 128;
-const HASH_PROMISE_CHUNK_SIZE = 256;
+// const HASH_PROMISE_CHUNK_SIZE = 256;
 
 // const HASH_HWM = 16 * 1024;
 // const HASH_HWM = 32 * 1024;
@@ -328,10 +328,9 @@ async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, total
   let percentTimer: Timer;
 
   let chunkSize: number;
-  
+
   // sort into chunks of certain sizes
 
-  // chunkSize = Math.round(totalDupeCount / NUM_SORT_DUPE_CHUNKS);
   chunkSize = SORT_CHUNK_FILE_LINE_COUNT;
   // chunkSize = Math.ceil(totalDupeCount / NUM_SORT_DUPE_CHUNKS);
   console.log(`chunkSize: ${c.yellow_light(chunkSize)}`);

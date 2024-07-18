@@ -3,6 +3,7 @@ import fs, { ReadStream, Stats } from 'fs';
 import path from 'path';
 import { isObject } from './validate-primitives';
 import readline from 'readline';
+import { Deferred } from '../../test/deferred';
 
 export function getPathRelativeToCwd(filePath: string) {
   let cwd: string;
@@ -100,7 +101,14 @@ export type LineReader = {
 export function getLineReader(filePath: string, opts: GetLineReaderOpts = {}): LineReader {
   let rflIter: AsyncGenerator<string>;
   let fileReader: LineReader;
-  rflIter = getFileLineIter(filePath, opts);
+  let rsOpts: { highWaterMark?: number };
+  let rs: ReadStream;
+  rsOpts = {};
+  if(opts.highWaterMark !== undefined) {
+    rsOpts.highWaterMark = opts.highWaterMark;
+  }
+  rs = fs.createReadStream(filePath, rsOpts);
+  rflIter = getFileLineIter(rs);
   const _read = async () => {
     let rflIterRes: IteratorResult<string>;
     rflIterRes = await rflIter.next();
@@ -116,15 +124,8 @@ export function getLineReader(filePath: string, opts: GetLineReaderOpts = {}): L
   return fileReader;
 }
 
-async function *getFileLineIter(filePath: string, opts: GetLineReaderOpts): AsyncGenerator<string, undefined, undefined> {
-  let rs: ReadStream;
+async function *getFileLineIter(rs: ReadStream): AsyncGenerator<string, undefined, undefined> {
   let rl: readline.Interface;
-  let rsOpts: { highWaterMark?: number };
-  rsOpts = {};
-  if(opts.highWaterMark !== undefined) {
-    rsOpts.highWaterMark = opts.highWaterMark;
-  }
-  rs = fs.createReadStream(filePath, rsOpts);
   rl = readline.createInterface({
     input: rs,
   });
