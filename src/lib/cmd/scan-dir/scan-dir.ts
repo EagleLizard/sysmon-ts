@@ -241,7 +241,7 @@ function *getDirScanner(opts: ScanDirOpts): Generator<ScanDirCbParams, undefined
           isObject(e)
           && (e.code === 'EACCES')
         ) {
-          console.error(`${e.code} ${currDirPath}`);
+          logger.error(`${e.code} ${currDirPath}`);
           continue;
         } else {
           throw e;
