@@ -2,12 +2,12 @@
 import assert from 'assert';
 import path from 'path';
 import { Dirent, Stats, WriteStream, createWriteStream } from 'fs';
-import { readdir, rm, rmdir, stat } from 'fs/promises';
+import { lstat, readdir, rm } from 'fs/promises';
 
 import { ScanDirOpts } from '../parse-sysmon-args';
 import { logger } from '../../logger';
 import { isObject, isString } from '../../util/validate-primitives';
-import { LineReader, checkDir, getLineReader, mkdirIfNotExist } from '../../util/files';
+import { LineReader, LineReader2, checkDir, getLineReader, mkdirIfNotExist, getLineReader2 } from '../../util/files';
 import { SCANDIR_FIND_DUPES_TMP_DIR, SCANDIR_OUT_DATA_DIR_PATH } from '../../../constants';
 import { Deferred } from '../../../test/deferred';
 import { Timer } from '../../util/timer';
@@ -130,9 +130,9 @@ async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate
 
   let dupeChunkDirents: Dirent[];
 
-  let lineReaderMap: Map<string, LineReader>;
+  let lineReaderMap: Map<string, LineReader2>;
 
-  dupesFmtFileName = '0_dupes_fmt.txt';
+  dupesFmtFileName = 'z1_dupes_fmt.txt';
   dupesFmtFilePath = [
     SCANDIR_OUT_DATA_DIR_PATH,
     dupesFmtFileName,
@@ -148,7 +148,7 @@ async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate
     let currFileName: string;
     let currFilePath: string;
     let fileNameRx: RegExp;
-    let lineReader: LineReader;
+    let lineReader: LineReader2;
     currDirent = dupeChunkDirents[i];
     currFileName = currDirent.name;
     fileNameRx = /^[0-9]+.txt$/i;
@@ -159,7 +159,7 @@ async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate
       currDirent.parentPath,
       currFileName,
     ].join(path.sep);
-    lineReader = getLineReader(currFilePath);
+    lineReader = await getLineReader2(currFilePath);
     lineReaderMap.set(currFilePath, lineReader);
   }
   let iterCount: number;
@@ -192,7 +192,7 @@ async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate
     /* find largest size */
     let maxIdx: number;
     let maxDupeInfo: DupeLineInfo | undefined;
-    let maxLineReader: LineReader | undefined;
+    let maxLineReader: LineReader2 | undefined;
     let nextLineRes: string | undefined;
     let nextHashInfo: FileHashInfo | undefined;
     let nextDupeInfo: DupeLineInfo | undefined;
@@ -218,7 +218,6 @@ async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate
         }
       }
     }
-    // console.log({ maxIdx });
     assert(
       (maxIdx !== -1)
       && (maxDupeInfo !== undefined)
@@ -233,6 +232,7 @@ async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate
        */
       lineReaderMap.delete(maxDupeInfo.key);
       dupeLineInfos.splice(maxIdx, 1);
+      await maxLineReader.close();
     } else {
       nextHashInfo = getHashInfo(nextLineRes);
       nextDupeInfo = {
@@ -260,7 +260,6 @@ async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate
     });
     await writeDeferred.promise;
 
-    // wsRes = dupesFmtWs.write(`${maxDupeInfo.line}\n`);
     if(
       !wsRes
       && (drainDeferred === undefined)
@@ -301,12 +300,12 @@ function getHashInfo(line: string): FileHashInfo {
   hash = rxExecRes?.groups?.hash;
   sizeStr = rxExecRes?.groups?.size;
   filePath = rxExecRes?.groups?.filePath;
-  assert(
+  assert((
     1
     && (hash !== undefined)
     && (sizeStr !== undefined)
     && (filePath !== undefined)
-  );
+  ), `line: ${JSON.stringify(line)}`);
   size = +sizeStr;
   assert(!isNaN(size));
   return {
@@ -412,12 +411,14 @@ async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, total
       await _writeTmpWs(`${currLine}\n`);
     }
     let closePromise: Promise<void>;
-    closePromise = new Promise((resolve) => {
-      tmpFileWs.once('close', () => {
+    closePromise = new Promise((resolve, reject) => {
+      tmpFileWs.close((err) => {
+        if(err) {
+          return reject(err);
+        }
         resolve();
       });
     });
-    tmpFileWs.close();
     await closePromise;
 
     async function _writeTmpWs(str: string) {
@@ -460,7 +461,7 @@ async function getFileDupes(hashFilePath: string, hashCountMap: Map<string, numb
   let line: string | undefined;
   let dupeCountMap: Map<string, number>;
 
-  dupesFileName = '0_dupes.txt';
+  dupesFileName = 'z1_dupes.txt';
   dupesFilePath = [
     SCANDIR_OUT_DATA_DIR_PATH,
     dupesFileName,
@@ -681,12 +682,14 @@ async function getFileHashes(
     filePath: string;
   };
 
-  async function _getFileHash(filePath: string, size: number): Promise<FileHashLineInfo> {
+  async function _getFileHash(filePath: string, size: number): Promise<FileHashLineInfo | undefined> {
     let fileHash: string | undefined;
     fileHash = await getFileHash(filePath, {
       highWaterMark: HASH_HWM,
     });
-    assert(fileHash !== undefined);
+    if(fileHash === undefined) {
+      return;
+    }
     return {
       hash: fileHash,
       size,
@@ -807,7 +810,7 @@ async function getFileSizes(filesDataFilePath: string, opts: {
     let fileSizeCount: number | undefined;
     let wsRes: boolean;
     try {
-      fileStats = await stat(line);
+      fileStats = await lstat(line);
     } catch(e) {
       if(
         isObject(e)
