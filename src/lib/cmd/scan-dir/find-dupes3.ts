@@ -2,7 +2,7 @@
 import assert from 'assert';
 import path from 'path';
 import { Dirent, Stats, WriteStream, createWriteStream } from 'fs';
-import { lstat, readdir, rm } from 'fs/promises';
+import { cp, lstat, readdir, rm } from 'fs/promises';
 
 import { ScanDirOpts } from '../parse-sysmon-args';
 import { logger } from '../../logger';
@@ -113,7 +113,8 @@ async function sortDuplicates(dupeFilePath: string, totalDupeCount: number, nowD
   mkdirIfNotExist(tmpDir);
   await writeTmpDupeSortChnks(dupeFilePath, tmpDir, totalDupeCount);
 
-  await sortTmpDupeChunks(tmpDir, totalDupeCount, nowDate);
+  // await sortTmpDupeChunks(tmpDir, totalDupeCount, nowDate);
+  await sortTmpDupeChunks2(tmpDir, totalDupeCount, nowDate);
 }
 
 type DupeLineInfo = {
@@ -121,6 +122,174 @@ type DupeLineInfo = {
   line: string | undefined;
   fileHashInfo: FileHashInfo | undefined;
 };
+
+async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDate: Date) {
+  let dupesFmtFileName: string;
+  let dupesFmtFilePath: string;
+
+  let dupeChunkDirents: Dirent[];
+
+  let sortCount: number;
+
+  sortCount = 0;
+
+  dupesFmtFileName = 'z1_dupes_fmt.txt';
+  dupesFmtFilePath = [
+    SCANDIR_OUT_DATA_DIR_PATH,
+    dupesFmtFileName,
+  ].join(path.sep);
+
+  dupeChunkDirents = await readdir(tmpDir, {
+    withFileTypes: true,
+  });
+
+  /*
+    Store files in a queue.
+    1. Remove the first 2 files from the front of the queue
+    2. sort the 2 files into a new file, push new file
+      onto the end of the queue
+    3. repeat until queue.length == 0, final file is the
+      sorted result
+   */
+  let tmpFileQueue: string[];
+  let sortFileCounter: number;
+  sortFileCounter = 0;
+  tmpFileQueue = [];
+
+  for(let i = 0; i < dupeChunkDirents.length; ++i) {
+    let currDirent: Dirent;
+    let currFileName: string;
+    let currFilePath: string;
+    let fileNameRx: RegExp;
+    currDirent = dupeChunkDirents[i];
+    currFileName = currDirent.name;
+    fileNameRx = /^[0-9]+.txt$/i;
+    if(!fileNameRx.test(currFileName)) {
+      throw new Error(`Invalid file name in tmpDir: ${currFileName}`);
+    }
+    currFilePath = [
+      currDirent.parentPath,
+      currFileName,
+    ].join(path.sep);
+    tmpFileQueue.push(currFilePath);
+  }
+
+  while(tmpFileQueue.length > 1) {
+    let tmpFileA: string | undefined;
+    let tmpFileB: string | undefined;
+    let lineReaderA: LineReader2;
+    let lineReaderB: LineReader2;
+    let lineA: string | undefined;
+    let lineB: string | undefined;
+    let sortFileName: string;
+    let sortFilePath: string;
+    let sortFileWs: WriteStream;
+
+    let drainDeferred: Deferred | undefined;
+
+    tmpFileA = tmpFileQueue.shift();
+    tmpFileB = tmpFileQueue.shift();
+    assert((
+      1
+      && (tmpFileA !== undefined)
+      && (tmpFileB !== undefined)
+    ));
+    lineReaderA = await getLineReader2(tmpFileA);
+    lineReaderB = await getLineReader2(tmpFileB);
+    lineA = await lineReaderA.read();
+    lineB = await lineReaderB.read();
+    sortFileName = `a_${sortFileCounter++}.txt`;
+    sortFilePath = [
+      SCANDIR_FIND_DUPES_TMP_DIR,
+      sortFileName,
+    ].join(path.sep);
+    sortFileWs = createWriteStream(sortFilePath);
+    const writeSortFileWs = async (str: string) => {
+      let wsRes:boolean;
+      if(drainDeferred !== undefined) {
+        await drainDeferred.promise;
+      }
+      wsRes = sortFileWs.write(str);
+      if(
+        !wsRes
+        && (drainDeferred === undefined)
+      ) {
+        drainDeferred = Deferred.init();
+        sortFileWs.once('drain', () => {
+          assert(drainDeferred !== undefined);
+          drainDeferred.resolve();
+        });
+        drainDeferred.promise.finally(() => {
+          drainDeferred = undefined;
+        });
+      }
+    };
+    while(
+      (lineA !== undefined)
+      || (lineB !== undefined)
+    ) {
+      let sizeA: number;
+      let sizeB: number;
+      let writeA: boolean;
+      let writeB: boolean;
+      sizeA = -1;
+      sizeB = -1;
+      writeA = false;
+      writeB = false;
+
+      if(lineA !== undefined) {
+        let fileHashInfoA: FileHashInfo | undefined;
+        fileHashInfoA = getHashInfo(lineA);
+        sizeA = fileHashInfoA.size;
+      }
+      if(lineB !== undefined) {
+        let fileHashInfoB: FileHashInfo | undefined;
+        fileHashInfoB = getHashInfo(lineB);
+        sizeB = fileHashInfoB.size;
+      }
+
+      if(sizeA > sizeB) {
+        writeA = true;
+      } else if(sizeA < sizeB) {
+        writeB = true;
+      } else {
+        writeA = true;
+        writeB = true;
+      }
+      if(writeA) {
+        await writeSortFileWs(`${lineA}\n`);
+        lineA = await lineReaderA.read();
+      }
+      if(writeB) {
+        await writeSortFileWs(`${lineB}\n`);
+        lineB = await lineReaderB.read();
+      }
+      sortCount++;
+      // if((sortCount % 1e4) === 0) {
+      //   process.stdout.write('.');
+      // }
+      await sleepImmediate();
+    }
+    await lineReaderA.close();
+    await lineReaderB.close();
+
+    await _closeWs(sortFileWs);
+    tmpFileQueue.push(sortFilePath);
+
+    await rm(tmpFileA);
+    await rm(tmpFileB);
+
+    // await sleep(0);
+  }
+  process.stdout.write('\n');
+  console.log({ sortCount });
+  assert(tmpFileQueue.length === 1);
+  let finalSortFilePath: string | undefined;
+  finalSortFilePath = tmpFileQueue.pop();
+  assert(finalSortFilePath !== undefined);
+  await cp(finalSortFilePath, dupesFmtFilePath);
+
+}
 
 async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate: Date) {
   let dupesFmtFileName: string;
@@ -491,6 +660,7 @@ async function getFileDupes(hashFilePath: string, hashCountMap: Map<string, numb
       await _dupesWsWrite(`${line}\n`);
     }
   }
+  await _closeWs(dupesWs);
   process.stdout.write('\n');
 
   getFileDupesRes = {
@@ -591,7 +761,7 @@ async function getFileHashes(
   if(hashPromises.length > 0) {
     await getChunkFileHashes();
   }
-
+  await _closeWs(hashWs);
   process.stdout.write('\n');
 
   getFileHashRes = {
@@ -698,7 +868,6 @@ async function getFileHashes(
   }
 
 }
-
 
 async function getFileHash(filePath: string, hashOpts: HashFile2Opts = {}): Promise<string | undefined> {
   let fileHash: string | undefined;
@@ -855,6 +1024,7 @@ async function getFileSizes(filesDataFilePath: string, opts: {
       rflTimer.reset();
     }
   }
+  await _closeWs(sizeWs);
   process.stdout.write('\n');
 
   return {
@@ -898,6 +1068,17 @@ function getPossibleDupeCount(possibleDupeMap: Map<number, number>): number {
     possibleDupeCount += fileCount;
   }
   return possibleDupeCount;
+}
+
+function _closeWs(ws: WriteStream): Promise<void> {
+  return new Promise((resolve, reject) => {
+    ws.close(err => {
+      if(err) {
+        return reject(err);
+      }
+      resolve();
+    });
+  });
 }
 
 function _print(val: unknown) {

@@ -278,7 +278,7 @@ export async function getLineReader2(filePath: string): Promise<LineReader2> {
   }
   async function _close() {
     fhPromise.finally(() => {
-      fh.close();
+      fh?.close();
     });
     await fh.close();
   }
