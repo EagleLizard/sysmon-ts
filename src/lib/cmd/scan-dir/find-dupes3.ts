@@ -91,7 +91,6 @@ export async function findDupes(opts: {
     // fmtTimeFn: c.aqua,
     // fmtTimeFn: c.cyan,
     fmtTimeFn: c.chartreuse_light,
-    fmtTimeFn: c.chartreuse_light,
   });
   console.log(`getFileHashes() took: ${getFileHashesTimeStr}`);
 
