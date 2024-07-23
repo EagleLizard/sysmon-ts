@@ -188,7 +188,7 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
     }
   }
   // writeFileSync(fileDupesFilePath, dupeFileLines.join(''));
-  console.log({ duplicateFiles: fileDupeCount });
+  // console.log({ duplicateFiles: fileDupeCount });
   findDuplicatesMs = timer.stop();
   console.log(`findDuplicates took: ${getIntuitiveTimeString(findDuplicatesMs)}`);
   logTotalTime(totalTimer.stop());

@@ -32,7 +32,8 @@ const HASH_PROMISE_CHUNK_SIZE = 64;
 const HASH_HWM = 64 * 1024;
 
 // const SORT_CHUNK_FILE_LINE_COUNT = 100;
-const SORT_CHUNK_FILE_LINE_COUNT = 1e3;
+const SORT_CHUNK_FILE_LINE_COUNT = 500;
+// const SORT_CHUNK_FILE_LINE_COUNT = 1e3;
 // const SORT_CHUNK_FILE_LINE_COUNT = 1e4;
 // const NUM_SORT_DUPE_CHUNKS = 100;
 const NUM_SORT_DUPE_CHUNKS = 50;
@@ -65,6 +66,12 @@ export async function findDupes(opts: {
 
   let fdTimer: Timer;
 
+  _print({
+    SORT_CHUNK_FILE_LINE_COUNT,
+    HASH_PROMISE_CHUNK_SIZE,
+    HASH_HWM,
+  });
+
   fdTimer = Timer.start();
   getPossibleDupesRes = await getPossibleDupes(opts.filesDataFilePath, {
     nowDate: opts.nowDate,
@@ -82,7 +89,9 @@ export async function findDupes(opts: {
   getFileHashesMs = fdTimer.currentMs();
   getFileHashesTimeStr = _timeStr(getFileHashesMs, {
     // fmtTimeFn: c.aqua,
-    fmtTimeFn: c.cyan,
+    // fmtTimeFn: c.cyan,
+    fmtTimeFn: c.chartreuse_light,
+    fmtTimeFn: c.chartreuse_light,
   });
   console.log(`getFileHashes() took: ${getFileHashesTimeStr}`);
 
@@ -103,18 +112,36 @@ export async function findDupes(opts: {
 async function sortDuplicates(dupeFilePath: string, totalDupeCount: number, nowDate: Date) {
   let tmpDirExists: boolean;
   let tmpDir: string;
+
+  let tmpChunksTimer: Timer;
+  let sortChunksTimer: Timer;
+  let tmpChunksMs: number;
+  let sortChunksMs: number;
   tmpDir = SCANDIR_FIND_DUPES_TMP_DIR;
-  tmpDirExists = await checkDir(tmpDir);
+  tmpDirExists = checkDir(tmpDir);
   if(tmpDirExists) {
     await rm(tmpDir, {
       recursive: true,
     });
   }
   mkdirIfNotExist(tmpDir);
+  tmpChunksTimer = Timer.start();
   await writeTmpDupeSortChnks(dupeFilePath, tmpDir, totalDupeCount);
+  tmpChunksMs = tmpChunksTimer.stop();
 
+  sortChunksTimer = Timer.start();
   // await sortTmpDupeChunks(tmpDir, totalDupeCount, nowDate);
   await sortTmpDupeChunks2(tmpDir, totalDupeCount, nowDate);
+  sortChunksMs = sortChunksTimer.stop();
+
+  const sortTimeStr = (ms: number) => {
+    return _timeStr(ms, {
+      fmtTimeFn: c.cyan,
+    });
+  };
+  console.log(`writeTmpDupeSortChunks() took: ${sortTimeStr(tmpChunksMs)}`);
+  console.log(`sortTmpDupeChunks() took: ${sortTimeStr(sortChunksMs)}`);
+  console.log('');
 }
 
 type DupeLineInfo = {
@@ -181,7 +208,7 @@ async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDat
     let lineReaderB: LineReader2;
     let lineA: string | undefined;
     let lineB: string | undefined;
-    let sortFileName: string;
+    let isLastSort: boolean;
     let sortFilePath: string;
     let sortFileWs: WriteStream;
 
@@ -194,15 +221,21 @@ async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDat
       && (tmpFileA !== undefined)
       && (tmpFileB !== undefined)
     ));
+    isLastSort = tmpFileQueue.length === 0;
     lineReaderA = await getLineReader2(tmpFileA);
     lineReaderB = await getLineReader2(tmpFileB);
     lineA = await lineReaderA.read();
     lineB = await lineReaderB.read();
-    sortFileName = `a_${sortFileCounter++}.txt`;
-    sortFilePath = [
-      SCANDIR_FIND_DUPES_TMP_DIR,
-      sortFileName,
-    ].join(path.sep);
+    if(isLastSort) {
+      sortFilePath = dupesFmtFilePath;
+    } else {
+      let sortFileName: string;
+      sortFileName = `a_${sortFileCounter++}.txt`;
+      sortFilePath = [
+        SCANDIR_FIND_DUPES_TMP_DIR,
+        sortFileName,
+      ].join(path.sep);
+    }
     sortFileWs = createWriteStream(sortFilePath);
     const writeSortFileWs = async (str: string) => {
       let wsRes:boolean;
@@ -268,7 +301,8 @@ async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDat
       // if((sortCount % 1e4) === 0) {
       //   process.stdout.write('.');
       // }
-      await sleepImmediate();
+      // await sleep(0);
+      // await sleepImmediate();
     }
     await lineReaderA.close();
     await lineReaderB.close();
@@ -282,12 +316,12 @@ async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDat
     // await sleep(0);
   }
   process.stdout.write('\n');
-  console.log({ sortCount });
+  _print({ sortCount });
   assert(tmpFileQueue.length === 1);
   let finalSortFilePath: string | undefined;
   finalSortFilePath = tmpFileQueue.pop();
   assert(finalSortFilePath !== undefined);
-  await cp(finalSortFilePath, dupesFmtFilePath);
+  // await cp(finalSortFilePath, dupesFmtFilePath);
 
 }
 
@@ -486,7 +520,7 @@ function getHashInfo(line: string): FileHashInfo {
 
 async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, totalDupeCount: number) {
   let currDupeLines: string[];
-  let lineReader: LineReader;
+  let lineReader: LineReader2;
   let line: string | undefined;
   let tmpFileCounter: number;
 
@@ -509,7 +543,7 @@ async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, total
   rflTimer = Timer.start();
   percentTimer = Timer.start();
 
-  lineReader = getLineReader(dupeFilePath);
+  lineReader = await getLineReader2(dupeFilePath);
   while((line = await lineReader.read()) !== undefined) {
     currDupeLines.push(line);
     if(currDupeLines.length >= chunkSize) {
@@ -528,6 +562,7 @@ async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, total
   if(currDupeLines.length > 0) {
     await _writeTmpFile();
   }
+  await lineReader.close();
   process.stdout.write('\n');
 
   async function _writeTmpFile(): Promise<void> {
@@ -579,23 +614,22 @@ async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, total
       currLine = lineSizeTuples[i][1];
       await _writeTmpWs(`${currLine}\n`);
     }
-    let closePromise: Promise<void>;
-    closePromise = new Promise((resolve, reject) => {
-      tmpFileWs.close((err) => {
-        if(err) {
-          return reject(err);
-        }
-        resolve();
-      });
-    });
-    await closePromise;
+    await _closeWs(tmpFileWs);
 
     async function _writeTmpWs(str: string) {
       let wsRes: boolean;
+      let writeDeferred: Deferred;
       if(drainDeferred !== undefined) {
         await drainDeferred.promise;
       }
-      wsRes = tmpFileWs.write(str);
+      writeDeferred = Deferred.init();
+      wsRes = tmpFileWs.write(str, (err) => {
+        if(err) {
+          return writeDeferred.reject(err);
+        }
+        writeDeferred.resolve();
+      });
+      await writeDeferred.promise;
       if(
         !wsRes
         && (drainDeferred === undefined)
