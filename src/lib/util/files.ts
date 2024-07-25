@@ -12,7 +12,6 @@ const DEFAULT_RFL_BUF_SIZE = 1 * 1024;
 // const DEFAULT_RFL_BUF_SIZE = 8 * 1024;
 // const DEFAULT_RFL_BUF_SIZE = 16 * 1024;
 // const DEFAULT_RFL_BUF_SIZE = 32 * 1024;
-// const DEFAULT_RFL_BUF_SIZE = 64 * 1024;
 
 export function getPathRelativeToCwd(filePath: string) {
   let cwd: string;
