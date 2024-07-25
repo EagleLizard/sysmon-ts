@@ -12,6 +12,7 @@ const DEFAULT_RFL_BUF_SIZE = 1 * 1024;
 // const DEFAULT_RFL_BUF_SIZE = 8 * 1024;
 // const DEFAULT_RFL_BUF_SIZE = 16 * 1024;
 // const DEFAULT_RFL_BUF_SIZE = 32 * 1024;
+// const DEFAULT_RFL_BUF_SIZE = 64 * 1024;
 
 export function getPathRelativeToCwd(filePath: string) {
   let cwd: string;
@@ -147,9 +148,14 @@ export type LineReader2 = {
   close: () => Promise<void>;
 }
 
-export async function getLineReader2(filePath: string): Promise<LineReader2> {
+export type GetLineReader2Opts = {
+  bufSize?: number;
+};
+
+export async function getLineReader2(filePath: string, opts: GetLineReader2Opts = {}): Promise<LineReader2> {
   let fh: FileHandle;
   let fhPromise: Promise<FileHandle>;
+  let bufSize: number;
   let lineReader: LineReader2;
   let buf: Buffer;
   let pos: number;
@@ -160,7 +166,9 @@ export async function getLineReader2(filePath: string): Promise<LineReader2> {
   fhPromise = fsp.open(filePath);
   fh = await fhPromise;
 
-  buf = Buffer.alloc(DEFAULT_RFL_BUF_SIZE);
+  bufSize = opts.bufSize ?? DEFAULT_RFL_BUF_SIZE;
+
+  buf = Buffer.alloc(bufSize);
   pos = 0;
   bufPos = -1;
   bytesRead = -1;
