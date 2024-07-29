@@ -15,7 +15,12 @@ import { scanDirColors as c } from './scan-dir-colors';
 import { CliColors, ColorFormatter } from '../../service/cli-colors';
 import { HashFile2Opts, hashFile2 } from '../../util/hasher';
 import { getIntuitiveTimeString } from '../../util/format-util';
-import { SORT_CHUNK_FILE_LINE_COUNT, writeTmpDupeSortChunks2 } from './find-dupes3/sort-dupes';
+
+const SORT_CHUNK_FILE_LINE_COUNT = 100;
+// const SORT_CHUNK_FILE_LINE_COUNT = 250;
+// const SORT_CHUNK_FILE_LINE_COUNT = 500;
+// const SORT_CHUNK_FILE_LINE_COUNT = 1e3;
+// const SORT_CHUNK_FILE_LINE_COUNT = 1e4;
 
 const RFL_MOD = 500;
 
@@ -97,6 +102,12 @@ export async function findDupes(opts: {
   hashCountMap = getFileHashesRes.hashCountMap;
   fdTimer.reset();
   getFileDupesRes = await getFileDupes(hashFilePath, hashCountMap, opts.nowDate);
+  /*
+    Clearing the map is important, otherwise a a large amount
+      of memory is retained during future, long-running
+      functions.
+   */
+  hashCountMap.clear();
   getFileDupesMs = fdTimer.currentMs();
   getFileDupesTimeStr = _timeStr(getFileDupesMs);
   console.log(`getFileDupes() took: ${getFileDupesTimeStr}`);
@@ -138,9 +149,9 @@ async function sortDuplicates(dupeFilePath: string, totalDupeCount: number, nowD
     });
   }
   mkdirIfNotExist(tmpDir);
+
   tmpChunksTimer = Timer.start();
   await writeTmpDupeSortChnks(dupeFilePath, tmpDir, totalDupeCount);
-  // await writeTmpDupeSortChunks2(dupeFilePath, tmpDir, totalDupeCount);
   tmpChunksMs = tmpChunksTimer.stop();
   console.log(`writeTmpDupeSortChunks() took: ${sortTimeStr(tmpChunksMs)}`);
 
@@ -166,11 +177,13 @@ async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDat
   let sortCount: number;
   let lrBufSize: number;
 
-  lrBufSize = 64 * 1024;
+  // lrBufSize = 256 * 1024;
+  // lrBufSize = 64 * 1024;
   // lrBufSize = 16 * 1024;
   // lrBufSize = 8 * 1024;
   // lrBufSize = 4 * 1024;
-  // lrBufSize = 1 * 1024;
+  // lrBufSize = 2 * 1024;
+  lrBufSize = 1 * 1024;
 
   _print({ lrBufSize });
 
@@ -762,7 +775,7 @@ async function getFileHashes(
   let hashFilePath: string;
   let hashCountMap: Map<string, number>;
   let hashWs: WriteStream;
-  let lineReader: LineReader;
+  let lineReader: LineReader2;
   let line: string | undefined;
   let drainDeferred: Deferred | undefined;
   let hashPromises: Promise<FileHashLineInfo | undefined>[];
@@ -780,7 +793,7 @@ async function getFileHashes(
   hashCountMap = new Map();
 
   hashWs = createWriteStream(hashFilePath);
-  lineReader = getLineReader(sizeFilePath);
+  lineReader = await getLineReader2(sizeFilePath);
 
   hashPromises = [];
   finishedHashCount = 0;
@@ -800,7 +813,8 @@ async function getFileHashes(
           rflTimer.reset();
         }
         if(percentTimer.currentMs() > ((HASH_RFL_MOD) * 8)) {
-          process.stdout.write(((finishedHashCount / possibleDupeCount) * 100).toFixed(3));
+          process.stdout.write(((finishedHashCount / possibleDupeCount) * 100).toFixed(2));
+          // process.stdout.write(((finishedHashCount / possibleDupeCount) * 100).toFixed(3));
           percentTimer.reset();
         }
       });
@@ -815,6 +829,7 @@ async function getFileHashes(
     await getChunkFileHashes();
   }
   await _closeWs(hashWs);
+  await lineReader.close();
   process.stdout.write('\n');
 
   getFileHashRes = {
@@ -881,7 +896,13 @@ async function getFileHashes(
     let lineRx: RegExp;
     let rxExecRes: RegExpExecArray | null;
 
-    lineRx = /^(?<sizeStr>[0-9]+) (?<filePath>.*)$/i;
+    /*
+      Some files (e.g. `Dropbox/Icon`) have a carriage return `\r` at the end
+        of their filename. On mac, it lists with `ls` as `Icon?` or similar.
+      Difficult to catch, because the terminal will either omit \r or combine
+        with the following newline.
+     */
+    lineRx = /^(?<sizeStr>[0-9]+) (?<filePath>.*)\r?$/i;
     rxExecRes = lineRx.exec(line);
 
     filePath =  rxExecRes?.groups?.filePath;
@@ -890,7 +911,7 @@ async function getFileHashes(
     assert((
       (filePath !== undefined)
       && (fileSizeStr !== undefined)
-    ), line);
+    ), `${JSON.stringify(line)}`);
     fileSize = +fileSizeStr;
     assert(!isNaN(fileSize));
     return {
@@ -907,14 +928,21 @@ async function getFileHashes(
 
   async function _getFileHash(filePath: string, size: number): Promise<FileHashLineInfo | undefined> {
     let fileHash: string | undefined;
+    let truncHash: string;
     fileHash = await getFileHash(filePath, {
       highWaterMark: HASH_HWM,
     });
     if(fileHash === undefined) {
       return;
     }
+    /*
+      approx. 1 collision every 1 trillion (1e12) documents
+        see: https://stackoverflow.com/a/22156338/4677252
+     */
+    truncHash = fileHash.substring(0, 10);
     return {
-      hash: fileHash,
+      // hash: fileHash,
+      hash: truncHash,
       size,
       filePath,
     };
@@ -1006,7 +1034,7 @@ async function getFileSizes(filesDataFilePath: string, opts: {
   let sizeFileName: string;
   let sizeFilePath: string;
   let sizeWs: WriteStream;
-  let lineReader: LineReader;
+  let lineReader: LineReader2;
   let line: string | undefined;
   let drainDeferred: Deferred | undefined;
 
@@ -1022,7 +1050,7 @@ async function getFileSizes(filesDataFilePath: string, opts: {
   sizeMap = new Map();
 
   sizeWs = createWriteStream(sizeFilePath);
-  lineReader = getLineReader(filesDataFilePath);
+  lineReader = await getLineReader2(filesDataFilePath);
 
   rflTimer = Timer.start();
 
@@ -1078,6 +1106,7 @@ async function getFileSizes(filesDataFilePath: string, opts: {
     }
   }
   await _closeWs(sizeWs);
+  await lineReader.close();
   process.stdout.write('\n');
 
   return {

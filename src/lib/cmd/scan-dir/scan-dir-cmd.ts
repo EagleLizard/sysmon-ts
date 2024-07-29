@@ -192,6 +192,12 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   findDuplicatesMs = timer.stop();
   console.log(`findDuplicates took: ${getIntuitiveTimeString(findDuplicatesMs)}`);
   logTotalTime(totalTimer.stop());
+  /*
+    Sometimes the logger wont close its own log file streams during
+      long running processes. Setting exitCode explicitly to indicate
+      end of program seems to fix.
+   */
+  process.exitCode = 0;
 }
 
 function logTotalTime(ms: number) {
