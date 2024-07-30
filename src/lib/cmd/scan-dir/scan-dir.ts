@@ -169,7 +169,7 @@ export async function scanDir2(opts: ScanDirOpts) {
           && ((process.hrtime.bigint() - startTime) > INTERRUPT_NSECS)
         ) {
           startTime = process.hrtime.bigint();
-          outStream.write('!');
+          // outStream.write('!');
           setImmediate(doIter);
           return;
         }
@@ -241,7 +241,7 @@ function *getDirScanner(opts: ScanDirOpts): Generator<ScanDirCbParams, undefined
           isObject(e)
           && (e.code === 'EACCES')
         ) {
-          console.error(`${e.code} ${currDirPath}`);
+          logger.error(`${e.code} ${currDirPath}`);
           continue;
         } else {
           throw e;
