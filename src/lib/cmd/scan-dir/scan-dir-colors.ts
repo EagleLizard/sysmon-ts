@@ -5,7 +5,12 @@ const chartreuse = CliColors.rgb(127, 255, 0);
 // const chartreuse_light = chalk.rgb(213, 255, 171);
 // const chartreuse_light = chalk.rgb(231, 252, 210);
 const chartreuse_light = CliColors.rgb(190, 255, 125);
-const pink = CliColors.rgb(255, 135, 185);
+
+// const pink = CliColors.rgb(255, 135, 185);
+// const pink = CliColors.rgb(241, 150, 194);
+const pink = CliColors.rgb(247, 173, 209);
+// const pink = CliColors.rgb(239, 155, 239);
+
 const hot_pink = CliColors.rgb(255, 0, 179);
 const pastel_pink = CliColors.rgb(255, 180, 215);
 // const pastel_orange = chalk.rgb(255, 221, 173);

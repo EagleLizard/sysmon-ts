@@ -169,7 +169,7 @@ export async function scanDir2(opts: ScanDirOpts) {
           && ((process.hrtime.bigint() - startTime) > INTERRUPT_NSECS)
         ) {
           startTime = process.hrtime.bigint();
-          outStream.write('!');
+          // outStream.write('!');
           setImmediate(doIter);
           return;
         }

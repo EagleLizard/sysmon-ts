@@ -1,11 +1,11 @@
 
 import fs, { ReadStream, Stats } from 'fs';
 import path from 'path';
-import { isObject } from './validate-primitives';
 import readline from 'readline';
-import { Deferred } from '../../test/deferred';
-import fsp, { FileHandle, FileReadResult } from 'fs/promises';
 import assert from 'assert';
+import fsp, { FileHandle, FileReadResult } from 'fs/promises';
+
+import { isObject } from './validate-primitives';
 
 const DEFAULT_RFL_BUF_SIZE = 1 * 1024;
 // const DEFAULT_RFL_BUF_SIZE = 4 * 1024;

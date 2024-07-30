@@ -16,8 +16,8 @@ import { CliColors, ColorFormatter } from '../../service/cli-colors';
 import { HashFile2Opts, hashFile2 } from '../../util/hasher';
 import { getIntuitiveTimeString } from '../../util/format-util';
 
-const SORT_CHUNK_FILE_LINE_COUNT = 100;
-// const SORT_CHUNK_FILE_LINE_COUNT = 250;
+// const SORT_CHUNK_FILE_LINE_COUNT = 100;
+const SORT_CHUNK_FILE_LINE_COUNT = 250;
 // const SORT_CHUNK_FILE_LINE_COUNT = 500;
 // const SORT_CHUNK_FILE_LINE_COUNT = 1e3;
 // const SORT_CHUNK_FILE_LINE_COUNT = 1e4;
@@ -26,17 +26,15 @@ const RFL_MOD = 500;
 
 const HASH_RFL_MOD = 250;
 
-// const HASH_PROMISE_CHUNK_SIZE = 16;
+const HASH_PROMISE_CHUNK_SIZE = 16;
 // const HASH_PROMISE_CHUNK_SIZE = 32;
-const HASH_PROMISE_CHUNK_SIZE = 64;
+// const HASH_PROMISE_CHUNK_SIZE = 64;
 // const HASH_PROMISE_CHUNK_SIZE = 128;
 // const HASH_PROMISE_CHUNK_SIZE = 256;
 
 // const HASH_HWM = 16 * 1024;
 // const HASH_HWM = 32 * 1024;
 const HASH_HWM = 64 * 1024;
-
-const NUM_SORT_DUPE_CHUNKS = 50;
 
 export async function findDupes(opts: {
   filesDataFilePath: string;
@@ -110,7 +108,7 @@ export async function findDupes(opts: {
   hashCountMap.clear();
   getFileDupesMs = fdTimer.currentMs();
   getFileDupesTimeStr = _timeStr(getFileDupesMs);
-  console.log(`getFileDupes() took: ${getFileDupesTimeStr}`);
+  console.log(`getFileDupes() took: ${c.purple_light(getFileDupesTimeStr)}`);
 
   dupeFilePath = getFileDupesRes.dupesFilePath;
   totalDupeCount = getFileDupesRes.totalDupeCount;
@@ -120,7 +118,9 @@ export async function findDupes(opts: {
   fdTimer.reset();
   await sortDuplicates(dupeFilePath, totalDupeCount, opts.nowDate);
   sortDupesMs = fdTimer.currentMs();
-  sortDupesTimeStr = _timeStr(sortDupesMs);
+  sortDupesTimeStr = _timeStr(sortDupesMs, {
+    fmtTimeFn: c.pink,
+  });
   console.log(`sortDuplicates() took: ${sortDupesTimeStr}`);
 
   return new Map<string, string[]>();
@@ -156,17 +156,10 @@ async function sortDuplicates(dupeFilePath: string, totalDupeCount: number, nowD
   console.log(`writeTmpDupeSortChunks() took: ${sortTimeStr(tmpChunksMs)}`);
 
   sortChunksTimer = Timer.start();
-  // await sortTmpDupeChunks(tmpDir, totalDupeCount, nowDate);
   await sortTmpDupeChunks2(tmpDir, totalDupeCount, nowDate);
   sortChunksMs = sortChunksTimer.stop();
   console.log(`sortTmpDupeChunks() took: ${sortTimeStr(sortChunksMs)}`);
 }
-
-type DupeLineInfo = {
-  key: string;
-  line: string | undefined;
-  fileHashInfo: FileHashInfo | undefined;
-};
 
 async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDate: Date) {
   let dupesFmtFileName: string;
@@ -179,11 +172,12 @@ async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDat
 
   // lrBufSize = 256 * 1024;
   // lrBufSize = 64 * 1024;
+  lrBufSize = 32 * 1024;
   // lrBufSize = 16 * 1024;
   // lrBufSize = 8 * 1024;
   // lrBufSize = 4 * 1024;
   // lrBufSize = 2 * 1024;
-  lrBufSize = 1 * 1024;
+  // lrBufSize = 1 * 1024;
 
   _print({ lrBufSize });
 
@@ -331,11 +325,6 @@ async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDat
         lineB = await lineReaderB.read();
       }
       sortCount++;
-      // if((sortCount % 1e4) === 0) {
-      //   process.stdout.write('.');
-      // }
-      // await sleep(0);
-      // await sleepImmediate();
     }
     await lineReaderA.close();
     await lineReaderB.close();
@@ -345,8 +334,6 @@ async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDat
 
     await rm(tmpFileA);
     await rm(tmpFileB);
-
-    // await sleep(0);
   }
   process.stdout.write('\n');
   _print({ sortCount });
@@ -354,168 +341,6 @@ async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDat
   let finalSortFilePath: string | undefined;
   finalSortFilePath = tmpFileQueue.pop();
   assert(finalSortFilePath !== undefined);
-  // await cp(finalSortFilePath, dupesFmtFilePath);
-
-}
-
-async function sortTmpDupeChunks(tmpDir: string, totalDupeCount: number, nowDate: Date) {
-  let dupesFmtFileName: string;
-  let dupesFmtFilePath: string;
-  let dupesFmtWs: WriteStream;
-  let drainDeferred: Deferred | undefined;
-
-  let dupeChunkDirents: Dirent[];
-
-  let lineReaderMap: Map<string, LineReader2>;
-
-  dupesFmtFileName = 'z1_dupes_fmt.txt';
-  dupesFmtFilePath = [
-    SCANDIR_OUT_DATA_DIR_PATH,
-    dupesFmtFileName,
-  ].join(path.sep);
-  dupesFmtWs = createWriteStream(dupesFmtFilePath);
-
-  dupeChunkDirents = await readdir(tmpDir, {
-    withFileTypes: true,
-  });
-  lineReaderMap = new Map();
-  for(let i = 0; i < dupeChunkDirents.length; ++i) {
-    let currDirent: Dirent;
-    let currFileName: string;
-    let currFilePath: string;
-    let fileNameRx: RegExp;
-    let lineReader: LineReader2;
-    currDirent = dupeChunkDirents[i];
-    currFileName = currDirent.name;
-    fileNameRx = /^[0-9]+.txt$/i;
-    if(!fileNameRx.test(currFileName)) {
-      throw new Error(`Invalid file name in tmpDir: ${currFileName}`);
-    }
-    currFilePath = [
-      currDirent.parentPath,
-      currFileName,
-    ].join(path.sep);
-    lineReader = await getLineReader2(currFilePath);
-    lineReaderMap.set(currFilePath, lineReader);
-  }
-  let iterCount: number;
-  let dupeLineInfos: DupeLineInfo[];
-  iterCount = 0;
-  dupeLineInfos = [];
-  let lrIter: IterableIterator<string>;
-  let lrIterRes: IteratorResult<string>;
-  lrIter = lineReaderMap.keys();
-  while(!(lrIterRes = lrIter.next()).done) {
-    let currKey: string;
-    let currLineReader: LineReader | undefined;
-    let line: string | undefined;
-    let fileHashInfo: FileHashInfo;
-    currKey = lrIterRes.value;
-    currLineReader = lineReaderMap.get(currKey);
-    assert(currLineReader !== undefined);
-    line = await currLineReader.read();
-    /* line shouldn't be undefined (tmp files should not be empty at start) */
-    assert(line !== undefined);
-    fileHashInfo = getHashInfo(line);
-    dupeLineInfos.push({
-      key: currKey,
-      line,
-      fileHashInfo,
-    });
-  }
-  while(lineReaderMap.size > 0) {
-    iterCount++;
-    /* find largest size */
-    let maxIdx: number;
-    let maxDupeInfo: DupeLineInfo | undefined;
-    let maxLineReader: LineReader2 | undefined;
-    let nextLineRes: string | undefined;
-    let nextHashInfo: FileHashInfo | undefined;
-    let nextDupeInfo: DupeLineInfo | undefined;
-    let wsRes: boolean;
-    maxIdx = -1;
-    for(let i = 0; i < dupeLineInfos.length; ++i) {
-      let currSize: number;
-      let currDupeInfo: DupeLineInfo;
-      let currFileHashInfo: FileHashInfo | undefined;
-      currDupeInfo = dupeLineInfos[i];
-      currFileHashInfo = currDupeInfo.fileHashInfo;
-      if(currFileHashInfo === undefined) {
-        throw new Error(`unexpected undefined fileHashInfo: ${currDupeInfo.key}`);
-      } else {
-        currSize = currFileHashInfo.size;
-        if(
-          (maxDupeInfo === undefined)
-          || (maxDupeInfo.fileHashInfo === undefined)
-          || (currSize > maxDupeInfo.fileHashInfo.size)
-        ) {
-          maxDupeInfo = currDupeInfo;
-          maxIdx = i;
-        }
-      }
-    }
-    assert(
-      (maxIdx !== -1)
-      && (maxDupeInfo !== undefined)
-    );
-    maxLineReader = lineReaderMap.get(maxDupeInfo.key);
-    assert(maxLineReader !== undefined);
-    nextLineRes = await maxLineReader.read();
-    if(nextLineRes === undefined) {
-      /*
-        remove from map,
-        remove from lineInfos
-       */
-      lineReaderMap.delete(maxDupeInfo.key);
-      dupeLineInfos.splice(maxIdx, 1);
-      await maxLineReader.close();
-    } else {
-      nextHashInfo = getHashInfo(nextLineRes);
-      nextDupeInfo = {
-        key: maxDupeInfo.key,
-        line: nextLineRes,
-        fileHashInfo: nextHashInfo,
-      };
-      dupeLineInfos[maxIdx] = nextDupeInfo;
-    }
-
-    /*
-      write line to file
-      replace line and hash info with next entry
-     */
-    if(drainDeferred !== undefined) {
-      await drainDeferred.promise;
-    }
-    let writeDeferred: Deferred;
-    writeDeferred = Deferred.init();
-    wsRes = dupesFmtWs.write(`${maxDupeInfo.line}\n`, (err) => {
-      if(err) {
-        return writeDeferred.reject(err);
-      }
-      writeDeferred.resolve();
-    });
-    await writeDeferred.promise;
-
-    if(
-      !wsRes
-      && (drainDeferred === undefined)
-    ) {
-      process.stdout.write('|');
-      drainDeferred = Deferred.init();
-      dupesFmtWs.once('drain', () => {
-        setImmediate(() => {
-          assert(drainDeferred !== undefined);
-          drainDeferred.resolve();
-        });
-      });
-      drainDeferred.promise.finally(() => {
-        drainDeferred = undefined;
-      });
-    }
-    // await sleep(0);
-    // await sleepImmediate();
-  }
-  _print({ iterCount });
 }
 
 type FileHashInfo = {
@@ -669,10 +494,8 @@ async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, total
       ) {
         drainDeferred = Deferred.init();
         tmpFileWs.once('drain', () => {
-          setImmediate(() => {
-            assert(drainDeferred !== undefined);
-            drainDeferred.resolve();
-          });
+          assert(drainDeferred !== undefined);
+          drainDeferred.resolve();
         });
         drainDeferred.promise.finally(() => {
           drainDeferred = undefined;
@@ -747,10 +570,8 @@ async function getFileDupes(hashFilePath: string, hashCountMap: Map<string, numb
     ) {
       drainDeferred = Deferred.init();
       dupesWs.once('drain', () => {
-        setImmediate(() => {
-          assert(drainDeferred !== undefined);
-          drainDeferred.resolve();
-        });
+        assert(drainDeferred !== undefined);
+        drainDeferred.resolve();
       });
       drainDeferred.promise.finally(() => {
         drainDeferred = undefined;
@@ -793,7 +614,12 @@ async function getFileHashes(
   hashCountMap = new Map();
 
   hashWs = createWriteStream(hashFilePath);
-  lineReader = await getLineReader2(sizeFilePath);
+  lineReader = await getLineReader2(sizeFilePath, {
+    // bufSize: 32 * 1024,
+    // bufSize: 16 * 1024,
+    bufSize: 2 * 1024,
+    // bufSize: 256,
+  });
 
   hashPromises = [];
   finishedHashCount = 0;
@@ -868,19 +694,18 @@ async function getFileHashes(
       await drainDeferred.promise;
     }
     wsRes = hashWs.write(str);
-    if(!wsRes) {
-      if(drainDeferred === undefined) {
-        drainDeferred = Deferred.init();
-        hashWs.once('drain', () => {
-          setImmediate(() => {
-            assert(drainDeferred !== undefined);
-            drainDeferred.resolve();
-          });
-        });
-        drainDeferred.promise.finally(() => {
-          drainDeferred = undefined;
-        });
-      }
+    if(
+      !wsRes
+      && (drainDeferred === undefined)
+    ) {
+      drainDeferred = Deferred.init();
+      hashWs.once('drain', () => {
+        assert(drainDeferred !== undefined);
+        drainDeferred.resolve();
+      });
+      drainDeferred.promise.finally(() => {
+        drainDeferred = undefined;
+      });
     }
   }
 
@@ -1070,7 +895,6 @@ async function getFileSizes(filesDataFilePath: string, opts: {
           || (e.code === 'EACCES')
         )
       ) {
-        // console.log({ fileStats });
         logger.error(`findDuplicates lstat: ${e.code} ${line}`);
         continue;
       }
@@ -1086,19 +910,18 @@ async function getFileSizes(filesDataFilePath: string, opts: {
       await drainDeferred.promise;
     }
     wsRes = sizeWs.write(`${fileSize} ${line}\n`);
-    if(!wsRes) {
-      if(drainDeferred === undefined) {
-        drainDeferred = Deferred.init();
-        sizeWs.once('drain', () => {
-          setImmediate(() => {
-            assert(drainDeferred !== undefined);
-            drainDeferred.resolve();
-          });
-        });
-        drainDeferred.promise.finally(() => {
-          drainDeferred = undefined;
-        });
-      }
+    if(
+      !wsRes
+      && (drainDeferred === undefined)
+    ) {
+      drainDeferred = Deferred.init();
+      sizeWs.once('drain', () => {
+        assert(drainDeferred !== undefined);
+        drainDeferred.resolve();
+      });
+      drainDeferred.promise.finally(() => {
+        drainDeferred = undefined;
+      });
     }
     if(rflTimer.currentMs() > RFL_MOD) {
       process.stdout.write('.');
