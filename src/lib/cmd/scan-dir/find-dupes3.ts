@@ -14,11 +14,11 @@ import { Timer } from '../../util/timer';
 import { scanDirColors as c } from './scan-dir-colors';
 import { CliColors, ColorFormatter } from '../../service/cli-colors';
 import { getIntuitiveTimeString } from '../../util/format-util';
-import { GetFileHashesRes, HASH_HWM, HASH_PROMISE_CHUNK_SIZE, getFileHashes } from './find-dupes3/get-file-hashes';
+import { GetFileHashesRes, HASH_HWM, MAX_RUNNING_HASHES, getFileHashes } from './find-dupes3/get-file-hashes';
 import { _closeWs } from './find-dupes3/close-ws';
 
-// const SORT_CHUNK_FILE_LINE_COUNT = 100;
-const SORT_CHUNK_FILE_LINE_COUNT = 250;
+const SORT_CHUNK_FILE_LINE_COUNT = 100;
+// const SORT_CHUNK_FILE_LINE_COUNT = 250;
 // const SORT_CHUNK_FILE_LINE_COUNT = 500;
 // const SORT_CHUNK_FILE_LINE_COUNT = 1e3;
 // const SORT_CHUNK_FILE_LINE_COUNT = 1e4;
@@ -54,19 +54,22 @@ export async function findDupes(opts: {
   let dupeFilePath: string;
   let totalDupeCount: number;
 
-  let fdTimer: Timer;
+  let timer: Timer;
+  let totalTimer: Timer;
+  let totalMs: number;
+  let totalTimeStr: string;
 
   _print({
     SORT_CHUNK_FILE_LINE_COUNT,
-    HASH_PROMISE_CHUNK_SIZE,
+    MAX_RUNNING_HASHES,
     HASH_HWM,
   });
-
-  fdTimer = Timer.start();
+  totalTimer = Timer.start();
+  timer = Timer.start();
   getPossibleDupesRes = await getPossibleDupes(opts.filesDataFilePath, {
     nowDate: opts.nowDate,
   });
-  getPossibleDupesMs = fdTimer.currentMs();
+  getPossibleDupesMs = timer.currentMs();
   console.log(`getPossibleDupes() took: ${_timeStr(getPossibleDupesMs)}`);
 
   possibleDupeSizeMap = getPossibleDupesRes.possibleDupeSizeMap;
@@ -74,10 +77,10 @@ export async function findDupes(opts: {
   possibleDupeCount = getPossibleDupeCount(possibleDupeSizeMap);
   _print({ possibleDupeCount });
 
-  fdTimer.reset();
+  timer.reset();
   getFileHashesRes = await getFileHashes(sizeFilePath, possibleDupeSizeMap, possibleDupeCount, opts.nowDate);
   possibleDupeSizeMap.clear();
-  getFileHashesMs = fdTimer.currentMs();
+  getFileHashesMs = timer.currentMs();
   getFileHashesTimeStr = _timeStr(getFileHashesMs, {
     // fmtTimeFn: c.aqua,
     // fmtTimeFn: c.cyan,
@@ -87,7 +90,7 @@ export async function findDupes(opts: {
 
   hashFilePath = getFileHashesRes.hashFilePath;
   hashCountMap = getFileHashesRes.hashCountMap;
-  fdTimer.reset();
+  timer.reset();
   getFileDupesRes = await getFileDupes(hashFilePath, hashCountMap, opts.nowDate);
   /*
     Clearing the map is important, otherwise a a large amount
@@ -95,7 +98,7 @@ export async function findDupes(opts: {
       functions.
    */
   hashCountMap.clear();
-  getFileDupesMs = fdTimer.currentMs();
+  getFileDupesMs = timer.currentMs();
   getFileDupesTimeStr = _timeStr(getFileDupesMs);
   console.log(`getFileDupes() took: ${c.purple_light(getFileDupesTimeStr)}`);
 
@@ -104,13 +107,18 @@ export async function findDupes(opts: {
 
   _print({ totalDupeCount });
 
-  fdTimer.reset();
+  timer.reset();
   await sortDuplicates(dupeFilePath, totalDupeCount, opts.nowDate);
-  sortDupesMs = fdTimer.currentMs();
+  sortDupesMs = timer.currentMs();
   sortDupesTimeStr = _timeStr(sortDupesMs, {
     fmtTimeFn: c.pink,
   });
   console.log(`sortDuplicates() took: ${sortDupesTimeStr}`);
+  totalMs = totalTimer.currentMs();
+  totalTimeStr = _timeStr(totalMs, {
+    fmtTimeFn: c.chartreuse_light,
+  });
+  console.log(`findDupes3() took: ${totalTimeStr}`);
 
   return new Map<string, string[]>();
 }
@@ -160,8 +168,8 @@ async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDat
   let lrBufSize: number;
 
   // lrBufSize = 256 * 1024;
-  // lrBufSize = 64 * 1024;
-  lrBufSize = 32 * 1024;
+  lrBufSize = 64 * 1024;
+  // lrBufSize = 32 * 1024;
   // lrBufSize = 16 * 1024;
   // lrBufSize = 8 * 1024;
   // lrBufSize = 4 * 1024;
@@ -381,7 +389,8 @@ async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, total
   // sort into chunks of certain sizes
 
   chunkSize = SORT_CHUNK_FILE_LINE_COUNT;
-  // chunkSize = Math.ceil(totalDupeCount / NUM_SORT_DUPE_CHUNKS);
+  // chunkSize = Math.max(1, Math.round(SORT_CHUNK_FILE_LINE_COUNT * Math.random()));
+
   console.log(`chunkSize: ${c.yellow_light(chunkSize)}`);
 
   currDupeLines = [];
@@ -449,7 +458,7 @@ async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, total
       } else if(a[0] < b[0]) {
         return 1;
       } else {
-        return 0;
+        return a[1].localeCompare(b[1]);
       }
     });
 
