@@ -8,7 +8,7 @@ import { SCANDIR_OUT_DATA_DIR_PATH } from '../../../../constants';
 import { HashFile2Opts, hashFile2 } from '../../../util/hasher';
 import { isObject } from '../../../util/validate-primitives';
 import { logger } from '../../../logger';
-import { _closeWs } from './close-ws';
+import { _closeWs, _print } from './find-dupes-utils';
 import assert from 'assert';
 import { sleep } from '../../../util/sleep';
 
@@ -20,9 +20,15 @@ const HASH_RFL_MOD = 250;
   See: https://www.wolframalpha.com/input/?i=700000+*+x+%3D+250
  */
 // const HASH_RFL_COEF = 3.5714e-4; // 0.00035714
+// const HASH_RFL_COEF = 1 / 700;
+// const HASH_RFL_COEF = 1 / 1400;
 const HASH_RFL_COEF = 1 / 2800; // 0.00035714
-// const HASH_RFL_COEF = 1 / 5600;
+// const HASH_RFL_COEF = 1 / (2800 * 2);
+// const HASH_RFL_COEF = 1 / (2800 * 3);
+// const HASH_RFL_COEF = 1 / (2800 * Math.E);
+// const HASH_RFL_COEF = 1 / (Math.E * 1e3);
 
+// export const HASH_HWM = 8 * 1024;
 // export const HASH_HWM = 16 * 1024;
 // export const HASH_HWM = 32 * 1024;
 export const HASH_HWM = 64 * 1024;
@@ -33,6 +39,7 @@ export const MAX_RUNNING_HASHES = 64;
 // export const MAX_RUNNING_HASHES = 128;
 // export const MAX_RUNNING_HASHES = 256;
 // export const MAX_RUNNING_HASHES = 512;
+// export const MAX_RUNNING_HASHES = Infinity;
 
 type FileSizeLineInfo = {
   size: number;
@@ -76,7 +83,12 @@ export async function getFileHashes(
   gfhLrBufSize = 1 * 1024;
   hashRflMod = HASH_RFL_COEF * possibleDupeCount;
 
-  console.log({ gfhLrBufSize });
+  // console.log({ gfhLrBufSize });
+  _print({
+    HASH_RFL_COEF,
+    gfhLrBufSize,
+    hashRflMod,
+  });
 
   // hashFileName = `${getDateFileStr(opts.nowDate)}_hashes.txt`;
   hashFileName = '0_hashes.txt';
@@ -137,7 +149,7 @@ export async function getFileHashes(
           rflTimer.reset();
         }
         // if(percentTimer.currentMs() > ((HASH_RFL_MOD) * 8)) {
-        if(percentTimer.currentMs() > ((hashRflMod) * 10)) {
+        if(percentTimer.currentMs() > ((hashRflMod) * 12)) {
           process.stdout.write(((finishedHashCount / possibleDupeCount) * 100).toFixed(2));
           // process.stdout.write(((finishedHashCount / possibleDupeCount) * 100).toFixed(3));
           percentTimer.reset();

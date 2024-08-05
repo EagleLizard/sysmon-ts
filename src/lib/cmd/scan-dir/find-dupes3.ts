@@ -5,17 +5,15 @@ import { Dirent, WriteStream, createWriteStream } from 'fs';
 import { readdir, rm } from 'fs/promises';
 
 import { ScanDirOpts } from '../parse-sysmon-args';
-import { isObject } from '../../util/validate-primitives';
 import { LineReader, LineReader2, checkDir, getLineReader, mkdirIfNotExist, getLineReader2 } from '../../util/files';
 import { SCANDIR_FIND_DUPES_TMP_DIR, SCANDIR_OUT_DATA_DIR_PATH } from '../../../constants';
 import { Deferred } from '../../../test/deferred';
 import { Timer } from '../../util/timer';
 import { scanDirColors as c } from './scan-dir-colors';
-import { CliColors, ColorFormatter } from '../../service/cli-colors';
-import { getIntuitiveTimeString } from '../../util/format-util';
 import { GetFileHashesRes, HASH_HWM, MAX_RUNNING_HASHES, getFileHashes } from './find-dupes3/get-file-hashes';
-import { _closeWs } from './find-dupes3/close-ws';
+import { _closeWs, _timeStr } from './find-dupes3/find-dupes-utils';
 import { GetPossibleDupesRes, getPossibleDupes } from './find-dupes3/get-possible-dupes';
+import { _print } from './find-dupes3/find-dupes-utils';
 
 const SORT_CHUNK_FILE_LINE_COUNT = 100;
 // const SORT_CHUNK_FILE_LINE_COUNT = 250;
@@ -287,8 +285,11 @@ async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDat
     ) {
       let sizeA: number;
       let sizeB: number;
+      let hashA: string | undefined;
+      let hashB: string | undefined;
       let writeA: boolean;
       let writeB: boolean;
+
       sizeA = -1;
       sizeB = -1;
       writeA = false;
@@ -298,11 +299,13 @@ async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDat
         let fileHashInfoA: FileHashInfo | undefined;
         fileHashInfoA = getHashInfo(lineA);
         sizeA = fileHashInfoA.size;
+        hashA = fileHashInfoA.hash;
       }
       if(lineB !== undefined) {
         let fileHashInfoB: FileHashInfo | undefined;
         fileHashInfoB = getHashInfo(lineB);
         sizeB = fileHashInfoB.size;
+        hashB = fileHashInfoB.hash;
       }
 
       if(sizeA > sizeB) {
@@ -310,8 +313,29 @@ async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDat
       } else if(sizeA < sizeB) {
         writeB = true;
       } else {
-        writeA = true;
-        writeB = true;
+        if(
+          (sizeA !== -1)
+          && (sizeB !== -1)
+        ) {
+          assert(
+            (hashA !== undefined)
+            && (hashB !== undefined)
+            && (lineA !== undefined)
+            && (lineB !== undefined)
+          );
+          if(hashA.localeCompare(hashB) < 0) {
+            writeA = true;
+          } else if(hashA.localeCompare(hashB) > 0) {
+            writeB = true;
+          } else {
+            writeA = true;
+            writeB = true;
+          }
+        } else if(sizeA !== -1) {
+          writeA = true;
+        } else if(sizeB !== -1) {
+          writeB = true;
+        }
       }
       if(writeA) {
         await writeSortFileWs(`${lineA}\n`);
@@ -427,7 +451,7 @@ async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, total
     let tmpFileWs: WriteStream;
     let drainDeferred: Deferred | undefined;
 
-    let lineSizeTuples: [ number, string ][];
+    let lineSizeTuples: [ hash: string, size: number, line: string ][];
 
     tmpFileName = `${tmpFileCounter++}.txt`;
     tmpFilePath = [
@@ -440,25 +464,30 @@ async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, total
       let currLine: string;
       let lineRx: RegExp;
       let rxExecRes: RegExpExecArray | null;
+      let hashStr: string | undefined;
       let sizeStr: string | undefined;
       let size: number;
       currLine = currDupeLines[i];
-      lineRx = /^[a-f0-9]+ (?<fileSize>[0-9]+) .*$/i;
+      lineRx = /^(?<hashStr>[a-f0-9]+) (?<fileSize>[0-9]+) .*$/i;
       rxExecRes = lineRx.exec(currLine);
+      hashStr = rxExecRes?.groups?.hashStr;
       sizeStr = rxExecRes?.groups?.fileSize;
-      assert(sizeStr !== undefined);
+      assert(
+        (hashStr !== undefined)
+        && (sizeStr !== undefined)
+      );
       size = +sizeStr;
       assert(!isNaN(size));
-      lineSizeTuples.push([ size, currLine ]);
+      lineSizeTuples.push([ hashStr, size, currLine ]);
     }
 
     lineSizeTuples.sort((a, b) => {
-      if(a[0] > b[0]) {
+      if(a[1] > b[1]) {
         return -1;
-      } else if(a[0] < b[0]) {
+      } else if(a[1] < b[1]) {
         return 1;
       } else {
-        return a[1].localeCompare(b[1]);
+        return a[0].localeCompare(b[0]);
       }
     });
 
@@ -467,7 +496,7 @@ async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, total
 
     for(let i = 0; i < lineSizeTuples.length; ++i) {
       let currLine: string;
-      currLine = lineSizeTuples[i][1];
+      currLine = lineSizeTuples[i][2];
       await _writeTmpWs(`${currLine}\n`);
     }
     await _closeWs(tmpFileWs);
@@ -594,55 +623,4 @@ function getPossibleDupeCount(possibleDupeMap: Map<number, number>): number {
     possibleDupeCount += fileCount;
   }
   return possibleDupeCount;
-}
-
-function _print(val: unknown) {
-
-  if(isObject(val)) {
-    let keys: (string | number)[];
-    keys = Object.keys(val);
-    for(let i = 0; i < keys.length; ++i) {
-      console.log(`${keys[i]}: ${_fmtFn(val[keys[i]])}`);
-    }
-  } else {
-    _fmtFn(val);
-  }
-
-  function _fmtFn(_val: unknown): string {
-    switch(typeof _val) {
-      case 'boolean':
-        return c.pink(_val);
-      case 'number':
-        return c.yellow_light(_val);
-      case 'string':
-        return CliColors.rgb(100, 255, 100)(`'${_val}'`);
-      case 'object':
-        throw new Error('no objects :/');
-      default:
-        return c.yellow_light(_val);
-    }
-  }
-}
-
-function _timeStr(ms: number, opts: {
-    doFmt?: boolean;
-    fmtTimeFn?: ColorFormatter;
-} = {}): string {
-  let doFmt: boolean;
-  let fmtTimeFn: ColorFormatter;
-  let timeStrFmt: ColorFormatter;
-  let msFmt: ColorFormatter;
-
-  doFmt = opts.doFmt ?? true;
-  fmtTimeFn = opts.fmtTimeFn ?? c.peach;
-
-  timeStrFmt = doFmt
-    ? fmtTimeFn
-    : (val) => `${val}`
-  ;
-  msFmt = doFmt
-    ? c.italic
-    : (val) => `${val}`
-  ;
-  return `${timeStrFmt(getIntuitiveTimeString(ms))} (${msFmt(ms)} ms)`;
 }

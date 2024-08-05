@@ -10,7 +10,7 @@ import { Timer } from '../../../util/timer';
 import { SCANDIR_OUT_DATA_DIR_PATH } from '../../../../constants';
 import { isObject, isString } from '../../../util/validate-primitives';
 import { logger } from '../../../logger';
-import { _closeWs } from './close-ws';
+import { _closeWs } from './find-dupes-utils';
 
 export type GetPossibleDupesRes = {
   possibleDupeSizeMap: Map<number, number>;
