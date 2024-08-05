@@ -7,11 +7,17 @@ import fsp, { FileHandle, FileReadResult } from 'fs/promises';
 
 import { isObject } from './validate-primitives';
 
-const DEFAULT_RFL_BUF_SIZE = 1 * 1024;
+// const DEFAULT_RFL_BUF_SIZE = 1 * 1024;
 // const DEFAULT_RFL_BUF_SIZE = 4 * 1024;
 // const DEFAULT_RFL_BUF_SIZE = 8 * 1024;
 // const DEFAULT_RFL_BUF_SIZE = 16 * 1024;
 // const DEFAULT_RFL_BUF_SIZE = 32 * 1024;
+
+/*
+  matches default highWaterMark in nodejs createReadStream (64k)
+    see: https://nodejs.org/docs/latest-v20.x/api/fs.html#fscreatereadstreampath-options
+ */
+const DEFAULT_RFL_BUF_SIZE = 64 * 1024;
 
 export function getPathRelativeToCwd(filePath: string) {
   let cwd: string;
