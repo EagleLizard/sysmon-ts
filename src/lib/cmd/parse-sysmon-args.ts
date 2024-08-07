@@ -42,6 +42,11 @@ const ScanDirOptsSchema = z.tuple([
     z.literal('-fd').or(z.literal('--find-dirs')).transform(() => 'find_dirs' as const),
     z.array(z.string()).min(1),
   ])
+).or(
+  z.tuple([
+    z.literal('-ex').or(z.literal('--exclude')).transform(() => 'exclude' as const),
+    z.array(z.string()).min(1),
+  ])
 );
 
 const MonitorOptsSchema = z.tuple([
@@ -113,6 +118,7 @@ export type PingOpts = {
 export type ScanDirOpts = {
   find_duplicates?: boolean;
   find_dirs?: string[];
+  exclude?: string[];
 }
 
 export type MonitorOpts = {
@@ -231,6 +237,9 @@ export function getScanDirOpts(opts: [string, string[]][]) {
         break;
       case 'find_dirs':
         scanDirOpts.find_dirs = scanDirOpt[1];
+        break;
+      case 'exclude':
+        scanDirOpts.exclude = scanDirOpt[1];
         break;
     }
   }
