@@ -17,6 +17,7 @@ import { ScanDirCbParams, scanDir, scanDir2 } from './scan-dir';
 import { ScanDirOpts, getScanDirArgs, getScanDirOpts } from '../parse-sysmon-args';
 import { ParsedArgv2 } from '../parse-argv';
 import { Deferred } from '../../../test/deferred';
+import assert from 'assert';
 
 export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   let dirPaths: string[];
@@ -67,32 +68,12 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   filesWs = createWriteStream(filesDataFilePath);
 
   const scanDirCb = async (params: ScanDirCbParams) => {
-    let wsRes: boolean;
     if(params.isDir) {
       dirCount++;
-      if(dirsDrainDeferred !== undefined) {
-        await dirsDrainDeferred.promise;
-      }
-      wsRes = dirsWs.write(`${params.fullPath}\n`);
-      if(!wsRes) {
-        if(dirsDrainDeferred === undefined) {
-          dirsDrainDeferred = Deferred.init();
-          dirsWs.once('drain', () => {
-            setImmediate(() => {
-              if(dirsDrainDeferred === undefined) {
-                throw new Error('Enexpected undefined drainDeferred');
-              }
-              dirsDrainDeferred.resolve();
-            });
-          });
-          dirsDrainDeferred.promise.finally(() => {
-            dirsDrainDeferred = undefined;
-          });
-        }
-      }
+      await _dirsWsWrite(`${params.fullPath}\n`);
       let skipDir = (
-        (opts.find_dirs !== undefined)
-        && opts.find_dirs.some(findDirPath => {
+        (opts.exclude !== undefined)
+        && opts.exclude.some(findDirPath => {
           return params.fullPath.includes(findDirPath);
         })
       );
@@ -109,26 +90,17 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
           ENOENT in find-duplicates.
         TODO: Explore resolving symlinks, research best
           practices for dealing with them.
-      */
-      if(filesDrainDeferred !== undefined) {
-        await filesDrainDeferred.promise;
+       */
+      let skipFile = (
+        (opts.exclude !== undefined)
+        && opts.exclude.some(findDirPath => {
+          return params.fullPath.includes(findDirPath);
+        })
+      );
+      if(skipFile) {
+        return;
       }
-      wsRes = filesWs.write(`${params.fullPath}\n`);
-      if(!wsRes) {
-        if(filesDrainDeferred === undefined) {
-          filesDrainDeferred = Deferred.init();
-          filesWs.once('drain', () => {
-            if(filesDrainDeferred === undefined) {
-              throw new Error('Enexpected undefined drainDeferred');
-            }
-            filesDrainDeferred.resolve();
-          });
-          filesDrainDeferred.promise.finally(() => {
-            filesDrainDeferred = undefined;
-          });
-        }
-        // await filesDrainDeferred.promise;
-      }
+      await _filesWsWrite(`${params.fullPath}\n`);
       fileCount++;
     }
   };
@@ -198,6 +170,46 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
       end of program seems to fix.
    */
   process.exitCode = 0;
+
+  async function _dirsWsWrite(str: string) {
+    let wsRes: boolean;
+    if(dirsDrainDeferred !== undefined) {
+      await dirsDrainDeferred.promise;
+    }
+    wsRes = dirsWs.write(str);
+    if(!wsRes) {
+      if(dirsDrainDeferred === undefined) {
+        dirsDrainDeferred = Deferred.init();
+        dirsWs.once('drain', () => {
+          assert(dirsDrainDeferred !== undefined);
+          dirsDrainDeferred.resolve();
+        });
+        dirsDrainDeferred.promise.finally(() => {
+          dirsDrainDeferred = undefined;
+        });
+      }
+    }
+  }
+
+  async function _filesWsWrite(str: string) {
+    let wsRes: boolean;
+    if(filesDrainDeferred !== undefined) {
+      await filesDrainDeferred.promise;
+    }
+    wsRes = filesWs.write(str);
+    if(!wsRes) {
+      if(filesDrainDeferred === undefined) {
+        filesDrainDeferred = Deferred.init();
+        filesWs.once('drain', () => {
+          assert(filesDrainDeferred !== undefined);
+          filesDrainDeferred.resolve();
+        });
+        filesDrainDeferred.promise.finally(() => {
+          filesDrainDeferred = undefined;
+        });
+      }
+    }
+  }
 }
 
 function logTotalTime(ms: number) {

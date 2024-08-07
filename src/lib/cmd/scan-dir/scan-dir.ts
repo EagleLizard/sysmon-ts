@@ -1,6 +1,5 @@
 
 import { Dirent, Stats, WriteStream, lstatSync, readdirSync } from 'fs';
-import assert from 'assert';
 import path from 'path';
 
 import { isObject, isPromise, isString } from '../../util/validate-primitives';
@@ -191,8 +190,7 @@ function *getDirScanner(opts: ScanDirOpts): Generator<ScanDirCbParams, undefined
     let rootDirent: Stats | undefined;
     let currRes: ScanDirCbParams;
     let scanDirCbResult: ScanDirCbResult | undefined;
-    currDirPath = dirQueue.popFront();
-    assert(currDirPath !== undefined, 'Path undefined in queue unexpectedly while scanning dir');
+    currDirPath = dirQueue.popFront()!;
     try {
       rootDirent = lstatSync(currDirPath);
     } catch(e) {
