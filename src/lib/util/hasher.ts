@@ -5,6 +5,7 @@ import { createReadStream, ReadStream } from 'fs';
 // const alg = 'sha256';
 // const DEFAULT_ALG = 'md5';
 // const alg = 'blake2s256';
+// const DEFAULT_ALG = 'blake2b512';
 const DEFAULT_ALG = 'sha1';
 // const DEFAULT_ALG = 'sha256';
 // const DEFAULT_ALG = 'sha512';

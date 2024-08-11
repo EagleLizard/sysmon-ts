@@ -4,6 +4,7 @@ import {
   createWriteStream,
 } from 'fs';
 import path from 'path';
+import assert from 'assert';
 
 import { OUT_DATA_DIR_PATH, SCANDIR_OUT_DATA_DIR_PATH } from '../../../constants';
 import { mkdirIfNotExist } from '../../util/files';
@@ -17,11 +18,13 @@ import { ScanDirCbParams, scanDir, scanDir2 } from './scan-dir';
 import { ScanDirOpts, getScanDirArgs, getScanDirOpts } from '../parse-sysmon-args';
 import { ParsedArgv2 } from '../parse-argv';
 import { Deferred } from '../../../test/deferred';
-import assert from 'assert';
+import { dirStat } from './dir-stat/dir-stat';
 
 export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   let dirPaths: string[];
   let opts: ScanDirOpts;
+  let findDirs: string[] | undefined;
+  let analyze: string[] | undefined;
 
   // let files: string[];
   // let dirs: string[];
@@ -46,6 +49,11 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
 
   dirPaths = getScanDirArgs(parsedArgv.args);
   opts = getScanDirOpts(parsedArgv.opts);
+  findDirs = opts.find_dirs;
+  analyze = opts.analyze;
+
+  console.log({ findDirs });
+  console.log({ analyze });
 
   nowDate = new Date;
   dirCount = 0;
@@ -53,6 +61,10 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
 
   mkdirIfNotExist(OUT_DATA_DIR_PATH);
   mkdirIfNotExist(SCANDIR_OUT_DATA_DIR_PATH);
+
+  if(analyze !== undefined) {
+    return dirStat();
+  }
 
   // dirsDataFilePath = getDirsDataFilePath(nowDate);
   dirsDataFilePath = [
@@ -68,18 +80,28 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   filesWs = createWriteStream(filesDataFilePath);
 
   const scanDirCb = async (params: ScanDirCbParams) => {
+    let exclude: boolean;
+    exclude = (
+      (opts.exclude !== undefined)
+      && opts.exclude.some(exludeDirPath => {
+        return params.fullPath.includes(exludeDirPath);
+      })
+    );
     if(params.isDir) {
       dirCount++;
-      await _dirsWsWrite(`${params.fullPath}\n`);
-      let skipDir = (
-        (opts.exclude !== undefined)
-        && opts.exclude.some(findDirPath => {
+      if(findDirs === undefined) {
+        await _dirsWsWrite(`${params.fullPath}\n`);
+      } else if(
+        findDirs.some(findDirPath => {
           return params.fullPath.includes(findDirPath);
         })
-      );
-      if(
-        skipDir
       ) {
+        await _dirsWsWrite(`${params.fullPath}\n`);
+        return {
+          skip: true,
+        };
+      }
+      if(exclude) {
         return {
           skip: true,
         };
@@ -91,13 +113,7 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
         TODO: Explore resolving symlinks, research best
           practices for dealing with them.
        */
-      let skipFile = (
-        (opts.exclude !== undefined)
-        && opts.exclude.some(findDirPath => {
-          return params.fullPath.includes(findDirPath);
-        })
-      );
-      if(skipFile) {
+      if(exclude) {
         return;
       }
       await _filesWsWrite(`${params.fullPath}\n`);

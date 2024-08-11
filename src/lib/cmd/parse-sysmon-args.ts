@@ -47,6 +47,11 @@ const ScanDirOptsSchema = z.tuple([
     z.literal('-ex').or(z.literal('--exclude')).transform(() => 'exclude' as const),
     z.array(z.string()).min(1),
   ])
+).or(
+  z.tuple([
+    z.literal('-a').or(z.literal('--analyze')).transform(() => 'analyze' as const),
+    z.array(z.string()),
+  ])
 );
 
 const MonitorOptsSchema = z.tuple([
@@ -119,6 +124,7 @@ export type ScanDirOpts = {
   find_duplicates?: boolean;
   find_dirs?: string[];
   exclude?: string[];
+  analyze?: string[];
 }
 
 export type MonitorOpts = {
@@ -240,6 +246,9 @@ export function getScanDirOpts(opts: [string, string[]][]) {
         break;
       case 'exclude':
         scanDirOpts.exclude = scanDirOpt[1];
+        break;
+      case 'analyze':
+        scanDirOpts.analyze = scanDirOpt[1];
         break;
     }
   }

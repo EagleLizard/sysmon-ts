@@ -1,6 +1,7 @@
 
 import { Dirent, Stats, WriteStream, lstatSync, readdirSync } from 'fs';
 import path from 'path';
+import { lstat } from 'fs/promises';
 
 import { isObject, isPromise, isString } from '../../util/validate-primitives';
 import { logger } from '../../logger';
@@ -94,9 +95,10 @@ export async function scanDir(opts: ScanDirOpts) {
           withFileTypes: true,
         });
       } catch(e) {
-        if(isObject(e) && (
-          e.code === 'EACCES'
-        )) {
+        if(
+          isObject(e)
+          && (e.code === 'EACCES')
+        ) {
           console.error(`${e.code} ${currDirPath}`);
           continue;
         } else {
@@ -123,7 +125,7 @@ export async function scanDir(opts: ScanDirOpts) {
 }
 
 export async function scanDir2(opts: ScanDirOpts) {
-  let dirScanner: Generator<ScanDirCbParams>;
+  let dirScanner: AsyncGenerator<ScanDirCbParams>;
   let iterRes: IteratorResult<ScanDirCbParams>;
   let progressMod: number;
   let outStream: ScanDirOutStream;
@@ -146,7 +148,7 @@ export async function scanDir2(opts: ScanDirOpts) {
   return new Promise<void>((resolve) => {
     (async function doIter() {
       while(
-        !(iterRes = dirScanner.next(scanDirCbResult)).done
+        !(iterRes = await dirScanner.next(scanDirCbResult)).done
         && (process.exitCode === undefined)
       ) {
         let currRes: ScanDirCbParams;
@@ -179,7 +181,7 @@ export async function scanDir2(opts: ScanDirOpts) {
   });
 }
 
-function *getDirScanner(opts: ScanDirOpts): Generator<ScanDirCbParams, undefined, ScanDirCbResult> {
+async function *getDirScanner(opts: ScanDirOpts): AsyncGenerator<ScanDirCbParams, undefined, ScanDirCbResult> {
   let currDirents: Dirent[];
   let dirQueue: Sll<string>;
   let currDirPath: string | undefined;
@@ -192,7 +194,7 @@ function *getDirScanner(opts: ScanDirOpts): Generator<ScanDirCbParams, undefined
     let scanDirCbResult: ScanDirCbResult | undefined;
     currDirPath = dirQueue.popFront()!;
     try {
-      rootDirent = lstatSync(currDirPath);
+      rootDirent = await lstat(currDirPath);
     } catch(e) {
       if(
         isObject(e)

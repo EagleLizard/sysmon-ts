@@ -10,12 +10,21 @@ import { Dirent, WriteStream, createWriteStream } from 'fs';
 import { Deferred } from '../../../../test/deferred';
 import assert from 'assert';
 
-// export const SORT_CHUNK_FILE_LINE_COUNT = 10;
+export const SORT_CHUNK_FILE_LINE_COUNT = 10;
 // export const SORT_CHUNK_FILE_LINE_COUNT = 100;
 // export const SORT_CHUNK_FILE_LINE_COUNT = 250;
 // export const SORT_CHUNK_FILE_LINE_COUNT = 500;
-export const SORT_CHUNK_FILE_LINE_COUNT = 1e3;
+// export const SORT_CHUNK_FILE_LINE_COUNT = 1e3;
 // export const SORT_CHUNK_FILE_LINE_COUNT = 1e4;
+
+// const LR_BUF_SIZE = 256 * 1024;
+const LR_BUF_SIZE = 64 * 1024;
+// const LR_BUF_SIZE = 32 * 1024;
+// const LR_BUF_SIZE = 16 * 1024;
+// const LR_BUF_SIZE = 8 * 1024;
+// const LR_BUF_SIZE = 4 * 1024;
+// const LR_BUF_SIZE = 2 * 1024;
+// const LR_BUF_SIZE = 1 * 1024;
 
 const RFL_MOD = 500;
 
@@ -67,18 +76,6 @@ async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDat
   let dupeChunkDirents: Dirent[];
 
   let sortCount: number;
-  let lrBufSize: number;
-
-  // lrBufSize = 256 * 1024;
-  lrBufSize = 64 * 1024;
-  // lrBufSize = 32 * 1024;
-  // lrBufSize = 16 * 1024;
-  // lrBufSize = 8 * 1024;
-  // lrBufSize = 4 * 1024;
-  // lrBufSize = 2 * 1024;
-  // lrBufSize = 1 * 1024;
-
-  _print({ lrBufSize });
 
   sortCount = 0;
 
@@ -145,10 +142,10 @@ async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDat
     ));
     isLastSort = tmpFileQueue.length === 0;
     lineReaderA = await getLineReader2(tmpFileA, {
-      bufSize: lrBufSize,
+      bufSize: LR_BUF_SIZE,
     });
     lineReaderB = await getLineReader2(tmpFileB, {
-      bufSize: lrBufSize,
+      bufSize: LR_BUF_SIZE,
     });
     lineA = await lineReaderA.read();
     lineB = await lineReaderB.read();
@@ -253,12 +250,11 @@ async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDat
     }
     await lineReaderA.close();
     await lineReaderB.close();
-
     await _closeWs(sortFileWs);
-    tmpFileQueue.push(sortFilePath);
-
     await rm(tmpFileA);
     await rm(tmpFileB);
+
+    tmpFileQueue.push(sortFilePath);
   }
   process.stdout.write('\n');
   _print({ sortCount });

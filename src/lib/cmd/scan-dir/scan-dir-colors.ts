@@ -44,6 +44,7 @@ const orange_light = CliColors.rgb(255, 210, 253);
 // const yellow_light = chalk.rgb(255, 255, 117);
 const yellow_light = CliColors.rgb(199, 196, 62);
 const blue_light = CliColors.rgb(149, 199, 255);
+const blue_light2 = CliColors.rgb(137, 225, 255);
 
 // const cyan = CliColors.rgb(84, 194, 198);
 // 142	250	253
@@ -73,6 +74,7 @@ const ezdColors = {
   magenta,
   orange_light,
   blue_light,
+  blue_light2,
   cyan,
   white,
 
