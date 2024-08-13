@@ -5,6 +5,8 @@ import path from 'path';
 
 import { SCANDIR_OUT_DATA_DIR_PATH } from '../../../../constants';
 import { LineReader2, getLineReader2 } from '../../../util/files';
+import { BrailleCanvas } from '../../../util/braille';
+import { DirTree } from './dir-tree';
 
 const OUT_FILES_SUFFIX = '_files.txt';
 const OUT_DIRS_SUFFIX = '_dirs.txt';
@@ -59,10 +61,10 @@ export async function dirStat(): Promise<void> {
 
   let dupesLr = await getLineReader2(outFileDupesPath);
   let line: string | undefined;
-  let extCountMap: Map<string, number>;
-  let extSizeMap: Map<string, number>;
-  extCountMap = new Map();
-  extSizeMap = new Map();
+  let extStatMap: Map<string, ExtStat>;
+  let dirTree: DirTree;
+  extStatMap = new Map();
+  dirTree = new DirTree();
   while((line = await dupesLr.read()) !== undefined) {
     let lineRx: RegExp;
     let hash: string | undefined;
@@ -83,32 +85,64 @@ export async function dirStat(): Promise<void> {
     );
     fileSize = +fileSizeStr;
     assert(!isNaN(fileSize));
-    
-    let pathParts = filePath.split(path.sep);
-    let fileName = pathParts[pathParts.length - 1];
-    // let fileExt = fileName.split('.')[1];
+
+    dirTree.insertFile(filePath);
+
     let fileExt = path.extname(filePath);
-    let extCount: number | undefined;
-    let extSizeTotal: number | undefined;
-    if((extCount = extCountMap.get(fileExt)) === undefined) {
-      extCount = 0;
+    let currExtStat: ExtStat | undefined;
+    if((currExtStat = extStatMap.get(fileExt)) === undefined) {
+      currExtStat = {
+        name: fileExt,
+        size: 0,
+        count: 0,
+      };
+      extStatMap.set(fileExt, currExtStat);
     }
-    extCountMap.set(fileExt, extCount + 1);
-    if((extSizeTotal = extSizeMap.get(fileExt)) === undefined) {
-      extSizeTotal = 0;
-    }
-    extSizeMap.set(fileExt, extSizeTotal + fileSize);
+    currExtStat.size += fileSize;
+    currExtStat.count += 1;
   }
-  let extCountTuples: [string, number][] = [ ...extCountMap.entries() ];
-  extCountTuples.sort((a, b) => {
-    if(a[1] > b[1]) {
+  await dupesLr.close();
+
+  // dirTree.traverse((filePath) => {
+  //   console.log(filePath);
+  // });
+
+  let extStats = [ ...extStatMap.values() ];
+  extStats.sort((a, b) => {
+    if(a.count > b.count) {
       return -1;
-    } else if(a[1] < b[1]) {
+    } else if(a.count < b.count) {
       return 1;
     } else {
       return 0;
     }
   });
-  console.log(extCountTuples);
-  await dupesLr.close();
+  console.log(extStats.map(extStat => {
+    return {
+      ...extStat,
+      avgSize: Math.round(extStat.size / extStat.count),
+    };
+  }).sort((a, b) => {
+    if(a.avgSize > b.avgSize) {
+      return -1;
+    } else if(a.avgSize < b.avgSize) {
+      return 1;
+    } else {
+      return 0;
+    }
+  }));
+  let treeMap = getTreeMap();
+  console.log(treeMap);
+}
+
+function getTreeMap() {
+  let brCanvas = new BrailleCanvas(process.stdout.columns, process.stdout.rows);
+  for(let x = 0; x < brCanvas.width; ++x) {
+    for(let y = 0; y < brCanvas.height; ++y) {
+      if(x !== y * 2) {
+        brCanvas.set(x, y);
+      }
+    }
+  }
+  console.log(brCanvas.getStrMatrix().flatMap(a => a.join('')).join('\n'));
 }

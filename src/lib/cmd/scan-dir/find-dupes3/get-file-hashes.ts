@@ -20,9 +20,9 @@ const HASH_RFL_MOD = 250;
   See: https://www.wolframalpha.com/input/?i=700000+*+x+%3D+250
  */
 // const HASH_RFL_COEF = 3.5714e-4; // 0.00035714
-// const HASH_RFL_COEF = 1 / 700;
+const HASH_RFL_COEF = 1 / 700;
 // const HASH_RFL_COEF = 1 / 1400;
-const HASH_RFL_COEF = 1 / 2800; // 0.00035714
+// const HASH_RFL_COEF = 1 / 2800; // 0.00035714
 // const HASH_RFL_COEF = 1 / (2800 * 2);
 // const HASH_RFL_COEF = 1 / (2800 * 3);
 // const HASH_RFL_COEF = 1 / (2800 * Math.E);
@@ -149,9 +149,10 @@ export async function getFileHashes(
           rflTimer.reset();
         }
         // if(percentTimer.currentMs() > ((HASH_RFL_MOD) * 8)) {
-        if(percentTimer.currentMs() > ((hashRflMod) * 12)) {
-          process.stdout.write(((finishedHashCount / possibleDupeCount) * 100).toFixed(2));
-          // process.stdout.write(((finishedHashCount / possibleDupeCount) * 100).toFixed(3));
+        if(percentTimer.currentMs() > ((hashRflMod) * 8)) {
+        // if(percentTimer.currentMs() > ((hashRflMod) * 12)) {
+          process.stdout.write(`${Math.round((finishedHashCount / possibleDupeCount) * 100)}`);
+          // process.stdout.write(((finishedHashCount / possibleDupeCount) * 100).toFixed(2));
           percentTimer.reset();
         }
       });

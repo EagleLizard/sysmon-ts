@@ -10,9 +10,9 @@ import { Dirent, WriteStream, createWriteStream } from 'fs';
 import { Deferred } from '../../../../test/deferred';
 import assert from 'assert';
 
-export const SORT_CHUNK_FILE_LINE_COUNT = 10;
+// export const SORT_CHUNK_FILE_LINE_COUNT = 10;
 // export const SORT_CHUNK_FILE_LINE_COUNT = 100;
-// export const SORT_CHUNK_FILE_LINE_COUNT = 250;
+export const SORT_CHUNK_FILE_LINE_COUNT = 250;
 // export const SORT_CHUNK_FILE_LINE_COUNT = 500;
 // export const SORT_CHUNK_FILE_LINE_COUNT = 1e3;
 // export const SORT_CHUNK_FILE_LINE_COUNT = 1e4;
