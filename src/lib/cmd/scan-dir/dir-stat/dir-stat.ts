@@ -7,6 +7,7 @@ import { SCANDIR_OUT_DATA_DIR_PATH } from '../../../../constants';
 import { LineReader2, getLineReader2 } from '../../../util/files';
 import { BrailleCanvas } from '../../../util/braille';
 import { DirTree } from './dir-tree';
+import { FileSizeInfo, parseSizeInfo } from '../find-dupes3/parse-dupes';
 
 const OUT_FILES_SUFFIX = '_files.txt';
 const OUT_DIRS_SUFFIX = '_dirs.txt';
@@ -59,36 +60,19 @@ export async function dirStat(): Promise<void> {
     outFileDupesPath,
   });
 
-  let dupesLr = await getLineReader2(outFileDupesPath);
+  let filesLr = await getLineReader2(outFilesPath);
   let line: string | undefined;
   let extStatMap: Map<string, ExtStat>;
   let dirTree: DirTree;
   extStatMap = new Map();
   dirTree = new DirTree();
-  while((line = await dupesLr.read()) !== undefined) {
-    let lineRx: RegExp;
-    let hash: string | undefined;
-    let fileSizeStr: string | undefined;
-    let fileSize: number;
-    let filePath: string | undefined;
-    let rxExecRes: RegExpExecArray | null;
-    lineRx = /^(?<hash>[a-f0-9]+) (?<fileSizeStr>[0-9]+) (?<filePath>.*)$/i;
-    rxExecRes = lineRx.exec(line);
-    hash = rxExecRes?.groups?.hash;
-    fileSizeStr = rxExecRes?.groups?.fileSizeStr;
-    filePath = rxExecRes?.groups?.filePath;
-    assert(
-      1
-      && hash !== undefined
-      && fileSizeStr !== undefined
-      && filePath !== undefined
-    );
-    fileSize = +fileSizeStr;
-    assert(!isNaN(fileSize));
+  while((line = await filesLr.read()) !== undefined) {
+    let fileSizeInfo: FileSizeInfo;
+    fileSizeInfo = parseSizeInfo(line);
 
-    dirTree.insertFile(filePath);
+    dirTree.insertFile(fileSizeInfo.filePath);
 
-    let fileExt = path.extname(filePath);
+    let fileExt = path.extname(fileSizeInfo.filePath);
     let currExtStat: ExtStat | undefined;
     if((currExtStat = extStatMap.get(fileExt)) === undefined) {
       currExtStat = {
@@ -98,10 +82,10 @@ export async function dirStat(): Promise<void> {
       };
       extStatMap.set(fileExt, currExtStat);
     }
-    currExtStat.size += fileSize;
+    currExtStat.size += fileSizeInfo.size;
     currExtStat.count += 1;
   }
-  await dupesLr.close();
+  await filesLr.close();
 
   // dirTree.traverse((filePath) => {
   //   console.log(filePath);

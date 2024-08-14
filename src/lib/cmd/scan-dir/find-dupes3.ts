@@ -25,7 +25,6 @@ export async function findDupes(opts: {
 }): Promise<Map<string, string[]>> {
   let getPossibleDupesRes: GetPossibleDupesRes;
   let possibleDupeSizeMap: Map<number, number>;
-  let sizeFilePath: string;
   let possibleDupeCount: number;
 
   let getFileHashesRes: GetFileHashesRes;
@@ -63,12 +62,11 @@ export async function findDupes(opts: {
   console.log(`getPossibleDupes() took: ${_timeStr(getPossibleDupesMs)}`);
 
   possibleDupeSizeMap = getPossibleDupesRes.possibleDupeSizeMap;
-  sizeFilePath = getPossibleDupesRes.sizeFilePath;
   possibleDupeCount = getPossibleDupeCount(possibleDupeSizeMap);
   _print({ possibleDupeCount });
 
   timer.reset();
-  getFileHashesRes = await getFileHashes(sizeFilePath, possibleDupeSizeMap, possibleDupeCount, opts.nowDate);
+  getFileHashesRes = await getFileHashes(opts.filesDataFilePath, possibleDupeSizeMap, possibleDupeCount, opts.nowDate);
   possibleDupeSizeMap.clear();
   getFileHashesMs = timer.currentMs();
   getFileHashesTimeStr = _timeStr(getFileHashesMs, {

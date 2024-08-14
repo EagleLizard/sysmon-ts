@@ -16,6 +16,7 @@ export type ScanDirCbParams = {
   isDir: boolean;
   isSymLink: boolean;
   fullPath: string;
+  stats: Stats | undefined;
 };
 
 type ScanDirOutStream = {
@@ -81,6 +82,7 @@ export async function scanDir(opts: ScanDirOpts) {
       isDir: rootDirent?.isDirectory() ?? false,
       isSymLink: rootDirent?.isSymbolicLink() ?? false,
       fullPath: currDirPath,
+      stats: rootDirent,
     });
     if(isPromise(scanDirCbResult)) {
       scanDirCbResult = await scanDirCbResult;
@@ -157,6 +159,7 @@ export async function scanDir2(opts: ScanDirOpts) {
           isDir: currRes.isDir,
           isSymLink: currRes.isSymLink,
           fullPath: currRes.fullPath,
+          stats: currRes.stats,
         });
         if(isPromise(scanDirCbResult)) {
           scanDirCbResult = await scanDirCbResult;
@@ -189,12 +192,12 @@ async function *getDirScanner(opts: ScanDirOpts): AsyncGenerator<ScanDirCbParams
   dirQueue = new Sll([ opts.dirPath ]);
 
   while(dirQueue.length > 0) {
-    let rootDirent: Stats | undefined;
+    let rootStats: Stats | undefined;
     let currRes: ScanDirCbParams;
     let scanDirCbResult: ScanDirCbResult | undefined;
     currDirPath = dirQueue.popFront()!;
     try {
-      rootDirent = await lstat(currDirPath);
+      rootStats = await lstat(currDirPath);
     } catch(e) {
       if(
         isObject(e)
@@ -217,9 +220,10 @@ async function *getDirScanner(opts: ScanDirOpts): AsyncGenerator<ScanDirCbParams
       }
     }
     currRes = {
-      isDir: rootDirent?.isDirectory() ?? false,
-      isSymLink: rootDirent?.isSymbolicLink() ?? false,
+      isDir: rootStats?.isDirectory() ?? false,
+      isSymLink: rootStats?.isSymbolicLink() ?? false,
       fullPath: currDirPath,
+      stats: rootStats,
     };
 
     scanDirCbResult = yield currRes;
@@ -228,8 +232,8 @@ async function *getDirScanner(opts: ScanDirOpts): AsyncGenerator<ScanDirCbParams
     }
 
     if(
-      (rootDirent !== undefined)
-      && rootDirent.isDirectory()
+      (rootStats !== undefined)
+      && rootStats.isDirectory()
       && !scanDirCbResult?.skip
     ) {
       try {

@@ -9,6 +9,7 @@ import path from 'path';
 import { Dirent, WriteStream, createWriteStream } from 'fs';
 import { Deferred } from '../../../../test/deferred';
 import assert from 'assert';
+import { FileHashInfo, parseHashInfo } from './parse-dupes';
 
 // export const SORT_CHUNK_FILE_LINE_COUNT = 10;
 // export const SORT_CHUNK_FILE_LINE_COUNT = 100;
@@ -27,12 +28,6 @@ const LR_BUF_SIZE = 64 * 1024;
 // const LR_BUF_SIZE = 1 * 1024;
 
 const RFL_MOD = 500;
-
-type FileHashInfo = {
-  hash: string;
-  size: number;
-  filePath: string;
-};
 
 export async function sortDuplicates(dupeFilePath: string, totalDupeCount: number, nowDate: Date) {
   let tmpDirExists: boolean;
@@ -198,13 +193,13 @@ async function sortTmpDupeChunks2(tmpDir: string, totalDupeCount: number, nowDat
 
       if(lineA !== undefined) {
         let fileHashInfoA: FileHashInfo | undefined;
-        fileHashInfoA = getHashInfo(lineA);
+        fileHashInfoA = parseHashInfo(lineA);
         sizeA = fileHashInfoA.size;
         hashA = fileHashInfoA.hash;
       }
       if(lineB !== undefined) {
         let fileHashInfoB: FileHashInfo | undefined;
-        fileHashInfoB = getHashInfo(lineB);
+        fileHashInfoB = parseHashInfo(lineB);
         sizeB = fileHashInfoB.size;
         hashB = fileHashInfoB.hash;
       }
@@ -397,31 +392,4 @@ async function writeTmpDupeSortChnks(dupeFilePath: string, tmpDir: string, total
       }
     }
   }
-}
-
-function getHashInfo(line: string): FileHashInfo {
-  let lineRx: RegExp;
-  let rxExecRes: RegExpExecArray | null;
-  let hash: string | undefined;
-  let sizeStr: string | undefined;
-  let filePath: string | undefined;
-  let size: number;
-  lineRx = /^(?<hash>[a-f0-9]+) (?<size>[0-9]+) (?<filePath>.*)$/i;
-  rxExecRes = lineRx.exec(line);
-  hash = rxExecRes?.groups?.hash;
-  sizeStr = rxExecRes?.groups?.size;
-  filePath = rxExecRes?.groups?.filePath;
-  assert((
-    1
-    && (hash !== undefined)
-    && (sizeStr !== undefined)
-    && (filePath !== undefined)
-  ), `line: ${JSON.stringify(line)}`);
-  size = +sizeStr;
-  assert(!isNaN(size));
-  return {
-    hash,
-    size,
-    filePath,
-  };
 }

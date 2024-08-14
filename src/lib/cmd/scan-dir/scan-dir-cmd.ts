@@ -113,10 +113,12 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
         TODO: Explore resolving symlinks, research best
           practices for dealing with them.
        */
+      let size: number;
       if(exclude) {
         return;
       }
-      await _filesWsWrite(`${params.fullPath}\n`);
+      size = params.stats?.size ?? 0;
+      await _filesWsWrite(`${size} ${params.fullPath}\n`);
       fileCount++;
     }
   };
