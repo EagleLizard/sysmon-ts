@@ -1,12 +1,20 @@
 
 import path from 'path';
 
+export type FileCbParams = {
+  filePath: string;
+  size: number;
+};
+
 export class DirTreeNode {
   val: string;
+  size?: number;
   parent: DirTreeNode | undefined;
   children: DirTreeNode[];
-  constructor(val: string) {
+  constructor(val: string, size?: number) {
     this.val = val;
+    this.size = size;
+
     this.children = [];
     this.parent = undefined;
   }
@@ -21,7 +29,7 @@ export class DirTree {
   constructor() {
     this.root = new DirTreeNode('');
   }
-  insertFile(filePath: string) {
+  insertFile(filePath: string, size: number) {
     let pathParts: string[];
     let currNode: DirTreeNode;
     pathParts = filePath.split(path.sep)
@@ -32,18 +40,23 @@ export class DirTree {
     for(let i = 0; i < pathParts.length; ++i) {
       let currPathPath: string;
       let nextNode: DirTreeNode | undefined;
+      let isLeaf: boolean;
+      let currSize: number;
+      isLeaf = i === (pathParts.length - 1);
+      currSize = isLeaf ? size : 0;
+
       currPathPath = pathParts[i];
       nextNode = currNode.children.find(currChild => {
         return currChild.val === currPathPath;
       });
       if(nextNode === undefined) {
-        nextNode = new DirTreeNode(currPathPath);
+        nextNode = new DirTreeNode(currPathPath, currSize);
         currNode.addChild(nextNode);
       }
       currNode = nextNode;
     }
   }
-  traverse(pathCb: (filePath: string) => void) {
+  traverse(pathCb: (params: FileCbParams) => void) {
     let currNode: DirTreeNode;
     currNode = this.root;
     _traverse(currNode, [ this.root ]);
@@ -53,7 +66,10 @@ export class DirTree {
         filePath = soFar.map(currNode => {
           return currNode.val;
         }).join(path.sep);
-        pathCb(filePath);
+        pathCb({
+          filePath,
+          size: dirNode.size ?? 0,
+        });
         return;
       }
       for(let i = 0; i < dirNode.children.length; ++i) {

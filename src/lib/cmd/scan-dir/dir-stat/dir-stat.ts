@@ -8,6 +8,8 @@ import { LineReader2, getLineReader2 } from '../../../util/files';
 import { BrailleCanvas } from '../../../util/braille';
 import { DirTree } from './dir-tree';
 import { FileSizeInfo, parseSizeInfo } from '../find-dupes3/parse-dupes';
+import { Timer } from '../../../util/timer';
+import { _timeStr } from '../find-dupes3/find-dupes-utils';
 
 const OUT_FILES_SUFFIX = '_files.txt';
 const OUT_DIRS_SUFFIX = '_dirs.txt';
@@ -60,17 +62,21 @@ export async function dirStat(): Promise<void> {
     outFileDupesPath,
   });
 
-  let filesLr = await getLineReader2(outFilesPath);
   let line: string | undefined;
   let extStatMap: Map<string, ExtStat>;
   let dirTree: DirTree;
+  let filesLr: LineReader2;
+  let dtTimer: Timer;
+  let dtMs: number;
+  dtTimer = Timer.start();
+  filesLr = await getLineReader2(outFilesPath);
   extStatMap = new Map();
   dirTree = new DirTree();
   while((line = await filesLr.read()) !== undefined) {
     let fileSizeInfo: FileSizeInfo;
     fileSizeInfo = parseSizeInfo(line);
 
-    dirTree.insertFile(fileSizeInfo.filePath);
+    dirTree.insertFile(fileSizeInfo.filePath, fileSizeInfo.size);
 
     let fileExt = path.extname(fileSizeInfo.filePath);
     let currExtStat: ExtStat | undefined;
@@ -86,35 +92,9 @@ export async function dirStat(): Promise<void> {
     currExtStat.count += 1;
   }
   await filesLr.close();
+  dtMs = dtTimer.stop();
+  console.log(`building dirTree took: ${_timeStr(dtMs)}`);
 
-  // dirTree.traverse((filePath) => {
-  //   console.log(filePath);
-  // });
-
-  let extStats = [ ...extStatMap.values() ];
-  extStats.sort((a, b) => {
-    if(a.count > b.count) {
-      return -1;
-    } else if(a.count < b.count) {
-      return 1;
-    } else {
-      return 0;
-    }
-  });
-  console.log(extStats.map(extStat => {
-    return {
-      ...extStat,
-      avgSize: Math.round(extStat.size / extStat.count),
-    };
-  }).sort((a, b) => {
-    if(a.avgSize > b.avgSize) {
-      return -1;
-    } else if(a.avgSize < b.avgSize) {
-      return 1;
-    } else {
-      return 0;
-    }
-  }));
   let treeMap = getTreeMap();
   console.log(treeMap);
 }
