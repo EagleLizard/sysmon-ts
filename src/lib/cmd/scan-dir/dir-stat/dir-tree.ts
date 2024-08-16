@@ -8,11 +8,13 @@ export type FileCbParams = {
 
 export class DirTreeNode {
   val: string;
-  size?: number;
+  isDir: boolean;
+  size: number;
   parent: DirTreeNode | undefined;
   children: DirTreeNode[];
-  constructor(val: string, size?: number) {
+  constructor(val: string, isDir: boolean, size: number) {
     this.val = val;
+    this.isDir = isDir;
     this.size = size;
 
     this.children = [];
@@ -22,12 +24,24 @@ export class DirTreeNode {
     childNode.parent = this;
     this.children.push(childNode);
   }
+  fullPath(): string {
+    let currNode: DirTreeNode | undefined;
+    let pathParts: string[];
+    currNode = this;
+    pathParts = [];
+    while(currNode !== undefined) {
+      pathParts.push(currNode.val);
+      currNode = currNode.parent;
+    }
+    pathParts.reverse();
+    return pathParts.join(path.sep);
+  }
 }
 
 export class DirTree {
   root: DirTreeNode;
   constructor() {
-    this.root = new DirTreeNode('');
+    this.root = new DirTreeNode('', true, 0);
   }
   insertFile(filePath: string, size: number) {
     let pathParts: string[];
@@ -50,12 +64,14 @@ export class DirTree {
         return currChild.val === currPathPath;
       });
       if(nextNode === undefined) {
-        nextNode = new DirTreeNode(currPathPath, currSize);
+        nextNode = new DirTreeNode(currPathPath, !isLeaf, currSize);
         currNode.addChild(nextNode);
+        nextNode.parent = currNode;
       }
       currNode = nextNode;
     }
   }
+
   traverse(pathCb: (params: FileCbParams) => void) {
     let currNode: DirTreeNode;
     currNode = this.root;

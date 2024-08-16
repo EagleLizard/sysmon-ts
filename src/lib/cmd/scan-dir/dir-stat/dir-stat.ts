@@ -6,7 +6,7 @@ import path from 'path';
 import { SCANDIR_OUT_DATA_DIR_PATH } from '../../../../constants';
 import { LineReader2, getLineReader2 } from '../../../util/files';
 import { BrailleCanvas } from '../../../util/braille';
-import { DirTree } from './dir-tree';
+import { DirTree, DirTreeNode } from './dir-tree';
 import { FileSizeInfo, parseSizeInfo } from '../find-dupes3/parse-dupes';
 import { Timer } from '../../../util/timer';
 import { _timeStr } from '../find-dupes3/find-dupes-utils';
@@ -95,8 +95,63 @@ export async function dirStat(): Promise<void> {
   dtMs = dtTimer.stop();
   console.log(`building dirTree took: ${_timeStr(dtMs)}`);
 
-  let treeMap = getTreeMap();
-  console.log(treeMap);
+  /*
+    BFS to construct subdivisions for treemap
+   */
+  let dirQueue: DirTreeNode[];
+  let nextNodes: DirTreeNode[];
+  let depth: number;
+  let fileCount: number;
+
+  /*
+    We'll BFS until maxFiles number of files is found
+   */
+  const maxFiles = 50;
+
+  // currNode = dirTree.root;
+  depth = 0;
+  fileCount = 0;
+  dirQueue = [ dirTree.root ];
+  nextNodes = [];
+  while(dirQueue.length > 0) {
+    for(let i = 0; i < dirQueue.length; ++i) {
+      let currNode = dirQueue[i];
+      if(fileCount > maxFiles) {
+        break;
+      }
+      fileCount += +!currNode.isDir;
+
+      /* visit node */
+      if(!currNode.isDir) {
+        let fullPath: string;
+        fullPath = currNode.fullPath();
+        console.log(`${fullPath}`);
+        console.log(`d${depth}`);
+        console.log('');
+      }
+
+      for(let k = 0; k < currNode.children.length; ++k) {
+        let currChild = currNode.children[k];
+        nextNodes.push(currChild);
+      }
+    }
+    if(fileCount > maxFiles) {
+      break;
+    }
+    dirQueue = nextNodes;
+    nextNodes = [];
+    depth++;
+    // if(depth > 8) {
+    //   break;
+    // }
+  }
+  console.log({
+    fileCount,
+    depth,
+  });
+
+  // let treeMap = getTreeMap();
+  // console.log(treeMap);
 }
 
 function getTreeMap() {
