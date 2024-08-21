@@ -1,11 +1,10 @@
 
-import { MathNumericType, std } from 'mathjs';
 import { PingStatDto } from '../../models/ping-stat-dto';
-import { isNumber } from '../../util/validate-primitives';
 import { _PingStatOpts } from './ping-stat-opts';
 import { PingService } from '../../service/ping-service';
 import { WriteStream } from 'fs';
 import { getDateStr, getDayStr } from '../../util/datetime-util';
+import { MathUtil } from '../../util/math-util';
 
 export type AggregatePingStats = {
   minAvg: number;
@@ -49,12 +48,14 @@ export class PingStatsService {
     let maxAvg = -Infinity;
     let minAvg = Infinity;
     let avgSum = 0;
-    let stdDevRaw: MathNumericType;
     let stdDev: number;
     let totalPings = 0;
     let totalAvg: number;
+    let averages: number[];
+    averages = [];
     for(let i = 0; i < pingStats.length; ++i) {
       let pingStat = pingStats[i];
+      averages.push(pingStat.avg);
       if(pingStat.avg > maxAvg) {
         maxAvg = pingStat.avg;
       }
@@ -65,14 +66,7 @@ export class PingStatsService {
       // totalPings += pingStat.count;
       totalPings++;
     }
-    stdDevRaw = std(
-      pingStats.map(pingStat => pingStat.avg),
-      'unbiased'
-    );
-    if(!isNumber(stdDevRaw)) {
-      throw new Error(`Unexpected std() result: ${std}`);
-    }
-    stdDev = stdDevRaw;
+    stdDev = MathUtil.stddev(averages);
     totalAvg = avgSum / totalPings;
     return {
       minAvg,

@@ -49,8 +49,9 @@ export async function pingStatsMain(parsedArgv: ParsedArgv2) {
   timer = Timer.start();
   pingStats = await PingStatsService.getPingStats(opts);
   getStatsMs = timer.stop();
-
-  ws.write(`get stats took: ${getIntuitiveTimeString(getStatsMs)}\n\n`);
+  let statsTimeStr = `get stats took: ${getIntuitiveTimeString(getStatsMs)}`;
+  console.log(statsTimeStr);
+  ws.write(`${statsTimeStr}\n\n`);
 
   runOpts = {
     ...opts,

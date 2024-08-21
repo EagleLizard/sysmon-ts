@@ -106,7 +106,7 @@ export async function dirStat(): Promise<void> {
   /*
     We'll BFS until maxFiles number of files is found
    */
-  const maxFiles = 50;
+  const maxFiles = 150;
 
   // currNode = dirTree.root;
   depth = 0;
@@ -126,7 +126,7 @@ export async function dirStat(): Promise<void> {
         let fullPath: string;
         fullPath = currNode.fullPath();
         console.log(`${fullPath}`);
-        console.log(`d${depth}`);
+        console.log(`d: ${depth}`);
         console.log('');
       }
 
