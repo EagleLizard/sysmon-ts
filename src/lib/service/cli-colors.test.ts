@@ -1,11 +1,13 @@
 
-import { describe, it, expect, beforeEach} from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { CliColors, ColorFormatter } from './cli-colors';
 
 describe('cli-colors tests', () => {
+
   beforeEach(() => {
     //
   });
+
   it('tests functions combined with comb() are called in reverse order', () => {
     let fmt1: ColorFormatter;
     let fmt2: ColorFormatter;
@@ -22,5 +24,13 @@ describe('cli-colors tests', () => {
     expectedRes = fmt1(fmt2(fmt3(testStr)));
     fmtRes = fmtFn(testStr);
     expect(fmtRes).toEqual(expectedRes);
+  });
+
+  it('tests dim()', () => {
+    let testStr: string;
+    let dimRes: string;
+    testStr = 'test_str';
+    dimRes = CliColors.dim(testStr);
+    expect(dimRes).toEqual(`\u001b[2m${testStr}\u001b[22m`);
   });
 });

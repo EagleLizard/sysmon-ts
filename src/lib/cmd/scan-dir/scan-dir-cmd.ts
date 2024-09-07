@@ -14,7 +14,11 @@ import { getDateFileStr } from '../../util/datetime-util';
 // import { findDuplicateFiles } from './find-duplicate-files';
 // import { findDuplicateFiles2 } from './find-duplicate-files2';
 import { findDupes } from './find-dupes3';
-import { ScanDirCbParams, scanDir, scanDir2 } from './scan-dir';
+import {
+  ScanDirCbParams,
+  // scanDir,
+  scanDir2,
+} from './scan-dir';
 import { ScanDirOpts, getScanDirArgs, getScanDirOpts } from '../parse-sysmon-args';
 import { ParsedArgv2 } from '../parse-argv';
 import { Deferred } from '../../../test/deferred';
@@ -66,13 +70,14 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
     return dirStat();
   }
 
-  // dirsDataFilePath = getDirsDataFilePath(nowDate);
+  dirsDataFilePath = getDirsDataFilePath(nowDate);
   dirsDataFilePath = [
     SCANDIR_OUT_DATA_DIR_PATH,
     '0_dirs.txt',
   ].join(path.sep);
   dirsWs = createWriteStream(dirsDataFilePath);
-  // filesDataFilePath = getFilesDataFilePath(nowDate);
+
+  filesDataFilePath = getFilesDataFilePath(nowDate);
   filesDataFilePath = [
     SCANDIR_OUT_DATA_DIR_PATH,
     '0_files.txt',
@@ -149,7 +154,7 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
     return;
   }
   timer = Timer.start();
-  const duplicateFiles = await findDupes({
+  await findDupes({
     filesDataFilePath,
     nowDate,
     debug: {
@@ -165,20 +170,8 @@ export async function scanDirCmdMain(parsedArgv: ParsedArgv2) {
   //     opts,
   //   }
   // });
-  let fileDupeCount: number;
-  let dupeMapKeys: string[];
 
-  fileDupeCount = 0;
-  dupeMapKeys = [ ...duplicateFiles.keys() ];
-  for(let i = 0; i < dupeMapKeys.length; ++i) {
-    let currDupeKey = dupeMapKeys[i];
-    let currDupes = duplicateFiles.get(currDupeKey);
-    if(Array.isArray(currDupes)) {
-      fileDupeCount += currDupes.length;
-    }
-  }
   // writeFileSync(fileDupesFilePath, dupeFileLines.join(''));
-  // console.log({ duplicateFiles: fileDupeCount });
   findDuplicatesMs = timer.stop();
   console.log(`findDuplicates took: ${getIntuitiveTimeString(findDuplicatesMs)}`);
   logTotalTime(totalTimer.stop());

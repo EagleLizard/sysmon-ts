@@ -11,8 +11,6 @@ type GetFileSizeRes = {
   sizeMap: Map<number, number>;
 };
 
-const RFL_MOD = 500;
-
 export async function getPossibleDupes(filesDataFilePath: string, opts: {
   nowDate: Date,
 }): Promise<GetPossibleDupesRes> {

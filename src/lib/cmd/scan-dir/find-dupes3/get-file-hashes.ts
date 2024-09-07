@@ -12,7 +12,7 @@ import { _closeWs, _print } from './find-dupes-utils';
 import assert from 'assert';
 import { sleep } from '../../../util/sleep';
 
-const HASH_RFL_MOD = 250;
+// const HASH_RFL_MOD = 250;
 /*
   The coefficient is an approximation of the case where
     there are 700000 (7e5) possible duplicates, and we

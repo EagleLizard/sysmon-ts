@@ -146,7 +146,7 @@ function getStatLine(pingStat: PingStatDto, aggStats: AggregatePingStats): strin
   avgMod = avgVal / baseRange;
   avgOutVal = avgMod * PRINT_STATS_SCALE;
   avgOutStr = '='.repeat(Math.round(avgOutVal));
-  currLine = `${getDayStr(pingStat.time_bucket)} ${getDateStr(pingStat.time_bucket)} ${avgOutStr} ${pingStat.avg}`;
+  currLine = `${getDayStr(pingStat.time_bucket)} ${getDateStr(pingStat.time_bucket)} ${avgOutStr} ${pingStat.avg.toFixed(3)}`;
   return currLine;
 }
 

@@ -1,7 +1,7 @@
 
 import path from 'path';
 import { Stats, WriteStream, createWriteStream, statSync } from 'fs';
-import fs, { FileHandle, FileReadResult, lstat } from 'fs/promises';
+import fs, { FileHandle, FileReadResult } from 'fs/promises';
 import assert from 'assert';
 
 import { config } from '../../../config';
@@ -24,7 +24,7 @@ import { CliColors, ColorFormatter } from '../../service/cli-colors';
 import { ScanDirOpts } from '../parse-sysmon-args';
 
 let maxConcurrentHashPromises: number;
-let maxSizePromises: number;
+// let maxSizePromises: number;
 let maxDupePromises: number;
 
 // const HASH_HWM = 32 * 1024;
@@ -48,7 +48,7 @@ maxConcurrentHashPromises = 256; // best 3.334m
 
 // maxConcurrentHashPromises = 1;
 
-maxSizePromises = 32;
+// maxSizePromises = 32;
 // maxSizePromises = 64;
 // maxSizePromises = 256;
 // maxSizePromises = 1024;
@@ -922,7 +922,6 @@ async function getFileSizes2(filesDataFilePath: string, opts: {
 }): Promise<GetFileSizesRes> {
   let sizeMap: Map<number, number>;
   let rflTimer: Timer;
-  let rflMs: number;
   let sizeFileName: string;
   let sizeFilePath: string;
   let sizeWs: WriteStream;
@@ -951,7 +950,6 @@ async function getFileSizes2(filesDataFilePath: string, opts: {
     let fileSize: number;
     let fileSizeCount: number | undefined;
     let sizeFileLine: string;
-    let wsRes: boolean;
     try {
       fileStats = statSync(line);
     } catch(e) {
@@ -976,7 +974,7 @@ async function getFileSizes2(filesDataFilePath: string, opts: {
     }
     sizeMap.set(fileSize, fileSizeCount + 1);
     sizeFileLine = `${fileSize} ${line}`;
-    wsRes = sizeWs.write(`${sizeFileLine}\n`);
+    sizeWs.write(`${sizeFileLine}\n`);
     if(rflTimer.currentMs() > rflMod) {
       process.stdout.write('.');
       rflTimer.reset();
@@ -993,131 +991,6 @@ async function getFileSizes2(filesDataFilePath: string, opts: {
 
   console.log(`${c.italic('lineCount')}: ${c.yellow_light(lineCount)}`);
 
-  getFileSizeRes = {
-    sizeFilePath,
-    sizeMap,
-  };
-  return getFileSizeRes;
-}
-
-async function getFileSizes(filesDataFilePath: string, opts: {
-  nowDate: Date,
-}): Promise<GetFileSizesRes> {
-  let runningSizePromises: number;
-  let sizeMap: Map<number, number>;
-  let rflTimer: Timer;
-  let sizeFileName: string;
-  let sizeFilePath: string;
-  let sizeWs: WriteStream;
-  let drainDeferred: Deferred | undefined;
-  let lineCount: number;
-
-  let getFileSizeRes: GetFileSizesRes;
-
-  runningSizePromises = 0;
-  sizeMap = new Map();
-  rflTimer = Timer.start();
-  lineCount = 0;
-
-  // sizeFileName = `${getDateFileStr(opts.nowDate)}_sizes.txt`;
-  sizeFileName = '0_sizes.txt';
-  // sizeFileName = 'sizes.txt';
-  sizeFilePath = [
-    SCANDIR_OUT_DATA_DIR_PATH,
-    sizeFileName,
-  ].join(path.sep);
-  sizeWs = createWriteStream(sizeFilePath);
-
-  const fileDataFileLineCb: ReadFileByLineOpts['lineCb'] = (line: string, resumeCb: () => void) => {
-    let sizePromise: Promise<void>;
-
-    lineCount++;
-
-    runningSizePromises++;
-    sizePromise = (async () => {
-      let fileStats: Stats | undefined;
-      let fileSize: number;
-      let fileSizeCount: number | undefined;
-      let sizeFileLine: string;
-      let wsRes: boolean;
-      try {
-        fileStats = await lstat(line);
-      } catch(e) {
-        if(
-          isObject(e)
-          && isString(e.code)
-          && (
-            (e.code === 'ENOENT')
-            || (e.code === 'EACCES')
-          )
-        ) {
-          logger.error(`findDuplicates lstat: ${e.code} ${line}`);
-          return;
-        } else {
-          console.error(e);
-          throw e;
-        }
-      }
-      if(fileStats === undefined) {
-        return;
-      }
-      fileSize = fileStats.size;
-      if((fileSizeCount = sizeMap.get(fileSize)) === undefined) {
-        fileSizeCount = 0;
-      }
-      sizeMap.set(fileSize, fileSizeCount + 1);
-      sizeFileLine = `${fileSize} ${line}`;
-      wsRes = sizeWs.write(`${sizeFileLine}\n`);
-      if(!wsRes) {
-        if(drainDeferred === undefined) {
-          /*
-            use one deferred promise across all async
-              hash promises to ensure only one drain
-              event gets scheduled
-          */
-          drainDeferred = Deferred.init();
-          sizeWs.once('drain', drainDeferred.resolve);
-          drainDeferred.promise.finally(() => {
-            drainDeferred = undefined;
-          });
-        }
-        await drainDeferred.promise;
-      }
-    })();
-    sizePromise.catch(e => {
-      console.error(e);
-      return e;
-    });
-    sizePromise.finally(() => {
-      runningSizePromises--;
-      // console.log('--');
-      // console.log({ runningSizePromises });
-      if(runningSizePromises < maxSizePromises) {
-        // process.stdout.write(`_${runningHashPromises}_`);
-        resumeCb();
-      }
-      if(rflTimer.currentMs() > rflMod) {
-        process.stdout.write('.');
-        rflTimer.reset();
-      }
-    });
-    if(runningSizePromises >= maxSizePromises) {
-      // console.log({ runningHashPromises });
-      // process.stdout.write('^');
-      return 'pause';
-    }
-  };
-
-  await readFileByLine(filesDataFilePath, {
-    lineCb: fileDataFileLineCb,
-  });
-  // console.log('rfl done');
-  // _print({ lineCount });
-  console.log(`${c.italic('lineCount')}: ${c.yellow_light(lineCount)}`);
-  // console.log({ lineCount });
-  while(runningSizePromises > 0) {
-    await sleep(0);
-  }
   getFileSizeRes = {
     sizeFilePath,
     sizeMap,
@@ -1200,317 +1073,4 @@ function isFlatObject(val: unknown): val is Record<string, unknown> {
     }
   }
   return true;
-}
-
-/*
-  nlStart = false
-  hPos = 0
-  hParse = false
-  szParse = false
-
-  foundHash = undefined
-  foundSize = undefined
-  foundFilePath = undefined
-  if currChar === newline
-    if hParse or szParse
-      throw error, invalid format
-    if fParse
-      << terminal >>
-      foundFilePath = chars[].join
-    else
-      hParse = true
-    reset
-  else
-    if hParse
-      if currChar === space
-        <<terminal char>>
-        set foundHash = chars[].join
-        assert foundHash === hash
-        set chars[].length = 0
-        set hParse = false
-        set szParse = true
-      else
-        if currChar === hash[hPos]
-          chars.push(currChar)
-        else
-          reset
-    else if szParse
-      if currChar === space
-        <<terminal char>>
-        set foundSize = +(chars[].join)
-        assert foundSize is number
-        set chars[].length = 0
-        set szParse = false
-        set fParse = true
-      else
-        assert currChar is digit
-        chars[].push(currChar)
-    else if fParse
-      chars[].push(currChar)
- */
-async function formatDupes(dupesFilePath: string, hashSizeMap: Map<string, number>, dupeCountMap: Map<string, number>) {
-  let fileHandlePromise: Promise<FileHandle>;
-  let fileHandle: FileHandle;
-  let fmtFileName: string;
-  let fmtFilePath: string;
-  let fmtWs: WriteStream;
-  let totalBytesRead: number;
-  let rfbTimer: Timer;
-  let rfbMs: number;
-
-  let findHashDupesRes: FindHashDupesRes;
-
-  totalBytesRead = 0;
-
-  fileHandlePromise = fs.open(dupesFilePath);
-  fileHandlePromise.finally(() => {
-    fileHandle.close();
-  });
-  fileHandle = await fileHandlePromise;
-
-  fmtFileName = '0_dupes_fmt.txt';
-  fmtFilePath = [
-    SCANDIR_OUT_DATA_DIR_PATH,
-    fmtFileName,
-  ].join(path.sep);
-  fmtWs = createWriteStream(fmtFilePath);
-
-  rfbTimer = Timer.start();
-  // [ targetHash, targetHashDupeCount ] = [ ...hashSizeMap.entries() ][0];
-  let hashSizeTuples: [ string, number ][];
-  hashSizeTuples = [ ...hashSizeMap.entries() ];
-  /*
-    sort by size desc
-    */
-  hashSizeTuples.sort((a, b) => {
-    if(a[1] > b[1]) {
-      return -1;
-    } else if(a[1] < b[1]) {
-      return 1;
-    } else {
-      return 0;
-    }
-  });
-  // console.log(hashSizeTuples[0]);
-  // [ targetHash, targetHashDupeCount ] = hashSizeTuples[0];
-  for(let i = 0; i < hashSizeTuples.length; ++i) {
-    let targetHash: string;
-    let targetHashSize: number;
-    let targetHashDupeCount: number | undefined;
-    let writeHeading: boolean;
-    writeHeading = true;
-
-    const dupeCb: FindHashDupesOpts['dupeCb'] = (filePath, size, hash, range) => {
-      if(writeHeading) {
-        writeHeading = false;
-        fmtWs.write(`${hash} ${size}\n`);
-      }
-      // fmtWs.write(`  [ ${range.join(', ')} ]\n`);
-      fmtWs.write(`  ${filePath}\n`);
-    };
-    let buf: Buffer;
-    buf = Buffer.alloc(128 * 1024);
-
-    [ targetHash, ] = hashSizeTuples[i];
-    targetHashDupeCount = dupeCountMap.get(targetHash);
-    if(targetHashDupeCount === undefined) {
-      throw new Error(`undefined dupe count for hash: ${targetHash}`);
-    }
-    findHashDupesRes = await findHashDupes({
-      fileHandle,
-      targetHash,
-      dupeCount: targetHashDupeCount,
-      buf,
-      dupeCb,
-    });
-    totalBytesRead += findHashDupesRes.bytesRead;
-    if((i % 1e3) === 0) {
-      process.stdout.write(((i / hashSizeTuples.length)).toFixed(2));
-    }
-    if((i % 1e2) === 0) {
-      process.stdout.write('.');
-    }
-  }
-
-  rfbMs = rfbTimer.stop();
-
-  console.log(`totalBytesRead: ${totalBytesRead}b (${getIntuitiveByteString(totalBytesRead)})`);
-  // console.log(`read file buffer took: ${rfbMs} ms (${getIntuitiveTimeString(rfbMs)})`);
-  console.log(`read file buffer took: ${getIntuitiveTimeString(rfbMs)} (${rfbMs} ms)\n`);
-}
-
-type FindHashDupesOpts = {
-  fileHandle: FileHandle;
-  targetHash: string;
-  dupeCount: number;
-  buf: Buffer,
-  dupeCb: (filePath: string, size: number, hash: string, range: [ number, number ]) => void;
-};
-
-type FindHashDupesRes = {
-  bytesRead: number;
-}
-
-async function findHashDupes(opts: FindHashDupesOpts): Promise<FindHashDupesRes> {
-  let fileHandle: FileHandle;
-  let targetHash: string;
-  let dupeCount: number;
-
-  let buf: Buffer;
-  let pos: number;
-  let readRes: FileReadResult<Buffer>;
-  let bytesRead: number;
-
-  let firstChar: boolean;
-  let hParse: boolean;
-  let szParse: boolean;
-  let fParse: boolean;
-  let hPos: number;
-  let hashLen: number | undefined;
-  let chars: string[];
-  let foundHash: string | undefined;
-  let foundSizeStr: string | undefined;
-  let foundSize: number | undefined;
-  let foundFilePath: string | undefined;
-
-  let findHashDupesRes: FindHashDupesRes;
-
-  let currChar: string;
-  let currByte: number;
-
-  let line: number;
-  let col: number;
-
-  let dupeStartPos: number | undefined;
-  let dupeEndPos: number | undefined;
-
-  fileHandle = opts.fileHandle;
-  targetHash = opts.targetHash;
-  dupeCount = opts.dupeCount;
-
-  buf = opts.buf;
-  pos = 0;
-  bytesRead = 0;
-
-  /* Init parsing vars  */
-  hParse = false;
-  szParse = false;
-  fParse = false;
-  hPos = 0;
-  chars = [];
-
-  firstChar = true;
-
-  line = 1;
-  col = 0;
-
-  while((readRes = await fileHandle.read(buf, 0, buf.length, pos)).bytesRead !== 0) {
-    for(let i = 0; i < buf.length; ++i) {
-      // let subBuf: Buffer;
-
-      // subBuf = buf.subarray(i, i + 1);
-      currByte = buf[i];
-      if(firstChar) {
-        /*
-          necessary because the first line doesn't start with a newline
-         */
-        hParse = true;
-        firstChar = false;
-        dupeStartPos = pos + i;
-      }
-      /* 10 -> '\n' */
-      if(currByte === 10) {
-        line++;
-        col = 0;
-        if(hParse || szParse) {
-          throw new Error(`Invalid format, buf dump: ${buf.toString()}`);
-        } else if(fParse) {
-          /* terminal */
-          foundFilePath = chars.join('');
-
-          chars.length = 0;
-          fParse = false;
-
-          dupeEndPos = pos + i;
-          // assert(foundFilePath.length > 0);
-          // assert(foundSize !== undefined);
-          // assert(foundHash !== undefined);
-          // assert(dupeStartPos !== undefined);
-          assert(
-            (foundFilePath.length > 0)
-            && (foundSize !== undefined)
-            && (foundHash !== undefined)
-            && (dupeStartPos !== undefined)
-          );
-          opts.dupeCb(foundFilePath, foundSize, foundHash, [ dupeStartPos, dupeEndPos ]);
-          dupeCount--;
-
-          foundHash = undefined;
-          foundSize = undefined;
-          foundFilePath = undefined;
-        }
-        /* reset */
-        hParse = true;
-        dupeStartPos = pos + i;
-      } else {
-        col++;
-        if(hParse) {
-          /* 32 -> ' ' */
-          if(currByte === 32) {
-            /* terminal */
-            foundHash = chars.join('');
-            // assert(foundHash === targetHash);
-            /* start size parse */
-            szParse = true;
-            /* reset */
-            hParse = false;
-            hPos = 0;
-            chars.length = 0;
-          } else if(currByte === targetHash.charCodeAt(hPos)) {
-            chars.push(String.fromCharCode(currByte));
-            hPos++;
-          } else {
-            /* reset */
-            hParse = false;
-            szParse = false;
-            chars.length = 0;
-            hPos = 0;
-          }
-        } else if(szParse) {
-          /* 32 -> ' ' */
-          if(currByte === 32) {
-            /* terminal */
-            foundSizeStr = chars.join('');
-            foundSize = +foundSizeStr;
-            if(isNaN(foundSize)) {
-              // console.log('readRes.bytesRead');
-              // console.log(readRes.bytesRead);
-              // console.log('bytes.length');
-              // console.log(bytes.length);
-              throw new Error(`invalid size string: ${foundSizeStr} at ${line}:${col}`);
-            }
-            /* reset */
-            chars.length = 0;
-            szParse = false;
-            fParse = true;
-          } else {
-            chars.push(String.fromCharCode(currByte));
-          }
-        } else if(fParse) {
-          chars.push(String.fromCharCode(currByte));
-        }
-      }
-    }
-
-    bytesRead += readRes.bytesRead;
-    pos += readRes.bytesRead;
-    if(dupeCount < 1) {
-      break;
-    }
-  }
-
-  findHashDupesRes = {
-    bytesRead,
-  };
-  return findHashDupesRes;
 }

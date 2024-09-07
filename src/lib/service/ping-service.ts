@@ -64,6 +64,7 @@ export class PingService {
     if(queryParams.size > 0) {
       url = `${url}?${queryParams.toString()}`;
     }
+    console.log({ url });
 
     pingStatsRawResp = await fetch(url);
     let pingStatsResp = await pingStatsRawResp.json();

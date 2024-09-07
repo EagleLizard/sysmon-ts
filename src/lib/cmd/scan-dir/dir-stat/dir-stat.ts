@@ -150,8 +150,8 @@ export async function dirStat(): Promise<void> {
     depth,
   });
 
-  // let treeMap = getTreeMap();
-  // console.log(treeMap);
+  let treeMap = getTreeMap();
+  console.log(treeMap);
 }
 
 function getTreeMap() {

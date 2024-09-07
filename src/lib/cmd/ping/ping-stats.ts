@@ -74,7 +74,7 @@ async function runPingStats(opts: RunPingStatOpts) {
     // return true;
     // return pingStat.avg > aggStats.totalAvg;
     return (pingStat.avg - aggStats.totalAvg) > (aggStats.stdDev * opts.numStdDevs);
-    // return Math.abs(pingStat.avg - totalAvg) > (stdDev * numStdDeviations);
+    // return Math.abs(pingStat.avg - aggStats.totalAvg) > (aggStats.stdDev * opts.numStdDevs);
   });
 
   sortedDevPings = PingStatsService.sortPingStats(devPings);

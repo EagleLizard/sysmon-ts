@@ -164,7 +164,6 @@ export async function getLineReader2(filePath: string, opts: GetLineReader2Opts 
   let lineReader: LineReader2;
   let buf: Buffer;
   let pos: number;
-  let bufPos: number;
   let bytesRead: number;
   let lines: string[];
   let leftoverChars: string | undefined;
@@ -175,7 +174,6 @@ export async function getLineReader2(filePath: string, opts: GetLineReader2Opts 
 
   buf = Buffer.alloc(bufSize);
   pos = 0;
-  bufPos = -1;
   bytesRead = -1;
   lines = [];
 
@@ -197,7 +195,7 @@ export async function getLineReader2(filePath: string, opts: GetLineReader2Opts 
     /*
       Read from current buffer, or get data until next newline
      */
-    
+
     /*
       how do we know we need to read more bytes?
       how do we know we have more room to seek in the buffer?

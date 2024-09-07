@@ -51,6 +51,7 @@ describe('t-nine-service tests', () => {
 
   it('tests loadWords()', async () => {
     let lineCb: ReadFileByLineOpts['lineCb'] | undefined;
+    let resumeCb: () => void;
     let loadWordsPromise: Promise<string[]>;
     let deferred: Deferred<void>;
     let testWords: string[];
@@ -69,11 +70,15 @@ describe('t-nine-service tests', () => {
       return deferred.promise;
     });
     loadWordsPromise = TNineService.loadWords();
+    resumeCb = () => {
+      // noop
+    };
+
     if(lineCb === undefined) {
       throw new Error('lineCb is undefined');
     }
     for(let i = 0; i < testWords.length; ++i) {
-      lineCb(testWords[i]);
+      lineCb(testWords[i], resumeCb);
     }
     deferred.resolve();
     words = await loadWordsPromise;
