@@ -1,6 +1,6 @@
 
 // import fs from 'fs';
-import { describe, it, expect, beforeAll, Mocked, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, vi, beforeEach } from 'vitest';
 import { fs as mfs } from 'memfs';
 
 import { ScanDirCbParams, ScanDirOpts, scanDir } from './scan-dir';
@@ -17,7 +17,7 @@ describe('scanDir tests', () => {
   let flatTestGenRes: GenTestDirRes;
   let recursiveTestGenRes: GenTestDirRes;
 
-  let scanDirOutStreamMock: Mocked<ScanDirOpts['outStream']>;
+  let scanDirOutStreamMock: ScanDirOpts['outStream'];
 
   beforeAll(() => {
 

@@ -110,7 +110,7 @@ export async function scanDir(opts: ScanDirOpts) {
       currDirents.forEach(currDirent => {
         dirQueue.pushFront(
           joinPath([
-            currDirent.path,
+            currDirent.parentPath,
             currDirent.name,
           ])
         );
@@ -253,7 +253,7 @@ async function *getDirScanner(opts: ScanDirOpts): AsyncGenerator<ScanDirCbParams
       }
       for(let i = 0; i < currDirents.length; ++i) {
         dirQueue.pushFront([
-          currDirents[i].path,
+          currDirents[i].parentPath,
           currDirents[i].name,
         ].join(path.sep));
       }

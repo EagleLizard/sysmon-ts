@@ -1,5 +1,5 @@
 
-import crypto, { Cipher, Decipher } from 'crypto';
+import crypto, { Cipheriv, Decipheriv } from 'crypto';
 
 import { config } from '../../config';
 
@@ -11,7 +11,7 @@ export type EncyptResult = {
 };
 
 export function encrypt(val: string): EncyptResult {
-  let cipher: Cipher;
+  let cipher: Cipheriv;
   let iv: Buffer;
   let encrypted: string;
   let key: Buffer;
@@ -26,7 +26,7 @@ export function encrypt(val: string): EncyptResult {
 }
 
 export function decrypt(val: string, iv: string) {
-  let decipher: Decipher;
+  let decipher: Decipheriv;
   let decrypted: string;
   let ivBuf: Buffer;
   let key: Buffer;

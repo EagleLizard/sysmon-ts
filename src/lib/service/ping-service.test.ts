@@ -1,5 +1,5 @@
 
-import { describe, it, expect, beforeEach, Mock, vi } from 'vitest';
+import { describe, it, expect, beforeEach, Mock, vi, assert } from 'vitest';
 import { PingStatDto } from '../models/ping-stat-dto';
 import { InsertPingParams, PingGetStatsOpts, PingService } from './ping-service';
 import { ADDR_TYPE_ENUM } from '../models/ping-args';
@@ -127,6 +127,7 @@ describe('ping-service tests', () => {
     });
     pingStats = await PingService.getStats(opts);
     const lastCall = fetchMock.mock.lastCall;
+    assert((typeof lastCall?.[0]) === 'string');
     const lastCallUrl = new URL(lastCall?.[0]);
     expect(pingStats?.[0]).toEqual(pingStatMock);
     expect(lastCallUrl.searchParams.get('bucket_val')).toBe('5');
@@ -205,8 +206,10 @@ describe('ping-service tests', () => {
 
     resp = await PingService.postPing(postPingParamsMock);
     expect(resp.status).toBe(statusMock);
-
-    const lastCallBody = JSON.parse(fetchMock.mock.lastCall?.[1]?.body);
+    assert(typeof fetchMock.mock.lastCall?.[1] === 'object');
+    let lastCallBodyStr = (fetchMock.mock.lastCall?.[1] as Partial<RequestInit>).body;
+    assert((typeof lastCallBodyStr) === 'string');
+    const lastCallBody = JSON.parse(lastCallBodyStr);
     expect(lastCallBody?.addr).toEqual(postPingParamsMock.addr);
   });
 

@@ -102,7 +102,7 @@ export async function hashFile2(filePath: string, opts: HashFile2Opts = {}): Pro
     hasher.update(chunk);
   };
 
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     rs.on('error', reject);
     rs.on('close', resolve);
     rs.on('data', chunkCb);

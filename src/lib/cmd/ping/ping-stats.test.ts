@@ -1,5 +1,5 @@
 
-import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GLOBAL_PING_STATS_OUTFILE_NAME, LOCAL_PING_STATS_OUTFILE_NAME, pingStatsMain } from './ping-stats';
 import { WriteStream } from 'fs';
 import { PingStatDto } from '../../models/ping-stat-dto';
@@ -51,7 +51,7 @@ describe('ping-stats tests', () => {
   let argvMock: string[];
   let cmdMock: ParsedArgv2;
 
-  let mockWs: Mocked<MockWs>;
+  let mockWs: MockWs;
 
   beforeEach(() => {
     pingStatsMocks.createWriteStream.mockReset();
@@ -100,7 +100,7 @@ describe('ping-stats tests', () => {
     cmdMock = parseArgv2(argvMock);
     pingStatsPromise = pingStatsMain(cmdMock);
     await pingStatsPromise;
-    expect(pingStatsMocks.createWriteStream.mock.lastCall[0])
+    expect(pingStatsMocks.createWriteStream.mock.lastCall?.[0])
       .toContain(LOCAL_PING_STATS_OUTFILE_NAME);
   });
 
@@ -112,7 +112,7 @@ describe('ping-stats tests', () => {
     cmdMock = parseArgv2(argvMock);
     pingStatsPromise = pingStatsMain(cmdMock);
     await pingStatsPromise;
-    expect(pingStatsMocks.createWriteStream.mock.lastCall[0])
+    expect(pingStatsMocks.createWriteStream.mock.lastCall?.[0])
       .toContain(GLOBAL_PING_STATS_OUTFILE_NAME);
   });
 

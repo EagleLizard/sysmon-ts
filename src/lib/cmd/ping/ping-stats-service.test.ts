@@ -1,7 +1,7 @@
 
 import { WriteStream } from 'fs';
 
-import { describe, it, expect, beforeEach, vi, Mocked } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PingStatDto } from '../../models/ping-stat-dto';
 import { AggregatePingStats, PingStatsService } from './ping-stats-service';
 
@@ -35,7 +35,7 @@ describe('PingStatsService tests', () => {
   let pingStatsMock: PingStatDto[];
   let addrIdMock: number;
 
-  let wsMock: Mocked<MockWs>;
+  let wsMock: MockWs;
 
   beforeEach(() => {
     pingServiceMocks.getAddrIdByVal.mockReset();
